@@ -23,3 +23,4 @@ cat multi_cluster_config.json
 ```
 
 문의: `multi_cluster_config.json`의 `global_user` 필드를 통해 프로비저닝될 사용자를 지정하세요.
+# IaC_apple_sillicon

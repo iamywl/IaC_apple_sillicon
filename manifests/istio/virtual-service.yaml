@@ -1,0 +1,26 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: httpbin-routing
+  namespace: demo
+spec:
+  hosts:
+    - httpbin
+  http:
+    - match:
+        - headers:
+            x-canary:
+              exact: "true"
+      route:
+        - destination:
+            host: httpbin
+            subset: v2
+    - route:
+        - destination:
+            host: httpbin
+            subset: v1
+          weight: 80
+        - destination:
+            host: httpbin
+            subset: v2
+          weight: 20

@@ -1,0 +1,14 @@
+kubeconfig/
+*.log
+.DS_Store
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+.terraform-vm-ips/
+
+# Dashboard
+dashboard/node_modules/
+dashboard/dist/

@@ -1,0 +1,17 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-nginx-to-redis
+  namespace: demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: redis
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: nginx-web
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP

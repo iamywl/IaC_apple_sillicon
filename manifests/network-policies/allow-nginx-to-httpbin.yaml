@@ -1,0 +1,20 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-nginx-to-httpbin
+  namespace: demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: httpbin
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: nginx-web
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"

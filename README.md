@@ -41,7 +41,24 @@ brew install tart kubectl helm jq sshpass terraform
 | `sshpass` | SSH 비밀번호 자동 입력 |
 | `terraform` | Infrastructure as Code |
 
-### 3단계: 전체 설치 (한 줄)
+### 3단계: 골든 이미지 빌드 (권장, 최초 1회)
+
+containerd · kubeadm · K8s/Cilium 이미지를 미리 설치한 VM 틀을 만들어둔다.
+
+```bash
+./scripts/build-golden-image.sh    # ~10분
+```
+
+빌드가 끝나면 `config/clusters.json`의 `base_image`를 변경한다:
+
+```diff
+- "base_image": "ghcr.io/cirruslabs/ubuntu:latest",
++ "base_image": "k8s-golden",
+```
+
+> 골든 이미지 없이도 설치 가능하다. 이 단계를 건너뛰면 Phase 2~4가 매 VM마다 실행된다.
+
+### 4단계: 전체 설치 (한 줄)
 
 ```bash
 ./scripts/install.sh
@@ -51,9 +68,9 @@ brew install tart kubectl helm jq sshpass terraform
 
 ```
 Phase 1  → VM 10개 생성 (tart clone + 리소스 할당)
-Phase 2  → 노드 준비 (swap off, kernel modules, sysctl)
-Phase 3  → containerd 설치
-Phase 4  → kubeadm, kubelet, kubectl 설치
+Phase 2  → 노드 준비 (swap off, kernel modules, sysctl)       ← 골든 이미지 시 스킵
+Phase 3  → containerd 설치                                    ← 골든 이미지 시 스킵
+Phase 4  → kubeadm, kubelet, kubectl 설치                     ← 골든 이미지 시 스킵
 Phase 5  → K8s 4개 클러스터 초기화 (kubeadm init + worker join)
 Phase 6  → Cilium CNI + Hubble 설치 (전체 클러스터)
 Phase 7  → Prometheus + Grafana + Loki 모니터링 (platform)
@@ -64,9 +81,12 @@ Phase 11 → metrics-server + HPA 오토스케일링 (dev, staging)
 Phase 12 → Istio Service Mesh (dev)
 ```
 
-소요 시간: 약 45~60분 (네트워크 속도에 따라 상이)
+| 방식 | 소요 시간 |
+|------|----------|
+| 골든 이미지 사용 | **15~20분** |
+| 골든 이미지 없이 | 45~60분 |
 
-### 3단계 (대안): Terraform으로 설치
+### 4단계 (대안): Terraform으로 설치
 
 ```bash
 cd terraform
@@ -382,6 +402,7 @@ tart-infra/
 │   └── clusters.json              ← 클러스터/VM 정의 (Single Source of Truth)
 │
 ├── scripts/
+│   ├── build-golden-image.sh      ← 골든 이미지 빌드 (최초 1회, ~10분)
 │   ├── install.sh                 ← 전체 설치 (Phase 1~12)
 │   ├── boot.sh                    ← 일상 시작 (VM 부팅 → 헬스체크)
 │   ├── shutdown.sh                ← 안전 종료 (drain → stop)

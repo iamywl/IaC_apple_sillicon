@@ -6,7 +6,17 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 log_section "Tart Multi-Cluster K8s Installation"
 log_info "This will create 10 VMs and set up 4 Kubernetes clusters."
-log_info "Estimated time: 45-60 minutes"
+
+# Detect golden image usage
+USE_GOLDEN=false
+BASE_IMG="$(get_base_image)"
+if [[ "$BASE_IMG" == "k8s-golden" ]]; then
+  USE_GOLDEN=true
+  log_info "Golden image detected → Phase 2~4 will be skipped"
+  log_info "Estimated time: 15-20 minutes"
+else
+  log_info "Estimated time: 45-60 minutes"
+fi
 echo ""
 
 check_dependencies
@@ -30,9 +40,22 @@ for cluster_name in $(get_cluster_names); do
 done
 
 # Phase 2-4: Prepare nodes, install runtime, install kubeadm
-bash "$SCRIPT_DIR/install/02-prepare-nodes.sh"
-bash "$SCRIPT_DIR/install/03-install-runtime.sh"
-bash "$SCRIPT_DIR/install/04-install-kubeadm.sh"
+if [[ "$USE_GOLDEN" == true ]]; then
+  log_section "Phase 2~4: Skipped (golden image)"
+  # Golden image에서도 hostname만 설정해줘야 함
+  log_info "Setting hostnames on golden image nodes..."
+  for cluster_name in $(get_cluster_names); do
+    for node_name in $(get_nodes_for_cluster "$cluster_name"); do
+      ip=$(vm_get_ip "$node_name")
+      ssh_exec_sudo "$ip" "hostnamectl set-hostname '$node_name'"
+      log_info "  $node_name → hostname set"
+    done
+  done
+else
+  bash "$SCRIPT_DIR/install/02-prepare-nodes.sh"
+  bash "$SCRIPT_DIR/install/03-install-runtime.sh"
+  bash "$SCRIPT_DIR/install/04-install-kubeadm.sh"
+fi
 
 # Phase 5: Initialize clusters
 bash "$SCRIPT_DIR/install/05-init-clusters.sh"

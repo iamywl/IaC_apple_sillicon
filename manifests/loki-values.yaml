@@ -1,0 +1,26 @@
+loki:
+  enabled: true
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+promtail:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+grafana:
+  enabled: false
+  sidecar:
+    datasources:
+      enabled: true
+      isDefaultDatasource: false

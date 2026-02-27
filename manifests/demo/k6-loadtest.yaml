@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-script
+  namespace: demo
+data:
+  loadtest.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+
+    export const options = {
+      vus: 100,
+      duration: '60s',
+      thresholds: {
+        http_req_duration: ['p(95)<1000'],
+        http_req_failed: ['rate<0.1'],
+      },
+    };
+
+    export default function () {
+      // Test nginx-web service
+      const resNginx = http.get('http://nginx-web.demo.svc.cluster.local');
+      check(resNginx, {
+        'nginx status is 200': (r) => r.status === 200,
+      });
+
+      // Test httpbin service
+      const resHttpbin = http.get('http://httpbin.demo.svc.cluster.local/get');
+      check(resHttpbin, {
+        'httpbin status is 200': (r) => r.status === 200,
+      });
+
+      sleep(0.3);
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-loadtest
+  namespace: demo
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:latest
+          command: ["k6", "run", "/scripts/loadtest.js"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: k6-script
+              mountPath: /scripts
+      volumes:
+        - name: k6-script
+          configMap:
+            name: k6-script

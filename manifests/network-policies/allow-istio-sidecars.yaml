@@ -1,0 +1,39 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-istio-control-plane
+  namespace: demo
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: istio-system
+      toPorts:
+        - ports:
+            - port: "15010"
+              protocol: TCP
+            - port: "15012"
+              protocol: TCP
+            - port: "15017"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: istio-system
+      toPorts:
+        - ports:
+            - port: "15010"
+              protocol: TCP
+            - port: "15012"
+              protocol: TCP
+            - port: "15014"
+              protocol: TCP
+    - toCIDR:
+        - "127.0.0.1/32"
+      toPorts:
+        - ports:
+            - port: "15001"
+              protocol: TCP
+            - port: "15006"
+              protocol: TCP

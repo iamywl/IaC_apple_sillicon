@@ -1,0 +1,33 @@
+server:
+  service:
+    type: NodePort
+    nodePortHttp: 30800
+  extraArgs:
+    - --insecure
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+dex:
+  enabled: false

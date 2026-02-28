@@ -2,6 +2,9 @@ import type { DashboardSnapshot, VmResources, PortInfo, NetworkStats } from '../
 import { collectVmInfo } from './collectors/tart.js';
 import { sshPool } from './collectors/ssh.js';
 import { collectClusterInfo, collectPods } from './collectors/kubectl.js';
+import { collectTrafficFlows } from './collectors/hubble.js';
+import { collectServices } from './collectors/services.js';
+import { collectAllScaling } from './collectors/scaling.js';
 import { getClusterConfigs } from './config.js';
 import { parseCpuUsage } from './parsers/top.js';
 import { parseMemory } from './parsers/free.js';
@@ -10,6 +13,9 @@ import { parsePorts } from './parsers/ss.js';
 import { parseNetDev } from './parsers/netdev.js';
 
 const INTERVAL = 5000;
+const TRAFFIC_INTERVAL = 10000;
+const SERVICES_INTERVAL = 30000;
+const SCALING_INTERVAL = 5000;
 let snapshot: DashboardSnapshot = {
   vms: [],
   vmResources: {},
@@ -103,7 +109,7 @@ async function collect(): Promise<void> {
   const vmNetwork: Record<string, NetworkStats> = {};
 
   const runningVms = vms.filter(v => v.status === 'running' && v.ip);
-  const sshResults = await Promise.allSettled(
+  await Promise.allSettled(
     runningVms.map(async (vm) => {
       const [resources, ports, network] = await Promise.allSettled([
         collectVmResources(vm.ip!),
@@ -132,7 +138,7 @@ async function collect(): Promise<void> {
   // 4. Collect pods per cluster
   const clusterPods: Record<string, import('../shared/types.js').PodInfo[]> = {};
   const clusterConfigs = getClusterConfigs();
-  const podResults = await Promise.allSettled(
+  await Promise.allSettled(
     clusterConfigs.map(async (c) => {
       clusterPods[c.name] = await collectPods(c.name);
     })
@@ -156,17 +162,48 @@ async function collect(): Promise<void> {
 }
 
 let intervalId: NodeJS.Timeout | null = null;
+let trafficIntervalId: NodeJS.Timeout | null = null;
+let servicesIntervalId: NodeJS.Timeout | null = null;
+let scalingIntervalId: NodeJS.Timeout | null = null;
+
+async function collectAllTraffic() {
+  const configs = getClusterConfigs();
+  await Promise.allSettled(configs.map(c => collectTrafficFlows(c.name)));
+}
+
+async function collectAllServices() {
+  const configs = getClusterConfigs();
+  await Promise.allSettled(configs.map(c => collectServices(c.name)));
+}
 
 export function startCollector() {
   console.log('[collector] starting background collection (5s interval)');
   collect();
   intervalId = setInterval(collect, INTERVAL);
+
+  // Start traffic collection (10s interval)
+  setTimeout(() => {
+    collectAllTraffic();
+    trafficIntervalId = setInterval(collectAllTraffic, TRAFFIC_INTERVAL);
+  }, 3000);
+
+  // Start services collection (30s interval)
+  setTimeout(() => {
+    collectAllServices();
+    servicesIntervalId = setInterval(collectAllServices, SERVICES_INTERVAL);
+  }, 5000);
+
+  // Start scaling/HPA collection (5s interval)
+  setTimeout(() => {
+    collectAllScaling();
+    scalingIntervalId = setInterval(collectAllScaling, SCALING_INTERVAL);
+  }, 2000);
 }
 
 export function stopCollector() {
-  if (intervalId) {
-    clearInterval(intervalId);
-    intervalId = null;
-  }
+  if (intervalId) { clearInterval(intervalId); intervalId = null; }
+  if (trafficIntervalId) { clearInterval(trafficIntervalId); trafficIntervalId = null; }
+  if (servicesIntervalId) { clearInterval(servicesIntervalId); servicesIntervalId = null; }
+  if (scalingIntervalId) { clearInterval(scalingIntervalId); scalingIntervalId = null; }
   sshPool.closeAll();
 }

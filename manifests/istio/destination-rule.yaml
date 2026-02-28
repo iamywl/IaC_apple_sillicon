@@ -15,7 +15,7 @@ spec:
       tcp:
         maxConnections: 100
       http:
-        h2UpgradePolicy: NEVER
+        h2UpgradePolicy: DO_NOT_UPGRADE
   subsets:
     - name: v1
       labels:

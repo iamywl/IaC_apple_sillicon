@@ -1,8 +1,13 @@
 import { useRef } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling.js';
-import { Header } from './components/layout/Header.js';
-import { MainLayout } from './components/layout/MainLayout.js';
-import { ClusterCard } from './components/cluster/ClusterCard.js';
+import { AppShell } from './components/layout/AppShell.js';
+import { OverviewPage } from './pages/OverviewPage.js';
+import { ClusterDetailPage } from './pages/ClusterDetailPage.js';
+import { TestingPage } from './pages/TestingPage.js';
+import { TrafficPage } from './pages/TrafficPage.js';
+import { ScalingPage } from './pages/ScalingPage.js';
+import { LoadAnalysisPage } from './pages/LoadAnalysisPage.js';
 import type { DashboardSnapshot } from '../shared/types.js';
 
 const MAX_HISTORY = 60;
@@ -11,7 +16,6 @@ function App() {
   const { data, error, lastUpdated } = usePolling<DashboardSnapshot>('/api/snapshot', 5000);
   const networkHistoryRef = useRef<Record<string, { rx: number[]; tx: number[] }>>({});
 
-  // Update network history ring buffer
   if (data?.vmNetwork) {
     for (const [vmName, stats] of Object.entries(data.vmNetwork)) {
       if (!networkHistoryRef.current[vmName]) {
@@ -27,11 +31,15 @@ function App() {
 
   const connectionStatus = error ? 'down' : !data ? 'degraded' : data.errors.length > 3 ? 'degraded' : 'healthy';
 
-  if (!data) {
-    return (
-      <MainLayout
-        header={<Header lastUpdated={0} connectionStatus={error ? 'down' : 'degraded'} errorCount={0} />}
-      >
+  return (
+    <AppShell
+      lastUpdated={lastUpdated}
+      connectionStatus={connectionStatus as 'healthy' | 'degraded' | 'down'}
+      errorCount={data?.errors.length ?? 0}
+      vmCount={data?.vms.length ?? 0}
+      clusterCount={data?.clusters.length ?? 0}
+    >
+      {!data ? (
         <div className="flex items-center justify-center h-[60vh]">
           <div className="text-center">
             {error ? (
@@ -48,35 +56,19 @@ function App() {
             )}
           </div>
         </div>
-      </MainLayout>
-    );
-  }
-
-  return (
-    <MainLayout
-      header={
-        <Header
-          lastUpdated={lastUpdated}
-          connectionStatus={connectionStatus as 'healthy' | 'degraded' | 'down'}
-          errorCount={data.errors.length}
-        />
-      }
-    >
-      <div className="space-y-6">
-        {data.clusters.map(cluster => (
-          <ClusterCard
-            key={cluster.name}
-            cluster={cluster}
-            vms={data.vms.filter(v => v.cluster === cluster.name)}
-            vmResources={data.vmResources}
-            vmPorts={data.vmPorts}
-            vmNetwork={data.vmNetwork}
-            networkHistory={networkHistoryRef.current}
-            pods={data.clusterPods[cluster.name] || []}
-          />
-        ))}
-      </div>
-    </MainLayout>
+      ) : (
+        <Routes>
+          <Route path="/" element={<OverviewPage data={data} />} />
+          <Route path="/cluster/:name" element={
+            <ClusterDetailPage data={data} networkHistory={networkHistoryRef.current} />
+          } />
+          <Route path="/testing" element={<TestingPage clusters={data.clusters} />} />
+          <Route path="/traffic" element={<TrafficPage clusters={data.clusters} pods={data.clusterPods} vms={data.vms} />} />
+          <Route path="/scaling" element={<ScalingPage clusters={data.clusters} />} />
+          <Route path="/analysis" element={<LoadAnalysisPage clusters={data.clusters} data={data} />} />
+        </Routes>
+      )}
+    </AppShell>
   );
 }
 

@@ -344,39 +344,55 @@ ssh admin@$(tart ip dev-worker1)    # 비밀번호: admin
 
 → 구동 원리: [IaC 문서](doc/learning/iac-automation.md) — Bash vs Terraform 비교, 멱등성, Helm 관리
 
-### 커스텀 대시보드
+### SRE 운영 대시보드
 
 | 기술 | 역할 |
 |------|------|
-| React 19 + Vite 7 | SPA 프론트엔드 |
+| React 19 + Vite 7 | SPA 프론트엔드 (react-router-dom 라우팅) |
 | Tailwind CSS 4 | 다크 테마 UI |
-| Recharts | 게이지 차트, 스파크라인 |
+| Recharts | 게이지 차트, 스파크라인, 시계열 AreaChart |
 | Express 5 + TypeScript | REST API 서버 |
 | ssh2 (npm) | VM SSH 커넥션 풀 |
+| [k6](https://k6.io/) | K8s Job 기반 HTTP 부하 생성기 |
+| stress-ng | K8s Job 기반 CPU/메모리 스트레스 |
+| Hubble CLI | Cilium 네트워크 플로우 수집 |
 
 ```bash
 cd dashboard && npm install && npm run dev
 # → http://localhost:3000
 ```
 
-10개 VM의 CPU/메모리/디스크, 열린 포트, 네트워크 트래픽, 4개 클러스터의 노드/Pod 상태를 5초 간격으로 실시간 시각화.
+5개 페이지로 구성된 SRE 운영 대시보드:
 
-→ 상세: [대시보드 기술 문서](doc/dashboard.md) — 아키텍처, API, SSH Pool, 데이터 수집 방식
+| 페이지 | 경로 | 기능 |
+|--------|------|------|
+| **Overview** | `/` | 4개 클러스터 2×2 요약 카드 (노드, Pod 상태, CPU/RAM) |
+| **Cluster Detail** | `/cluster/:name` | 개별 클러스터 노드/Pod/서비스 상세 |
+| **Testing** | `/testing` | 10개 프리셋 시나리오 + 커스텀 부하/스트레스 테스트 실행, CSV 다운로드 |
+| **Traffic** | `/traffic` | SVG 토폴로지 맵 — VM 안에 Pod 배치, Hubble 트래픽 실시간 애니메이션 |
+| **Scaling** | `/scaling` | HPA 상태 카드 + Pod 레플리카 시계열 차트 + CPU 사용률 추이 |
 
-### 부하테스트
+#### SRE 테스트 시나리오
 
-| 기술 | 역할 |
-|------|------|
-| [k6](https://k6.io/) | HTTP 부하 생성기 |
-| stress-ng | CPU/메모리 스트레스 |
+대시보드에서 직접 실행 가능한 10개 프리셋 시나리오:
 
-```bash
-# HTTP 부하 (100 동시 사용자, 60초)
-kubectl --kubeconfig kubeconfig/dev.yaml apply -f manifests/demo/k6-loadtest.yaml
+| 시나리오 | 타입 | 설정 |
+|----------|------|------|
+| Light Load | HTTP | 10 VUs / 15s |
+| Standard Load | HTTP | 50 VUs / 30s |
+| Heavy Load | HTTP | 200 VUs / 60s |
+| Ramp-up Test | HTTP | 0→100 VUs, 10s ramp, 30s sustain |
+| Httpbin API Test | HTTP | 30 VUs / 20s → httpbin /get |
+| Strict SLA Test | HTTP | 50 VUs / 30s, p95<500ms, err<1% |
+| CPU Stress Light | CPU | 2 workers / 30s |
+| CPU Stress Heavy | CPU | 4 workers / 60s |
+| Memory Stress 64M | Memory | 1 worker / 30s / 64M |
+| Memory Stress 128M | Memory | 2 workers / 45s / 128M |
 
-# HPA 자동 확장 실시간 확인
-kubectl --kubeconfig kubeconfig/dev.yaml -n demo get hpa -w
-```
+커스텀 테스트: VU 수, 지속시간, 대상 URL, Ramp-up, p95 임계값, 워커 수, VM 바이트 등 자유 설정 가능.
+결과는 CSV로 내보내기 가능.
+
+→ 상세: [대시보드 기술 문서](doc/dashboard.md) — 아키텍처, API, 트래픽 토폴로지, 테스트 Job 관리, 스케일링 수집
 
 ---
 
@@ -439,9 +455,18 @@ tart-infra/
 │       ├── k8s-cluster/           ← kubeadm init/join
 │       └── helm-releases/         ← Helm 차트 선언적 관리
 │
-├── dashboard/                     ← 커스텀 모니터링 웹 대시보드
-│   ├── server/                    ← Express + SSH + kubectl 수집기
-│   └── src/                       ← React + Tailwind UI
+├── dashboard/                     ← SRE 운영 웹 대시보드
+│   ├── server/
+│   │   ├── index.ts               ← Express 서버 + API 라우팅 (9개 엔드포인트)
+│   │   ├── collector.ts           ← 백그라운드 수집 루프 (5s VM/Pod, 10s 트래픽, 5s HPA)
+│   │   ├── jobs.ts                ← K8s Job 라이프사이클 (k6/stress-ng 실행/결과/CSV)
+│   │   ├── collectors/            ← 데이터 수집기 (tart, ssh, kubectl, hubble, services, scaling)
+│   │   └── parsers/               ← 출력 파서 (top, free, df, ss, netdev, k6, stress-ng)
+│   ├── src/
+│   │   ├── pages/                 ← 5개 페이지 (Overview, ClusterDetail, Testing, Traffic, Scaling)
+│   │   ├── components/layout/     ← AppShell, Sidebar, Header
+│   │   └── components/            ← cluster, vm, pod, overview, testing, traffic 컴포넌트
+│   └── shared/types.ts            ← 프론트/백엔드 공유 타입 (25개 인터페이스)
 │
 ├── kubeconfig/                    ← 클러스터별 kubeconfig (.gitignore)
 │
@@ -507,7 +532,7 @@ open http://$(tart ip platform-worker1):30300
 
 | 문서 | 설명 |
 |------|------|
-| [대시보드 기술 문서](doc/dashboard.md) | 아키텍처, API, SSH Pool, 데이터 수집 |
+| [대시보드 기술 문서](doc/dashboard.md) | SRE 대시보드 아키텍처, API 9개, Job 관리, 트래픽 토폴로지, 스케일링 수집 |
 | [버그 리포트](doc/20260227_010000_bug_report.md) | 7건 버그 발견 및 해결 과정 (타임스탬프) |
 | [Tart 소개](doc/tart.md) | Tart VM 런타임 개요 |
 | [Terraform 연동](doc/terraform.md) | Terraform 모듈 설계 |

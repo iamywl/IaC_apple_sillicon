@@ -1,6 +1,6 @@
 # Tart Multi-Cluster Kubernetes Infrastructure
 
-Apple Silicon Mac 한 대에서 **프로덕션급(Production-grade) 멀티클러스터(Multi-cluster) K8s 환경**을 자동으로 구축하고,
+Apple Silicon Mac 한 대에서 **프로덕션급(Production-grade) 멀티클러스터(Multi-cluster) K8s(Kubernetes) 환경**을 자동으로 구축하고,
 SRE(Site Reliability Engineering) 운영 대시보드(Operations Dashboard)로 부하 테스트(Load Testing) · 오토스케일링(Auto Scaling) · 트래픽 관측(Traffic Observability) · 인프라 분석(Infrastructure Analysis)까지 수행하는 풀스택(Full-stack) 프로젝트.
 
 ---
@@ -64,18 +64,18 @@ SRE(Site Reliability Engineering) 운영 대시보드(Operations Dashboard)로 �
 
 ### platform — 관리 클러스터(Management Cluster)
 
-중앙 관제탑(Central Control Tower). 모니터링(Monitoring) · CI/CD · 알림(Alerting) 인프라가 집중 배치된다.
+중앙 관제탑(Central Control Tower). 모니터링(Monitoring) · CI/CD(Continuous Integration/Continuous Delivery) · 알림(Alerting) 인프라가 집중 배치된다.
 
 | 노드(Node) | 스펙(Spec) | 역할(Role) |
 |------|------|------|
 | platform-master | 2 vCPU / 4 GB | 컨트롤 플레인(Control Plane) — etcd, apiserver, scheduler, controller-manager |
 | platform-worker1 | 3 vCPU / 12 GB | **Prometheus** + **Grafana** + **Loki** + **AlertManager** — 옵저버빌리티(Observability) 전담 |
-| platform-worker2 | 2 vCPU / 8 GB | **Jenkins** + **ArgoCD** — CI/CD 전담 |
+| platform-worker2 | 2 vCPU / 8 GB | **Jenkins** + **ArgoCD** — CI/CD(Continuous Integration/Continuous Delivery) 전담 |
 
 | 항목 | 값 |
 |------|-----|
-| Pod CIDR | `10.10.0.0/16` |
-| Service CIDR | `10.96.0.0/16` |
+| Pod CIDR(Classless Inter-Domain Routing) | `10.10.0.0/16` |
+| Service CIDR(Classless Inter-Domain Routing) | `10.96.0.0/16` |
 | 설치 대상(Installed Components) | Cilium + Hubble, kube-prometheus-stack (Prometheus/Grafana/AlertManager), Loki, ArgoCD, Jenkins |
 | 알림 규칙(Alert Rules) | HighCpuUsage, HighMemoryUsage, NodeNotReady, PodCrashLooping, PodOOMKilled 등 8개 PrometheusRule |
 
@@ -86,21 +86,21 @@ SRE(Site Reliability Engineering) 운영 대시보드(Operations Dashboard)로 �
 | 노드(Node) | 스펙(Spec) | 역할(Role) |
 |------|------|------|
 | dev-master | 2 vCPU / 4 GB | 컨트롤 플레인(Control Plane) |
-| dev-worker1 | 2 vCPU / 8 GB | 데모 앱(Demo Apps) + Istio 사이드카(Sidecar) + HPA 대상 워크로드 |
+| dev-worker1 | 2 vCPU / 8 GB | 데모 앱(Demo Apps) + Istio 사이드카(Sidecar) + HPA(Horizontal Pod Autoscaler) 대상 워크로드 |
 
 | 항목 | 값 |
 |------|-----|
-| Pod CIDR | `10.20.0.0/16` |
-| Service CIDR | `10.97.0.0/16` |
-| 설치 대상(Installed Components) | Cilium + Hubble, **Istio** 서비스 메시(Service Mesh) — mTLS/카나리(Canary)/서킷브레이커(Circuit Breaker), **metrics-server** + HPA, **CiliumNetworkPolicy** — 제로 트러스트(Zero Trust) L7, 데모 앱(Demo Apps) — nginx, httpbin v1/v2, redis |
+| Pod CIDR(Classless Inter-Domain Routing) | `10.20.0.0/16` |
+| Service CIDR(Classless Inter-Domain Routing) | `10.97.0.0/16` |
+| 설치 대상(Installed Components) | Cilium + Hubble, **Istio** 서비스 메시(Service Mesh) — mTLS(mutual TLS)/카나리(Canary)/서킷브레이커(Circuit Breaker), **metrics-server** + HPA(Horizontal Pod Autoscaler), **CiliumNetworkPolicy** — 제로 트러스트(Zero Trust) L7, 데모 앱(Demo Apps) — nginx, httpbin v1/v2, redis |
 
 적용된 기능(Applied Features):
 
 | 기능(Feature) | 설정(Config) | 설명(Description) |
 |------|------|------|
-| 제로 트러스트(Zero Trust) | `default-deny.yaml` | 모든 인그레스(Ingress) 차단, DNS만 허용 후 화이트리스트(Whitelist) 개별 추가 |
+| 제로 트러스트(Zero Trust) | `default-deny.yaml` | 모든 인그레스(Ingress) 차단, DNS(Domain Name System)만 허용 후 화이트리스트(Whitelist) 개별 추가 |
 | L7 필터(L7 Filtering) | `allow-nginx-to-httpbin.yaml` | nginx → httpbin **HTTP GET만** 허용 (POST/DELETE 차단) |
-| 상호 TLS(mTLS) | PeerAuthentication STRICT | 모든 Pod 간 통신 TLS 암호화(Encryption) |
+| 상호 TLS(mTLS) | PeerAuthentication STRICT | 모든 Pod 간 통신 TLS(Transport Layer Security) 암호화(Encryption) |
 | 카나리 배포(Canary Deployment) | VirtualService | httpbin v1: 80% / v2: 20% 트래픽 분할(Traffic Splitting) |
 | 서킷브레이커(Circuit Breaker) | DestinationRule | 연속 5xx 3회 → 인스턴스 30초 격리(Ejection) |
 | HPA(Horizontal Pod Autoscaler) | nginx-web | CPU 50% 기준, 3→10 Pod 자동 확장(Auto Scaling) |
@@ -118,8 +118,8 @@ SRE(Site Reliability Engineering) 운영 대시보드(Operations Dashboard)로 �
 
 | 항목 | 값 |
 |------|-----|
-| Pod CIDR | `10.30.0.0/16` |
-| Service CIDR | `10.98.0.0/16` |
+| Pod CIDR(Classless Inter-Domain Routing) | `10.30.0.0/16` |
+| Service CIDR(Classless Inter-Domain Routing) | `10.98.0.0/16` |
 | 설치 대상(Installed Components) | Cilium + Hubble, metrics-server |
 
 ### prod — 프로덕션 클러스터(Production Cluster)
@@ -134,20 +134,20 @@ SRE(Site Reliability Engineering) 운영 대시보드(Operations Dashboard)로 �
 
 | 항목 | 값 |
 |------|-----|
-| Pod CIDR | `10.40.0.0/16` |
-| Service CIDR | `10.99.0.0/16` |
+| Pod CIDR(Classless Inter-Domain Routing) | `10.40.0.0/16` |
+| Service CIDR(Classless Inter-Domain Routing) | `10.99.0.0/16` |
 | 설치 대상(Installed Components) | Cilium + Hubble |
 
 ### 클러스터 비교 요약(Cluster Comparison Summary)
 
 | | platform | dev | staging | prod |
 |---|---|---|---|---|
-| **역할(Role)** | 관제·모니터링·CI/CD | 개발·실험·테스트 | 사전 검증(Pre-prod) | 프로덕션(Production) |
+| **역할(Role)** | 관제·모니터링·CI/CD(Continuous Integration/Continuous Delivery) | 개발·실험·테스트 | 사전 검증(Pre-prod) | 프로덕션(Production) |
 | **노드 수(Nodes)** | 3 (7C / 24G) | 2 (4C / 12G) | 2 (4C / 12G) | 3 (6C / 19G) |
 | **Cilium + Hubble** | O | O | O | O |
 | **Istio 서비스 메시(Service Mesh)** | — | O | — | — |
 | **네트워크 정책(NetworkPolicy) L7** | — | O | — | — |
-| **HPA + PDB** | — | O | O (metrics-server) | — |
+| **HPA(Horizontal Pod Autoscaler) + PDB(Pod Disruption Budget)** | — | O | O (metrics-server) | — |
 | **Prometheus/Grafana** | O | — | — | — |
 | **Jenkins/ArgoCD** | O | — | — | — |
 | **데모 앱(Demo Apps)** | — | O | — | — |
@@ -165,7 +165,7 @@ SRE(Site Reliability Engineering) 운영 대시보드(Operations Dashboard)로 �
 | React 19 + Vite 7 + TypeScript | SPA(Single Page Application) 프론트엔드 — 6개 페이지, react-router-dom |
 | Tailwind CSS 4 | 다크 테마(Dark Theme) UI |
 | Recharts 3 | 시계열(Time Series) AreaChart · LineChart · 게이지 차트(Gauge Chart) |
-| Express 5 + TypeScript | REST API 서버 — 9개 엔드포인트(Endpoint) |
+| Express 5 + TypeScript | REST(Representational State Transfer) API 서버 — 9개 엔드포인트(Endpoint) |
 | ssh2 (npm) | VM SSH 커넥션 풀(Connection Pool) — 10개 상시 연결 |
 | k6 | K8s Job 기반 HTTP 부하 생성기(Load Generator) |
 | stress-ng | K8s Job 기반 CPU/메모리 스트레스 테스트(Stress Test) |
@@ -197,7 +197,7 @@ SRE(Site Reliability Engineering) 운영 대시보드(Operations Dashboard)로 �
 | 기술(Technology) | 역할(Role) |
 |------|------|
 | Kubernetes v1.31 (kubeadm) | 컨테이너 오케스트레이션(Container Orchestration) |
-| metrics-server | Pod CPU/메모리 메트릭(Metrics) — HPA 데이터 소스 |
+| metrics-server | Pod CPU/메모리 메트릭(Metrics) — HPA(Horizontal Pod Autoscaler) 데이터 소스 |
 | HPA(Horizontal Pod Autoscaler) | CPU 기반 수평 자동 확장(Horizontal Auto Scaling) |
 | PDB(Pod Disruption Budget) | 최소 가용성 보장(Minimum Availability Guarantee) |
 
@@ -258,7 +258,7 @@ cd dashboard && npm install && npm run dev
 
 #### 3. Testing — 테스트(`/testing`)
 
-13개 프리셋(Preset) 시나리오 + 커스텀(Custom) 테스트를 대시보드에서 직접 실행한다. 테스트 진행 중 실시간 프로그레스 바(Progress Bar), 완료 시 p95/p99 지연시간(Latency) · RPS(Requests Per Second) · 에러율(Error Rate) 등 핵심 지표(Key Metrics)가 표시된다. 결과는 CSV로 다운로드 가능하다.
+13개 프리셋(Preset) 시나리오 + 커스텀(Custom) 테스트를 대시보드에서 직접 실행한다. 테스트 진행 중 실시간 프로그레스 바(Progress Bar), 완료 시 p95/p99 지연시간(Latency) · RPS(Requests Per Second) · 에러율(Error Rate) 등 핵심 지표(Key Metrics)가 표시된다. 결과는 CSV(Comma-Separated Values)로 다운로드 가능하다.
 
 | 시나리오(Scenario) | 타입(Type) | 설정(Config) |
 |----------|------|------|
@@ -283,28 +283,28 @@ cd dashboard && npm install && npm run dev
 Hubble 기반 실시간 네트워크 플로우(Network Flow) 시각화(Visualization).
 
 - **전체 뷰(All-clusters View)**: 4개 클러스터를 카드로 나열, 클러스터별 트래픽 건수/프로토콜(Protocol) 요약
-- **단일 클러스터 뷰(Single-cluster View)**: SVG 토폴로지 맵(Topology Map) — 네임스페이스별로 그룹된 서비스 노드, 베지어 커브(Bezier Curve) 에지(Edge)로 트래픽 흐름 표시 (초록=FORWARDED / 빨강=DROPPED)
+- **단일 클러스터 뷰(Single-cluster View)**: SVG(Scalable Vector Graphics) 토폴로지 맵(Topology Map) — 네임스페이스별로 그룹된 서비스 노드, 베지어 커브(Bezier Curve) 에지(Edge)로 트래픽 흐름 표시 (초록=FORWARDED / 빨강=DROPPED)
 - 상위 연결(Top Connections) 테이블, 최근 플로우 이벤트(Recent Flow Events) 테이블 제공
 
 #### 5. Scaling — 스케일링(`/scaling`)
 
 HPA(Horizontal Pod Autoscaler) 오토스케일링 실시간 모니터링(Real-time Monitoring).
 
-- HPA 상태 카드(Status Cards): 현재 레플리카(Current Replicas)/최대 레플리카(Max Replicas), 스케일 진행도 바(Scale Progress Bar), SCALING/AT MAX 뱃지
+- HPA(Horizontal Pod Autoscaler) 상태 카드(Status Cards): 현재 레플리카(Current Replicas)/최대 레플리카(Max Replicas), 스케일 진행도 바(Scale Progress Bar), SCALING/AT MAX 뱃지
 - Pod 레플리카(Replica) 시계열 차트(Time Series Chart) — AreaChart, stepAfter
 - CPU 사용률(Utilization) 추이 차트 — LineChart vs 타겟(Target) CPU 기준선(Reference Line)
-- HPA 설정 테이블(Configuration Table) — Namespace/Deployment/Current/Desired/Min/Max/CPU Usage/Target
+- HPA(Horizontal Pod Autoscaler) 설정 테이블(Configuration Table) — Namespace/Deployment/Current/Desired/Min/Max/CPU Usage/Target
 
 #### 6. Load Analysis — 부하 분석(`/analysis`)
 
 부하 테스트(Load Test) 중 인프라 동작을 종합 분석(Comprehensive Analysis)하는 전용 페이지.
 
 - **테스트 셀렉터(Test Selector)**: 스케일링 테스트 드롭다운(Dropdown) — 실행 중 테스트 자동 선택, LIVE 뱃지
-- **KPI 요약 카드(Summary Cards)**: 스케일업 지연(Scale-up Latency) / 최대 레플리카(Peak Replicas) / 스케일다운 시작(Scale-down Start) / Pod당 RPS(RPS per Pod)
+- **KPI(Key Performance Indicator) 요약 카드(Summary Cards)**: 스케일업 지연(Scale-up Latency) / 최대 레플리카(Peak Replicas) / 스케일다운 시작(Scale-down Start) / Pod당 RPS(Requests Per Second)
 - **Pod 스케일링 타임라인(Scaling Timeline)**: AreaChart — 디플로이먼트(Deployment)별 레플리카 수 시계열, 부하 구간(Load Phase, 파란 음영)/쿨다운 구간(Cooldown Phase, 주황 음영) 표시
-- **처리량 vs Pod(Throughput vs Pods)**: 이중 Y축(Dual Y-Axis) — 좌측 레플리카 수 Area + 우측 RPS 기준선(Reference Line)
-- **Pod당 효율(Per-Pod Efficiency)**: LineChart — 각 시점별 RPS/Pod 효율성 추이(Trend)
-- **상세 분석 뷰(Detailed Analysis View)** (토글): 테스트 설정 요약 + 디플로이먼트별 기준선→최대→최종(Baseline→Peak→Final) 비교 — 레플리카/CPU 변화량(Delta) + CPU 사용률 시계열 + HPA 이벤트 로그(Event Log)
+- **처리량 vs Pod(Throughput vs Pods)**: 이중 Y축(Dual Y-Axis) — 좌측 레플리카 수 Area + 우측 RPS(Requests Per Second) 기준선(Reference Line)
+- **Pod당 효율(Per-Pod Efficiency)**: LineChart — 각 시점별 RPS(Requests Per Second)/Pod 효율성 추이(Trend)
+- **상세 분석 뷰(Detailed Analysis View)** (토글): 테스트 설정 요약 + 디플로이먼트별 기준선→최대→최종(Baseline→Peak→Final) 비교 — 레플리카/CPU 변화량(Delta) + CPU 사용률 시계열 + HPA(Horizontal Pod Autoscaler) 이벤트 로그(Event Log)
 - **트래픽 플로우 테이블(Traffic Flow Table)**: 테스트 중 발생한 네트워크 흐름(Network Flows) — Source→Dest, Flows, 프로토콜(Protocol), 판정(Verdict)
 - **인프라 영향(Infrastructure Impact)**: VM별 CPU/Memory 현재 상태
 
@@ -320,14 +320,14 @@ HPA(Horizontal Pod Autoscaler) 오토스케일링 실시간 모니터링(Real-ti
 | POST | `/api/tests/run` | k6/stress-ng/scaling 테스트 실행(Run Test) |
 | GET | `/api/tests/status` | 모든 테스트 상태 조회(Test Status) |
 | DELETE | `/api/tests/:id` | 테스트 삭제(Delete Test) + K8s Job 정리(Cleanup) |
-| GET | `/api/scaling/:cluster` | HPA 스케일링 시계열 히스토리(Scaling Time Series History) |
+| GET | `/api/scaling/:cluster` | HPA(Horizontal Pod Autoscaler) 스케일링 시계열 히스토리(Scaling Time Series History) |
 
 ### 백그라운드 수집 루프(Background Collection Loops)
 
 | 루프(Loop) | 주기(Interval) | 수집 대상(Data Collected) |
 |------|------|----------|
-| Main | 5초(5s) | VM 정보(tart), SSH 리소스(top/free/df/ss/net), kubectl 노드/Pod |
-| Scaling | 5초(5s) | HPA 상태 — 360포인트 링버퍼(Ring Buffer) |
+| Main | 5초(5s) | VM 정보(tart), SSH(Secure Shell) 리소스(top/free/df/ss/net), kubectl 노드/Pod |
+| Scaling | 5초(5s) | HPA(Horizontal Pod Autoscaler) 상태 — 360포인트 링버퍼(Ring Buffer) |
 | Traffic | 10초(10s) | Hubble 네트워크 플로우(Network Flows) — 최근 200건 |
 | Services | 30초(30s) | K8s 서비스/엔드포인트(Services/Endpoints) |
 
@@ -362,7 +362,7 @@ brew install tart kubectl helm jq sshpass terraform
 | 도구(Tool) | 용도(Purpose) |
 |------|------|
 | `tart` | Apple Hypervisor 기반 ARM64 VM 관리(Management) |
-| `kubectl` | Kubernetes CLI |
+| `kubectl` | Kubernetes CLI(Command Line Interface) |
 | `helm` | K8s 패키지 매니저(Package Manager) |
 | `jq` | JSON 파서(Parser) — 설정 파일 파싱(Config Parsing) |
 | `sshpass` | SSH 비밀번호 자동 입력(Auto Password Input) |
@@ -462,7 +462,7 @@ cd terraform && terraform destroy
 
 ## 서비스 접속(Service Access)
 
-VM IP는 DHCP이므로 재부팅(Reboot) 시 변경될 수 있다. 아래 명령으로 확인:
+VM IP는 DHCP(Dynamic Host Configuration Protocol)이므로 재부팅(Reboot) 시 변경될 수 있다. 아래 명령으로 확인:
 
 ```bash
 tart ip platform-worker1
@@ -525,7 +525,7 @@ dev 클러스터 `demo` 네임스페이스(Namespace)에 배포(Deployed):
 | 앱(App) | 이미지(Image) | 레플리카(Replicas) | 용도(Purpose) |
 |----|--------|----------|------|
 | nginx-web | nginx:alpine | 3 (HPA: 3→10) | 웹서버(Web Server), NodePort 30080, 부하 테스트 대상(Load Test Target) |
-| httpbin v1 | kong/httpbin | 2 (HPA: 2→6) | REST API 테스트, 카나리(Canary) 80% |
+| httpbin v1 | kong/httpbin | 2 (HPA: 2→6) | REST(Representational State Transfer) API 테스트, 카나리(Canary) 80% |
 | httpbin v2 | kong/httpbin | 1 | 카나리 배포 대상(Canary Target) — 20% |
 | redis | redis:7-alpine | 1 | 캐시/세션 저장소(Cache/Session Store) |
 
@@ -611,7 +611,9 @@ tart-infra/
 │
 └── doc/
     ├── dashboard.md                    ← 대시보드 상세 기술 문서(Dashboard Technical Spec)
-    ├── 20260227_010000_bug_report.md   ← 버그 7건 + 해결 과정(Bug Report & Resolution)
+    ├── tart.md                         ← Tart VM 런타임 개요(Tart VM Runtime Overview)
+    ├── terraform.md                    ← Terraform 모듈 설계(Terraform Module Design)
+    ├── bug-reports/                    ← 버그 리포트 모음(Bug Reports Collection) — 19건
     └── learning/                       ← 학습용 기술 문서(Learning Documents)
 ```
 
@@ -623,11 +625,11 @@ tart-infra/
 
 | 문서(Document) | 내용(Contents) |
 |------|------|
-| [아키텍처 설계(Architecture Design)](doc/learning/architecture.md) | 8계층 레이어드 아키텍처(Layered Architecture), 멀티클러스터 CIDR 설계, clusters.json이 단일 진실 공급원(Single Source of Truth)인 이유, 스크립트 디자인 패턴(Design Patterns) — Facade · Strategy · Template Method, CPU 오버커밋(Overcommit) 전략, 제로 트러스트(Zero Trust) 보안, ADR(Architecture Decision Records) 5건 |
-| [네트워크 심화(Networking Deep Dive)](doc/learning/networking.md) | Tart NAT vs Softnet, Cilium eBPF가 iptables보다 빠른 이유, kubeProxyReplacement 부트스트랩 순환의존성(Circular Dependency), CiliumNetworkPolicy L7 HTTP 필터링(Filtering), Istio 사이드카(Sidecar) mTLS/카나리(Canary)/서킷브레이커(Circuit Breaker), 패킷이 nginx→httpbin으로 가는 9단계 전체 경로(Full Packet Journey) |
-| [IaC와 자동화(IaC & Automation)](doc/learning/iac-automation.md) | Bash 명령형(Imperative) vs Terraform 선언형(Declarative) 비교, Phase 1~12 실행 흐름(Execution Flow), null_resource로 Tart CLI 래핑(Wrapping), DHCP IP 해결 패턴(Resolution Pattern), 멱등성(Idempotency) 구현, Helm values 관리, GitOps 원칙(Principles), Day 0/1/2 자동화 분류(Automation Classification) |
-| [모니터링/옵저버빌리티(Monitoring/Observability)](doc/learning/monitoring.md) | 옵저버빌리티 3기둥(Three Pillars) — Metrics·Logs·Traces, Prometheus Pull 모델(Pull Model), Grafana 코드 프로비저닝(Code Provisioning), AlertManager 알림 흐름(Alert Flow) — 그룹핑(Grouping)·억제(Inhibition), HPA 공식(Formula) `⌈replicas × current/target⌉`, PDB 상호작용(Interaction), 커스텀 대시보드 SSH 풀(SSH Pool) |
-| [트러블슈팅 가이드(Troubleshooting Guide)](doc/learning/troubleshooting.md) | 6단계 디버깅 프레임워크(Debugging Framework), VM→SSH→K8s→Pod→Service 레이어별 체크리스트(Per-layer Checklist), 실제 버그 7건의 근본 원인 분석(Root Cause Analysis)→가설(Hypothesis)→검증(Verification)→해결(Resolution) 과정, kubectl/Helm/Cilium 진단(Diagnostics) 명령, 재해복구(Disaster Recovery) 절차 |
+| [아키텍처 설계(Architecture Design)](doc/learning/architecture.md) | 8계층 레이어드 아키텍처(Layered Architecture), 멀티클러스터 CIDR(Classless Inter-Domain Routing) 설계, clusters.json이 단일 진실 공급원(Single Source of Truth)인 이유, 스크립트 디자인 패턴(Design Patterns) — Facade · Strategy · Template Method, CPU 오버커밋(Overcommit) 전략, 제로 트러스트(Zero Trust) 보안, ADR(Architecture Decision Records) 5건 |
+| [네트워크 심화(Networking Deep Dive)](doc/learning/networking.md) | Tart NAT(Network Address Translation) vs Softnet, Cilium eBPF(extended Berkeley Packet Filter)가 iptables보다 빠른 이유, kubeProxyReplacement 부트스트랩 순환의존성(Circular Dependency), CiliumNetworkPolicy L7 HTTP 필터링(Filtering), Istio 사이드카(Sidecar) mTLS(mutual TLS)/카나리(Canary)/서킷브레이커(Circuit Breaker), 패킷이 nginx→httpbin으로 가는 9단계 전체 경로(Full Packet Journey) |
+| [IaC와 자동화(IaC & Automation)](doc/learning/iac-automation.md) | Bash 명령형(Imperative) vs Terraform 선언형(Declarative) 비교, Phase 1~12 실행 흐름(Execution Flow), null_resource로 Tart CLI(Command Line Interface) 래핑(Wrapping), DHCP(Dynamic Host Configuration Protocol) IP 해결 패턴(Resolution Pattern), 멱등성(Idempotency) 구현, Helm values 관리, GitOps 원칙(Principles), Day 0/1/2 자동화 분류(Automation Classification) |
+| [모니터링/옵저버빌리티(Monitoring/Observability)](doc/learning/monitoring.md) | 옵저버빌리티 3기둥(Three Pillars) — Metrics·Logs·Traces, Prometheus Pull 모델(Pull Model), Grafana 코드 프로비저닝(Code Provisioning), AlertManager 알림 흐름(Alert Flow) — 그룹핑(Grouping)·억제(Inhibition), HPA(Horizontal Pod Autoscaler) 공식(Formula) `⌈replicas × current/target⌉`, PDB(Pod Disruption Budget) 상호작용(Interaction), 커스텀 대시보드 SSH(Secure Shell) 풀(SSH Pool) |
+| [트러블슈팅 가이드(Troubleshooting Guide)](doc/learning/troubleshooting.md) | 6단계 디버깅 프레임워크(Debugging Framework), VM→SSH(Secure Shell)→K8s→Pod→Service 레이어별 체크리스트(Per-layer Checklist), 실제 버그 7건의 근본 원인 분석(Root Cause Analysis)→가설(Hypothesis)→검증(Verification)→해결(Resolution) 과정, kubectl/Helm/Cilium 진단(Diagnostics) 명령, 재해복구(Disaster Recovery) 절차 |
 
 ---
 
@@ -672,6 +674,6 @@ open http://$(tart ip platform-worker1):30300
 | 문서(Document) | 설명(Description) |
 |------|------|
 | [대시보드 기술 문서(Dashboard Technical Spec)](doc/dashboard.md) | SRE 대시보드 아키텍처(Architecture), API 9개, Job 관리(Management), 트래픽 토폴로지(Traffic Topology), 스케일링 수집(Scaling Collection) |
-| [버그 리포트(Bug Report)](doc/20260227_010000_bug_report.md) | 7건 버그 발견 및 해결 과정(Discovery & Resolution) |
+| [버그 리포트(Bug Report)](doc/bug-reports/) | 19건 버그 발견 및 해결 과정(Discovery & Resolution) |
 | [Tart 소개(Tart Introduction)](doc/tart.md) | Tart VM 런타임(Runtime) 개요(Overview) |
 | [Terraform 연동(Terraform Integration)](doc/terraform.md) | Terraform 모듈 설계(Module Design) |

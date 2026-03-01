@@ -434,6 +434,25 @@ terraform apply    # 인프라 프로비저닝(Provision Infrastructure)
 
 VM 10개 시작 → 클러스터 헬스체크(Health Check) → 서비스 검증(Service Verification)까지 자동 수행.
 
+### SRE 대시보드 실행(Start Dashboard)
+
+```bash
+cd dashboard && npm install && npm run dev
+# → http://localhost:3000
+```
+
+맥 로컬에서 실행되는 Node.js 프로세스. VM과는 별도이므로 VM 부팅 후 수동으로 시작해야 한다.
+
+### SRE 대시보드 종료(Stop Dashboard)
+
+```bash
+# 포그라운드(Foreground)에서 실행 중이면 Ctrl+C
+# 백그라운드(Background)에서 실행 중이면
+kill $(lsof -t -i:3000)
+```
+
+`shutdown.sh`는 VM만 종료하므로, 대시보드는 별도로 종료해야 한다.
+
 ### 상태 확인(Status Check)
 
 ```bash
@@ -449,6 +468,8 @@ VM 10개 시작 → 클러스터 헬스체크(Health Check) → 서비스 검증
 ```
 
 워커 노드 드레인(Drain) → VM 안전 종료(Graceful Stop). 데이터 손실 없이 안전하게 종료.
+
+> **참고(Note)**: `shutdown.sh`는 Tart VM만 종료한다. 대시보드가 실행 중이면 `kill $(lsof -t -i:3000)`으로 별도 종료할 것.
 
 ### 전체 삭제(Destroy)
 

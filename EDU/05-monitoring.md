@@ -34,7 +34,7 @@ prometheus:
             requests:
               storage: 10Gi    # 10GB 스토리지
 
-    scrapeInterval: 30s        # 30초마다 메트릭 수집
+    # scrapeInterval 미설정 → kube-prometheus-stack 기본값(30s) 사용
 
 grafana:
   service:
@@ -70,8 +70,10 @@ kubelet /metrics           → 컨테이너 리소스 사용량
 | 서비스 | URL | 인증 |
 |--------|-----|------|
 | Grafana | `http://<platform-worker1-ip>:30300` | admin / admin |
-| Prometheus | `http://<platform-worker1-ip>:30900` | 없음 |
 | AlertManager | `http://<platform-worker1-ip>:30903` | 없음 |
+
+> **참고**: Prometheus는 NodePort가 설정되어 있지 않으므로 외부에서 직접 접속할 수 없습니다.
+> Grafana 내 Data Sources에서 Prometheus를 사용하거나, `kubectl port-forward`로 접근하세요.
 
 ## 알림 규칙 (AlertManager)
 
@@ -83,18 +85,25 @@ manifests/alerting/prometheus-rules.yaml     ← 알림 규칙 정의
 manifests/alerting/webhook-logger.yaml       ← 웹훅 수신기
 ```
 
-### 설정된 알림 규칙 8개
+### 설정된 알림 규칙 8개 (2개 그룹)
 
-| 규칙 이름 | 조건 | 대기 시간 |
-|----------|------|----------|
-| HighCpuUsage | CPU > 80% | 5분 |
-| HighMemoryUsage | 메모리 > 80% | 5분 |
-| NodeNotReady | Ready 노드 = 0 | 즉시 |
-| PodCrashLooping | 재시작 > 0회/분 | 즉시 |
-| PodOOMKilled | OOM으로 종료됨 | 즉시 |
-| PersistentVolumeUsage | PV > 80% 사용 | 즉시 |
-| ContainerTerminated | 컨테이너 비정상 종료 | 즉시 |
-| KubeletUnreachable | kubelet 응답 없음 | 즉시 |
+**node.rules 그룹** (노드 레벨):
+
+| 규칙 이름 | 조건 | 대기 시간 | 심각도 |
+|----------|------|----------|--------|
+| HighCpuUsage | CPU > 80% (5분 irate 평균) | 5분 | warning |
+| HighMemoryUsage | 메모리 > 85% | 5분 | warning |
+| NodeNotReady | 노드 Ready 상태 = false | 5분 | critical |
+| NodeDiskPressure | 노드 DiskPressure 상태 = true | 5분 | warning |
+
+**pod.rules 그룹** (Pod 레벨):
+
+| 규칙 이름 | 조건 | 대기 시간 | 심각도 |
+|----------|------|----------|--------|
+| PodCrashLooping | 15분간 재시작 > 5회 | 5분 | warning |
+| PodOOMKilled | OOMKilled 사유로 종료됨 | 즉시 | warning |
+| HighPodRestartRate | 1시간 내 재시작 > 10회 | 즉시 | warning |
+| PodNotReady | Pod Ready 상태 = false | 10분 | warning |
 
 ### 알림 흐름
 

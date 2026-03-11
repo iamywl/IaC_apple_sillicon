@@ -78,7 +78,7 @@ export interface NamespacePodCount {
 }
 
 // ========== SRE Testing ==========
-export type TestType = 'load' | 'stress-cpu' | 'stress-memory' | 'custom-load' | 'scaling-test';
+export type TestType = 'load' | 'stress-cpu' | 'stress-memory' | 'custom-load' | 'scaling-test' | 'cascade-test';
 export type TestStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export interface TestRun {
@@ -127,6 +127,7 @@ export interface StressConfig {
 export interface ScalingTestConfig extends CustomLoadConfig {
   cooldownSec: number;
   targetDeployments?: string[];
+  targetUrls?: string[];          // cascade-test: hit multiple URLs simultaneously
 }
 
 export interface ScalingTestMeta {

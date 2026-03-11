@@ -10,16 +10,17 @@
 
 ```json
 {
-  "clusters": {
-    "newcluster": {
-      "podCIDR": "10.50.0.0/16",
-      "serviceCIDR": "10.150.0.0/16",
-      "nodes": {
-        "newcluster-master": { "cpu": 2, "memory": 4096, "role": "master" },
-        "newcluster-worker1": { "cpu": 2, "memory": 8192, "role": "worker" }
-      }
+  "clusters": [
+    {
+      "name": "newcluster",
+      "pod_cidr": "10.50.0.0/16",
+      "service_cidr": "10.150.0.0/16",
+      "nodes": [
+        { "name": "newcluster-master", "role": "master", "cpu": 2, "memory": 4096, "disk": 20 },
+        { "name": "newcluster-worker1", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
+      ]
     }
-  }
+  ]
 }
 ```
 
@@ -27,10 +28,10 @@
 
 | 기존 | Pod CIDR | Service CIDR |
 |------|----------|-------------|
-| platform | 10.10.0.0/16 | 10.110.0.0/16 |
-| dev | 10.20.0.0/16 | 10.120.0.0/16 |
-| staging | 10.30.0.0/16 | 10.130.0.0/16 |
-| prod | 10.40.0.0/16 | 10.140.0.0/16 |
+| platform | 10.10.0.0/16 | 10.96.0.0/16 |
+| dev | 10.20.0.0/16 | 10.97.0.0/16 |
+| staging | 10.30.0.0/16 | 10.98.0.0/16 |
+| prod | 10.40.0.0/16 | 10.99.0.0/16 |
 
 3. **실행**: `./scripts/install.sh`가 자동으로 새 클러스터를 포함하여 처리
 

@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-apps
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/iamywl/IaC_apple_sillicon.git
+    targetRevision: HEAD
+    path: manifests/demo
+  destination:
+    name: dev-cluster
+    namespace: demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

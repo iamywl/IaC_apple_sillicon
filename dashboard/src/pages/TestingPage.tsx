@@ -82,6 +82,52 @@ const SCENARIOS: TestScenario[] = [
       cooldownSec: 60,
     },
   },
+  // ---------- Cascade (3-Tier) Tests ----------
+  {
+    name: 'Cascade — Light',
+    description: '30 VUs, 60s — hit web+app tiers, observe all HPAs',
+    type: 'cascade-test',
+    scalingConfig: {
+      vus: 30, duration: '60s',
+      targetUrl: 'http://nginx-web.demo.svc.cluster.local',
+      targetUrls: [
+        'http://nginx-web.demo.svc.cluster.local',
+        'http://httpbin.demo.svc.cluster.local/get',
+      ],
+      cooldownSec: 60,
+      targetDeployments: ['nginx-web', 'httpbin', 'redis', 'postgres'],
+    },
+  },
+  {
+    name: 'Cascade — Heavy',
+    description: '150 VUs, 120s — full 3-tier stress, all HPAs scale',
+    type: 'cascade-test',
+    scalingConfig: {
+      vus: 150, duration: '120s',
+      targetUrl: 'http://nginx-web.demo.svc.cluster.local',
+      targetUrls: [
+        'http://nginx-web.demo.svc.cluster.local',
+        'http://httpbin.demo.svc.cluster.local/get',
+      ],
+      cooldownSec: 90,
+      targetDeployments: ['nginx-web', 'httpbin', 'redis', 'postgres'],
+    },
+  },
+  {
+    name: 'Cascade — Ramp',
+    description: '0→100 VUs ramp 20s, sustain 60s — gradual 3-tier load',
+    type: 'cascade-test',
+    scalingConfig: {
+      vus: 100, duration: '60s', rampUp: '20s',
+      targetUrl: 'http://nginx-web.demo.svc.cluster.local',
+      targetUrls: [
+        'http://nginx-web.demo.svc.cluster.local',
+        'http://httpbin.demo.svc.cluster.local/get',
+      ],
+      cooldownSec: 60,
+      targetDeployments: ['nginx-web', 'httpbin', 'redis', 'postgres'],
+    },
+  },
   // ---------- Stress ----------
   {
     name: 'CPU Light',
@@ -124,9 +170,11 @@ const TYPE_LABELS: Record<string, string> = {
   'stress-memory': 'Mem Stress',
   'custom-load': 'Load (k6)',
   'scaling-test': 'Scale Test',
+  'cascade-test': 'Cascade Test',
 };
 
 function getTypeTag(type: TestType) {
+  if (type === 'cascade-test') return { label: 'CASCADE', cls: 'bg-teal-500/15 text-teal-400 border-teal-500/30' };
   if (type === 'scaling-test') return { label: 'SCALE', cls: 'bg-purple-500/15 text-purple-400 border-purple-500/30' };
   if (type === 'load' || type === 'custom-load') return { label: 'HTTP', cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' };
   if (type === 'stress-cpu') return { label: 'CPU', cls: 'bg-orange-500/15 text-orange-400 border-orange-500/30' };
@@ -490,7 +538,7 @@ function TestResultCard({ test, onDelete }: { test: TestRun; onDelete: (id: stri
     : ((Date.now() - test.startedAt) / 1000).toFixed(0);
 
   const estimatedDuration = useMemo(() => {
-    if (test.type === 'scaling-test') {
+    if (test.type === 'scaling-test' || test.type === 'cascade-test') {
       const loadDur = parseDurationSec(test.scalingConfig?.duration || test.config?.duration || '60s');
       const rampDur = test.scalingConfig?.rampUp ? parseDurationSec(test.scalingConfig.rampUp) * 2 : 0;
       const cooldown = test.scalingConfig?.cooldownSec ?? 60;
@@ -512,7 +560,7 @@ function TestResultCard({ test, onDelete }: { test: TestRun; onDelete: (id: stri
     : test.status === 'completed' ? 'border-emerald-500/30'
     : 'border-slate-700/60';
 
-  const isScalingTest = test.type === 'scaling-test';
+  const isScalingTest = test.type === 'scaling-test' || test.type === 'cascade-test';
 
   return (
     <div className={`rounded-xl border ${borderColor} bg-slate-800/80 p-4`}>
@@ -595,7 +643,7 @@ function TestResultCard({ test, onDelete }: { test: TestRun; onDelete: (id: stri
       )}
 
       {/* k6 Metrics */}
-      {test.results && (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test') && (
+      {test.results && (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test' || test.type === 'cascade-test') && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
           <MetricBox label="p95 Latency" value={test.results.p95Latency != null ? `${test.results.p95Latency.toFixed(1)}ms` : '-'} color={test.results.p95Latency != null && test.results.p95Latency > 1000 ? 'text-red-400' : 'text-emerald-400'} />
           <MetricBox label="Avg Latency" value={test.results.avgLatency != null ? `${test.results.avgLatency.toFixed(1)}ms` : '-'} />

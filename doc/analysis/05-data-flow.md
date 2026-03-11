@@ -121,7 +121,7 @@ config/clusters.json (Single Source of Truth)
 │          │                                                   │
 │          ▼ 수집된 데이터를 메모리에 캐시                        │
 │  ┌───────────────────────────────────────────────────────┐   │
-│  │              REST API (9개 엔드포인트)                  │   │
+│  │              REST API (11개 엔드포인트)                 │   │
 │  │                                                       │   │
 │  │  GET /api/snapshot  ← 캐시에서 즉시 반환 (< 10ms)      │   │
 │  │  GET /api/traffic                                     │   │

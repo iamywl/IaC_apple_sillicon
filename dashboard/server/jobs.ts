@@ -62,7 +62,7 @@ export function deleteTest(id: string): boolean {
     `kubectl --kubeconfig ${kubeconfig} delete job ${id} -n demo --ignore-not-found`,
     { timeout: 10000 }
   ).catch(() => {});
-  if (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test') {
+  if (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test' || test.type === 'cascade-test') {
     execaCommand(
       `kubectl --kubeconfig ${kubeconfig} delete configmap ${id}-script -n demo --ignore-not-found`,
       { timeout: 10000 }
@@ -118,7 +118,7 @@ export async function runTest(
       { input: yaml, timeout: 15000 }
     );
     test.status = 'running';
-    if (type === 'scaling-test') {
+    if (type === 'scaling-test' || type === 'cascade-test') {
       startWatchingScalingTest(id, kubeconfig, cluster, scalingConfig);
     } else {
       startWatching(id, kubeconfig);
@@ -216,6 +216,8 @@ function generateJobYaml(id: string, type: TestType, config?: CustomLoadConfig, 
         config?.targetUrl ?? 'http://nginx-web.demo.svc.cluster.local',
         config,
       );
+    case 'cascade-test':
+      return generateCascadeK6JobYaml(id, config as ScalingTestConfig);
     default:
       throw new Error(`Unknown test type: ${type}`);
   }
@@ -260,6 +262,107 @@ export const options = {${optionsBlock}
 export default function () {
   const res = http.get('${targetUrl}');
   check(res, { 'status is 200': (r) => r.status === 200 });
+  sleep(0.1);
+}
+`.trim();
+
+  return `
+${SRE_TEST_NETWORK_POLICY}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${id}-script
+  namespace: demo
+data:
+  loadtest.js: |
+${scriptContent.split('\n').map(l => '    ' + l).join('\n')}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${id}
+  namespace: demo
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        sre-test: "true"
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:latest
+          command: ["k6", "run", "--summary-trend-stats", "avg,min,med,max,p(90),p(95),p(99)", "/scripts/loadtest.js"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: ${id}-script
+`.trim();
+}
+
+function generateCascadeK6JobYaml(id: string, config: ScalingTestConfig): string {
+  const vus = config.vus ?? 50;
+  const duration = config.duration ?? '60s';
+  const urls = config.targetUrls ?? [
+    'http://nginx-web.demo.svc.cluster.local',
+    'http://httpbin.demo.svc.cluster.local/get',
+  ];
+  const rampUp = config.rampUp;
+
+  let optionsBlock: string;
+  if (rampUp) {
+    optionsBlock = `
+  stages: [
+    { duration: '${rampUp}', target: ${vus} },
+    { duration: '${duration}', target: ${vus} },
+    { duration: '${rampUp}', target: 0 },
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<2000'],
+    http_req_failed: ['rate<0.5'],
+  },`;
+  } else {
+    optionsBlock = `
+  vus: ${vus},
+  duration: '${duration}',
+  thresholds: {
+    http_req_duration: ['p(95)<2000'],
+    http_req_failed: ['rate<0.5'],
+  },`;
+  }
+
+  const urlArray = urls.map(u => `  '${u}'`).join(',\n');
+  const scriptContent = `
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+const URLS = [
+${urlArray}
+];
+
+export const options = {${optionsBlock}
+};
+
+export default function () {
+  for (const url of URLS) {
+    const res = http.get(url);
+    check(res, { 'status is 200': (r) => r.status === 200 });
+  }
   sleep(0.1);
 }
 `.trim();
@@ -427,7 +530,7 @@ async function collectResults(id: string, kubeconfig: string, isFailed: boolean)
 
   try {
     // Get container name based on test type
-    const container = (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test') ? 'k6' : 'stress';
+    const container = (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test' || test.type === 'cascade-test') ? 'k6' : 'stress';
     const { stdout: logs } = await execaCommand(
       `kubectl --kubeconfig ${kubeconfig} logs job/${id} -c ${container} -n demo --tail=500`,
       { timeout: 15000 }
@@ -435,7 +538,7 @@ async function collectResults(id: string, kubeconfig: string, isFailed: boolean)
 
     let results: TestResults = { rawOutput: logs };
 
-    if (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test') {
+    if (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test' || test.type === 'cascade-test') {
       results = { ...results, ...parseK6Output(logs) };
     } else if (test.type === 'stress-cpu' || test.type === 'stress-memory') {
       results = { ...results, ...parseStressNgOutput(logs) };
@@ -451,7 +554,7 @@ async function collectResults(id: string, kubeconfig: string, isFailed: boolean)
   test.completedAt = Date.now();
 
   // Cleanup configmap
-  if (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test') {
+  if (test.type === 'load' || test.type === 'custom-load' || test.type === 'scaling-test' || test.type === 'cascade-test') {
     execaCommand(
       `kubectl --kubeconfig ${kubeconfig} delete configmap ${id}-script -n demo --ignore-not-found`,
       { timeout: 10000 }

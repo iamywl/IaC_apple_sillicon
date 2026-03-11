@@ -20,7 +20,7 @@ cd dashboard && npm install && npm run dev
 | 라우팅(Routing) | react-router-dom v7 | 클라이언트 사이드 라우팅(Client-side Routing) — 6개 페이지(Pages) |
 | 스타일링(Styling) | Tailwind CSS 4 | 유틸리티 기반 다크 테마(Utility-first Dark Theme) |
 | 차트(Charts) | Recharts 3 | AreaChart, LineChart, BarChart, 게이지(Gauge) |
-| 백엔드(Backend) | Express 5 + TypeScript | REST API — 9개 엔드포인트(Endpoints) |
+| 백엔드(Backend) | Express 5 + TypeScript | REST API — 11개 엔드포인트(Endpoints) |
 | SSH | ssh2 (npm) | VM 커넥션 풀(Connection Pool) — 10개 영속 연결(Persistent Connections) |
 | CLI | execa | tart, kubectl 명령 실행(Command Execution) |
 | 런타임(Runtime) | tsx (watch) | TS 직접 실행 + 핫리로드(Hot Reload) |
@@ -97,7 +97,7 @@ dashboard/
 │   └── types.ts                    # 프론트/백엔드 공유 타입(Shared Types) — 25+개 인터페이스
 │
 ├── server/
-│   ├── index.ts                    # Express 서버(Server) — 9개 API 엔드포인트
+│   ├── index.ts                    # Express 서버(Server) — 11개 API 엔드포인트
 │   ├── config.ts                   # clusters.json 파싱(Parsing), kubeconfig 경로(Path)
 │   ├── collector.ts                # 4개 백그라운드 수집 루프(Collection Loops) 관리
 │   ├── jobs.ts                     # K8s Job 라이프사이클(Lifecycle) — 생성→감시→수집→파싱→CSV
@@ -129,7 +129,7 @@ dashboard/
     ├── pages/
     │   ├── OverviewPage.tsx        # 4개 클러스터 2×2 요약(Summary)
     │   ├── ClusterDetailPage.tsx   # 개별 클러스터 상세(Detail)
-    │   ├── TestingPage.tsx         # 13개 프리셋(Preset) + 커스텀 테스트(Custom Test) + CSV
+    │   ├── TestingPage.tsx         # 16개 프리셋(Preset) + 커스텀 테스트(Custom Test) + CSV
     │   ├── TrafficPage.tsx         # SVG 토폴로지(Topology) — VM 고정, Pod 내부 배치
     │   ├── ScalingPage.tsx         # HPA 상태(Status) + 시계열 차트(Time-series Chart)
     │   └── LoadAnalysisPage.tsx    # 부하 분석(Load Analysis) — 테스트 결과 종합 대시보드
@@ -227,10 +227,10 @@ cpu_bogo_ops, memory_bogo_ops, error
 
 | 탭(Tab) | 기능(Function) |
 |----|------|
-| **Scenarios** | 13개 프리셋 시나리오(Preset Scenarios) 카드, 클릭으로 즉시 실행 |
+| **Scenarios** | 16개 프리셋 시나리오(Preset Scenarios) 카드, 클릭으로 즉시 실행 |
 | **Custom** | VUs, Duration, Target URL, Ramp-up, p95 임계값(Threshold), Workers, Timeout, VM Bytes 커스텀 입력 |
 
-**13개 프리셋 시나리오(Preset Scenarios):**
+**16개 프리셋 시나리오(Preset Scenarios):**
 
 | 카테고리(Category) | 시나리오(Scenario) | 타입(Type) | 설명(Description) |
 |------|------|------|------|

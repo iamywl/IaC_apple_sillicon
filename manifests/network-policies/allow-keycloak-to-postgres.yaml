@@ -1,0 +1,17 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-keycloak-to-postgres
+  namespace: demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: postgres
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: keycloak
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP

@@ -129,7 +129,7 @@ get_node_ip()       # → tart ip 명령으로 현재 IP 조회
 
 # 클러스터별 네트워크 정보
 get_pod_cidr()      # → "10.10.0.0/16"
-get_service_cidr()  # → "10.110.0.0/16"
+get_service_cidr()  # → "10.96.0.0/16"
 
 # 로깅 헬퍼
 log_info()          # 파란색 [INFO] 출력

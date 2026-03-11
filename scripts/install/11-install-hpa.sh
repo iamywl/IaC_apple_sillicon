@@ -25,14 +25,24 @@ kubectl_cmd "$CLUSTER" create namespace demo 2>/dev/null || true
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/demo/nginx-app.yaml"
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/demo/httpbin-app.yaml"
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/demo/redis-app.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/demo/postgres-app.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/demo/rabbitmq-app.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/demo/keycloak-app.yaml"
 
 log_info "Applying HPAs..."
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/nginx-hpa.yaml"
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/httpbin-hpa.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/redis-hpa.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/postgres-hpa.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/rabbitmq-hpa.yaml"
 
 log_info "Applying PodDisruptionBudgets..."
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/pdb-nginx.yaml"
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/pdb-httpbin.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/pdb-redis.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/pdb-postgres.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/pdb-rabbitmq.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/hpa/pdb-keycloak.yaml"
 
 log_info "HPA status:"
 kubectl_cmd "$CLUSTER" -n demo get hpa

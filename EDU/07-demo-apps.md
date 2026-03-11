@@ -90,7 +90,99 @@ spec:
   # Service: ClusterIP, port 6379
 ```
 
-**역할**: 캐시/세션 저장소. 네트워크 정책 데모용.
+**역할**: 캐시/세션 저장소. 네트워크 정책 데모용. HPA(1→4)로 오토스케일링.
+
+### postgres (manifests/demo/postgres-app.yaml)
+
+```yaml
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_DB
+              value: demo
+            - name: POSTGRES_USER
+              value: demo
+            - name: POSTGRES_PASSWORD
+              value: demo123
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 256Mi }
+  # Service: ClusterIP, port 5432
+```
+
+**역할**: 3-Tier 아키텍처의 DB 계층. httpbin → postgres 통신으로 네트워크 정책 검증. Keycloak의 백엔드 DB로도 사용. HPA(1→4)로 오토스케일링.
+
+### rabbitmq (manifests/demo/rabbitmq-app.yaml)
+
+```yaml
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - containerPort: 5672    # AMQP
+            - containerPort: 15672   # Management UI
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: demo
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 300m, memory: 512Mi }
+  # Service: ClusterIP, ports 5672 + 15672
+```
+
+**역할**: 비동기 메시지 브로커. httpbin(앱 계층)이 RabbitMQ에 메시지를 발행하는 구조. HPA(1→3)로 오토스케일링.
+
+### keycloak (manifests/demo/keycloak-app.yaml)
+
+```yaml
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:latest
+          args: ["start-dev"]
+          env:
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://postgres:5432/demo
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 768Mi }
+  # Service: NodePort 30880
+```
+
+**역할**: ID/인증 관리(Identity & Access Management) 서버. OAuth 2.0, SSO 제공. PostgreSQL을 백엔드 DB로 사용하여 실제 엔터프라이즈 인증 아키텍처를 재현.
+
+### 전체 서비스 아키텍처
+
+```
+                    ┌───────────────────────────────────────────────────────┐
+                    │                    demo namespace                     │
+                    │                                                       │
+  Client ──:30080─→ │  nginx ──→ httpbin ──→ redis (cache)                  │
+                    │   (web)      (api)  ├→ postgres (DB)                  │
+                    │                     └→ rabbitmq (MQ)                  │
+                    │                                                       │
+  Client ──:30880─→ │  keycloak ──→ postgres (auth DB)                     │
+                    │   (SSO)                                               │
+                    └───────────────────────────────────────────────────────┘
+
+HPA 스케일링:
+  nginx-web: 3→10    httpbin: 2→6    redis: 1→4
+  postgres:  1→4     rabbitmq: 1→3   keycloak: 1 (고정)
+```
 
 ## HPA (Horizontal Pod Autoscaler)
 
@@ -101,8 +193,15 @@ scripts/install/11-install-hpa.sh        ← 설치 스크립트
 manifests/metrics-server-values.yaml     ← metrics-server 설정
 manifests/hpa/nginx-hpa.yaml             ← nginx HPA
 manifests/hpa/httpbin-hpa.yaml           ← httpbin HPA
+manifests/hpa/redis-hpa.yaml             ← redis HPA
+manifests/hpa/postgres-hpa.yaml          ← postgres HPA
 manifests/hpa/pdb-nginx.yaml             ← Pod Disruption Budget
 manifests/hpa/pdb-httpbin.yaml           ← Pod Disruption Budget
+manifests/hpa/pdb-redis.yaml             ← Pod Disruption Budget (minAvailable: 1)
+manifests/hpa/pdb-postgres.yaml          ← Pod Disruption Budget (minAvailable: 1)
+manifests/hpa/rabbitmq-hpa.yaml          ← rabbitmq HPA
+manifests/hpa/pdb-rabbitmq.yaml          ← Pod Disruption Budget (minAvailable: 1)
+manifests/hpa/pdb-keycloak.yaml          ← Pod Disruption Budget (minAvailable: 1)
 ```
 
 ### HPA 동작 원리
@@ -228,6 +327,26 @@ spec:
 | Strict SLA | 50 | 30s | p95<500ms, error<1% |
 | Scale Light | 30 + 60s cooldown | 60s | nginx (HPA 관측용) |
 | Scale Heavy | 200 + 60s cooldown | 120s | nginx (HPA 관측용) |
+| Scale Ramp | 150, ramp 30s + 60s cooldown | 60s | nginx (HPA 관측용) |
+| Cascade Light | 30 + 60s cooldown | 60s | nginx + httpbin 동시 부하, 4개 HPA 관측 |
+| Cascade Heavy | 150 + 90s cooldown | 120s | 3-Tier 전체 부하 |
+| Cascade Ramp | 100, ramp 20s + 60s cooldown | 60s | 점진적 3-Tier 부하 |
+
+### 캐스케이드(Cascade) 테스트란?
+
+일반 스케일링 테스트는 nginx 한 곳만 부하를 건다. 캐스케이드 테스트는 **nginx(웹)과 httpbin(앱)에 동시에 부하**를 걸어,
+4개 디플로이먼트(nginx-web, httpbin, redis, postgres) 전체 HPA가 연쇄 반응하는 것을 관측한다.
+
+```
+k6 Pod → nginx-web:80 (동시 요청)
+       → httpbin:80/get (동시 요청)
+
+관측:
+  nginx-web HPA: 3→10 (CPU 50% 기준)
+  httpbin HPA:   2→6  (CPU 50% 기준)
+  redis HPA:     1→4  (CPU 50% 기준)
+  postgres HPA:  1→4  (CPU 50% 기준)
+```
 
 ### 결과 메트릭
 
@@ -267,7 +386,7 @@ stress-ng --vm 1 --vm-bytes 128M --timeout 30s
 
 | 하고 싶은 것 | 수정할 파일 |
 |-------------|-----------|
-| 새 데모 앱 추가 | `manifests/demo/`에 Deployment + Service YAML |
+| 새 데모 앱 추가 | `manifests/demo/`에 Deployment + Service YAML + 네트워크 정책 추가 |
 | HPA 설정 변경 | `manifests/hpa/`의 해당 HPA YAML |
 | HPA min/max 변경 | minReplicas, maxReplicas 값 |
 | 스케일 속도 변경 | behavior.scaleUp/scaleDown 값 |

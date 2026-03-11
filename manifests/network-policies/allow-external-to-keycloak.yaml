@@ -1,0 +1,17 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-external-to-keycloak
+  namespace: demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+  ingress:
+    - fromEntities:
+        - cluster
+        - world
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

@@ -1,0 +1,17 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-httpbin-to-keycloak
+  namespace: demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: httpbin
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

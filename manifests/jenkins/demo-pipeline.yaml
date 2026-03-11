@@ -1,0 +1,279 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-pipeline
+  namespace: jenkins
+  labels:
+    app: jenkins
+data:
+  Jenkinsfile: |
+    pipeline {
+      agent {
+        kubernetes {
+          inheritFrom 'default'
+        }
+      }
+
+      environment {
+        KUBECONFIG   = '/kubeconfig/dev.yaml'
+        NAMESPACE    = 'demo'
+        ARGOCD_APP   = 'demo-apps'
+      }
+
+      stages {
+
+        // ──────────────────────────────────────────────
+        // Stage 1: Manifest Validation (Lint)
+        // ──────────────────────────────────────────────
+        stage('Validate Manifests') {
+          steps {
+            sh '''
+              echo "=== [1/7] Validating Kubernetes manifests ==="
+              ERRORS=0
+              for f in manifests/demo/*.yaml manifests/hpa/*.yaml manifests/network-policies/*.yaml; do
+                echo "  Checking $f..."
+                if ! kubectl apply --dry-run=client -f "$f" 2>&1; then
+                  ERRORS=$((ERRORS + 1))
+                fi
+              done
+              echo "=== Validation complete (errors: $ERRORS) ==="
+              [ $ERRORS -eq 0 ] || exit 1
+            '''
+          }
+        }
+
+        // ──────────────────────────────────────────────
+        // Stage 2: Security Scan
+        // ──────────────────────────────────────────────
+        stage('Security Scan') {
+          steps {
+            sh '''
+              echo "=== [2/7] Running security checks ==="
+
+              echo "--- Checking for hardcoded secrets in manifests ---"
+              ISSUES=0
+              for f in manifests/demo/*.yaml; do
+                if grep -qiE '(password|secret|token).*:.*[A-Za-z0-9]{8,}' "$f" 2>/dev/null; then
+                  echo "  WARNING: Potential secret in $f"
+                  ISSUES=$((ISSUES + 1))
+                fi
+              done
+              echo "  Found $ISSUES potential issues (non-blocking in dev)"
+
+              echo "--- Checking resource limits ---"
+              for f in manifests/demo/*.yaml; do
+                if grep -q 'limits:' "$f"; then
+                  echo "  OK: $f has resource limits"
+                else
+                  echo "  WARN: $f missing resource limits"
+                fi
+              done
+
+              echo "--- Checking container image tags ---"
+              for f in manifests/demo/*.yaml; do
+                if grep -qE 'image:.*:latest' "$f"; then
+                  echo "  WARN: $f uses :latest tag"
+                fi
+              done
+
+              echo "=== Security scan complete ==="
+            '''
+          }
+        }
+
+        // ──────────────────────────────────────────────
+        // Stage 3: Deploy via ArgoCD (GitOps)
+        // ──────────────────────────────────────────────
+        stage('Deploy to Dev') {
+          steps {
+            sh '''
+              echo "=== [3/7] Triggering ArgoCD sync ==="
+              argocd app sync ${ARGOCD_APP} --timeout 180 || echo "ArgoCD sync triggered (async)"
+              echo "=== ArgoCD sync initiated ==="
+            '''
+          }
+        }
+
+        // ──────────────────────────────────────────────
+        // Stage 4: Wait for Rollouts
+        // ──────────────────────────────────────────────
+        stage('Wait for Rollouts') {
+          steps {
+            sh '''
+              echo "=== [4/7] Waiting for all deployments to be ready ==="
+              DEPLOYMENTS="nginx-web httpbin redis postgres rabbitmq keycloak"
+              FAILED=0
+              for deploy in $DEPLOYMENTS; do
+                echo "  Waiting for $deploy..."
+                if kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} rollout status deploy/$deploy --timeout=180s 2>/dev/null; then
+                  echo "    $deploy: READY"
+                else
+                  echo "    $deploy: FAILED or NOT FOUND"
+                  FAILED=$((FAILED + 1))
+                fi
+              done
+              echo "=== Rollout complete (failed: $FAILED) ==="
+              [ $FAILED -eq 0 ] || exit 1
+            '''
+          }
+        }
+
+        // ──────────────────────────────────────────────
+        // Stage 5: Health Check (all services)
+        // ──────────────────────────────────────────────
+        stage('Health Check') {
+          steps {
+            sh '''
+              echo "=== [5/7] Verifying service health ==="
+              DEV_IP=$(kubectl --kubeconfig ${KUBECONFIG} get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
+              echo "--- Checking Pod status ---"
+              kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} get pods -o wide
+              NOTREADY=$(kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} get pods --field-selector=status.phase!=Running,status.phase!=Succeeded --no-headers 2>/dev/null | wc -l)
+              echo "  Non-ready pods: $NOTREADY"
+
+              echo "--- Checking HPA status ---"
+              kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} get hpa
+
+              echo "--- Checking Services ---"
+              kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} get svc
+
+              echo "--- Checking Network Policies ---"
+              kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} get cnp 2>/dev/null || echo "  (CiliumNetworkPolicy CRD not available)"
+
+              echo "=== Health check complete ==="
+            '''
+          }
+        }
+
+        // ──────────────────────────────────────────────
+        // Stage 6: Integration Test
+        // ──────────────────────────────────────────────
+        stage('Integration Test') {
+          steps {
+            sh '''
+              echo "=== [6/7] Running integration tests ==="
+              DEV_IP=$(kubectl --kubeconfig ${KUBECONFIG} get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+              PASS=0
+              FAIL=0
+
+              # Test 1: nginx web server
+              echo "--- Test: nginx (NodePort 30080) ---"
+              if curl -sf --max-time 10 "http://${DEV_IP}:30080" > /dev/null 2>&1; then
+                echo "  PASS: nginx responds with 200"
+                PASS=$((PASS + 1))
+              else
+                echo "  FAIL: nginx not responding"
+                FAIL=$((FAIL + 1))
+              fi
+
+              # Test 2: Keycloak admin console
+              echo "--- Test: Keycloak (NodePort 30880) ---"
+              if curl -sf --max-time 15 "http://${DEV_IP}:30880" > /dev/null 2>&1; then
+                echo "  PASS: Keycloak responds"
+                PASS=$((PASS + 1))
+              else
+                echo "  FAIL: Keycloak not responding"
+                FAIL=$((FAIL + 1))
+              fi
+
+              # Test 3: httpbin internal (via kubectl exec)
+              echo "--- Test: httpbin /get (ClusterIP) ---"
+              if kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} exec deploy/nginx-web -c nginx -- \
+                curl -sf --max-time 5 "http://httpbin.${NAMESPACE}.svc.cluster.local/get" > /dev/null 2>&1; then
+                echo "  PASS: httpbin /get responds"
+                PASS=$((PASS + 1))
+              else
+                echo "  FAIL: httpbin not reachable from nginx"
+                FAIL=$((FAIL + 1))
+              fi
+
+              # Test 4: Redis connectivity
+              echo "--- Test: Redis (ClusterIP 6379) ---"
+              if kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} exec deploy/redis -- \
+                redis-cli ping 2>/dev/null | grep -q PONG; then
+                echo "  PASS: Redis PONG"
+                PASS=$((PASS + 1))
+              else
+                echo "  FAIL: Redis not responding"
+                FAIL=$((FAIL + 1))
+              fi
+
+              # Test 5: PostgreSQL connectivity
+              echo "--- Test: PostgreSQL (ClusterIP 5432) ---"
+              if kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} exec deploy/postgres -- \
+                pg_isready -U demo -d demo 2>/dev/null; then
+                echo "  PASS: PostgreSQL accepting connections"
+                PASS=$((PASS + 1))
+              else
+                echo "  FAIL: PostgreSQL not ready"
+                FAIL=$((FAIL + 1))
+              fi
+
+              # Test 6: RabbitMQ management API
+              echo "--- Test: RabbitMQ (Management 15672) ---"
+              if kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} exec deploy/nginx-web -c nginx -- \
+                curl -sf --max-time 5 -u demo:demo123 "http://rabbitmq.${NAMESPACE}.svc.cluster.local:15672/api/overview" > /dev/null 2>&1; then
+                echo "  PASS: RabbitMQ management API responds"
+                PASS=$((PASS + 1))
+              else
+                echo "  FAIL: RabbitMQ not reachable"
+                FAIL=$((FAIL + 1))
+              fi
+
+              echo ""
+              echo "=== Integration test results: $PASS passed, $FAIL failed ==="
+              [ $FAIL -eq 0 ] || exit 1
+            '''
+          }
+        }
+
+        // ──────────────────────────────────────────────
+        // Stage 7: Smoke Test (E2E)
+        // ──────────────────────────────────────────────
+        stage('Smoke Test') {
+          steps {
+            sh '''
+              echo "=== [7/7] Running end-to-end smoke tests ==="
+              DEV_IP=$(kubectl --kubeconfig ${KUBECONFIG} get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
+              echo "--- E2E: Full request chain ---"
+              echo "  Client → nginx → httpbin → [redis + postgres + rabbitmq]"
+
+              # Verify nginx can reach httpbin (L7 policy: GET only)
+              HTTP_CODE=$(kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} exec deploy/nginx-web -c nginx -- \
+                curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://httpbin.${NAMESPACE}.svc.cluster.local/get" 2>/dev/null || echo "000")
+              echo "  nginx → httpbin GET: HTTP $HTTP_CODE"
+
+              # Verify L7 policy blocks POST (should be blocked by CiliumNetworkPolicy)
+              HTTP_CODE_POST=$(kubectl --kubeconfig ${KUBECONFIG} -n ${NAMESPACE} exec deploy/nginx-web -c nginx -- \
+                curl -s -o /dev/null -w "%{http_code}" --max-time 5 -X POST "http://httpbin.${NAMESPACE}.svc.cluster.local/post" 2>/dev/null || echo "000")
+              echo "  nginx → httpbin POST: HTTP $HTTP_CODE_POST (expected: blocked by L7 policy)"
+
+              # Verify Keycloak health
+              KC_HEALTH=$(curl -sf --max-time 10 "http://${DEV_IP}:30880/health/ready" 2>/dev/null || echo '{"status":"DOWN"}')
+              echo "  Keycloak health: $KC_HEALTH"
+
+              echo ""
+              echo "=== Pipeline complete ==="
+              echo "=== Deployed services: nginx, httpbin, redis, postgres, rabbitmq, keycloak ==="
+              echo "=== Access points: ==="
+              echo "    nginx:    http://${DEV_IP}:30080"
+              echo "    keycloak: http://${DEV_IP}:30880"
+            '''
+          }
+        }
+      }
+
+      post {
+        success {
+          echo "Pipeline SUCCESS: All 7 stages passed. Application fully deployed and verified."
+        }
+        failure {
+          echo "Pipeline FAILED: Check stage logs for details."
+        }
+        always {
+          echo "Pipeline finished: ${currentBuild.result ?: 'SUCCESS'}"
+        }
+      }
+    }

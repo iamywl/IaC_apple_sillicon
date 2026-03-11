@@ -139,7 +139,42 @@ spec:
             - port: "6379"
 ```
 
-#### 5. allow-istio-sidecars.yaml - Istio 사이드카 포트 허용
+#### 5. allow-nginx-egress.yaml - nginx 아웃바운드 트래픽 제한
+
+```yaml
+# nginx Pod에서 나가는 트래픽을 명시적으로 제한
+spec:
+  endpointSelector:
+    matchLabels:
+      app: nginx-web          # nginx Pod의 egress 제어
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: httpbin       # httpbin으로만 GET 허용
+      toPorts:
+        - ports:
+            - port: "80"
+          rules:
+            http:
+              - method: "GET"
+    - toEndpoints:
+        - matchLabels:
+            app: redis         # redis:6379만 허용
+      toPorts:
+        - ports:
+            - port: "6379"
+    - toEndpoints:
+        - matchLabels:
+            k8s-app: kube-dns  # DNS 조회만 허용
+      toPorts:
+        - ports:
+            - port: "53"
+```
+
+> default-deny가 ingress만 차단한다면, 이 정책은 **egress(아웃바운드)**까지 제어합니다.
+> nginx가 접근할 수 있는 대상을 httpbin, redis, DNS로 명시적으로 제한합니다.
+
+#### 6. allow-istio-sidecars.yaml - Istio 사이드카 포트 허용
 
 ```yaml
 # Envoy 프록시가 사용하는 포트들을 허용
@@ -149,15 +184,27 @@ toPorts:
       - port: "15006"   # Envoy inbound
 ```
 
+### 전체 정책 요약 (6개)
+
+| 번호 | 파일 | 유형 | 핵심 |
+|------|------|------|------|
+| 1 | `default-deny.yaml` | Ingress 차단 | 모든 인바운드 기본 차단 |
+| 2 | `allow-external-to-nginx.yaml` | Ingress 허용 | 외부 → nginx |
+| 3 | `allow-nginx-to-httpbin.yaml` | Ingress + L7 | nginx → httpbin (GET만) |
+| 4 | `allow-nginx-to-redis.yaml` | Ingress | nginx → redis:6379 |
+| 5 | `allow-nginx-egress.yaml` | Egress | nginx 아웃바운드 제한 |
+| 6 | `allow-istio-sidecars.yaml` | Ingress | Envoy 포트 허용 |
+
 ### 트래픽 흐름 요약
 
 ```
-외부 → nginx (30080 NodePort)
+외부 → nginx (30080 NodePort)           ← allow-external-to-nginx
          │
-         ├─ GET /api → httpbin (허용)
-         ├─ POST /api → httpbin (차단! L7 정책)
-         ├─ → redis:6379 (허용)
-         └─ → 기타 (차단! default-deny)
+         ├─ GET /api → httpbin (허용)    ← allow-nginx-to-httpbin (L7)
+         ├─ POST /api → httpbin (차단!)  ← L7 정책: GET만 허용
+         ├─ → redis:6379 (허용)          ← allow-nginx-to-redis
+         ├─ → DNS:53 (허용)              ← allow-nginx-egress
+         └─ → 기타 (차단!)              ← default-deny + egress 제한
 ```
 
 ## Istio 서비스 메시 (dev 클러스터만)
@@ -246,7 +293,7 @@ trafficPolicy:
 
 | 하고 싶은 것 | 수정할 파일 |
 |-------------|-----------|
-| Pod CIDR 변경 | `config/clusters.json`의 podCIDR |
+| Pod CIDR 변경 | `config/clusters.json`의 pod_cidr |
 | 새 네트워크 정책 추가 | `manifests/network-policies/`에 YAML 추가 |
 | L7 필터링 규칙 변경 | 해당 네트워크 정책의 `rules.http` 섹션 |
 | 카나리 배포 비율 변경 | `manifests/istio/virtual-service.yaml`의 weight |

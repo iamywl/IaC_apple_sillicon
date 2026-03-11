@@ -1,0 +1,17 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-httpbin-to-postgres
+  namespace: demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: postgres
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: httpbin
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP

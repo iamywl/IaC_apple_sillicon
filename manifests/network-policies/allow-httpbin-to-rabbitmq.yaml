@@ -1,0 +1,17 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-httpbin-to-rabbitmq
+  namespace: demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: rabbitmq
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: httpbin
+      toPorts:
+        - ports:
+            - port: "5672"
+              protocol: TCP

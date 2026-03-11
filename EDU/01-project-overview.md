@@ -86,11 +86,20 @@ sudo kubeadm join 192.168.64.5:6443 --token <토큰> ...
 위의 모든 수동 과정을 **명령어 하나**로 실행합니다.
 
 ```bash
+# 방법 1: 인프라 설치만
 ./scripts/install.sh
+
+# 방법 2: 인프라 설치 + 대시보드까지 한번에 (원스톱 데모)
+./scripts/demo.sh
 ```
 
+> **`demo.sh` 옵션**:
+> - `--skip-install` : 이미 설치된 VM을 부팅만 하고 대시보드 시작
+> - `--dashboard-only` : 대시보드만 시작 (인프라가 이미 실행 중일 때)
+> - `--skip-dashboard` : 인프라만 구성하고 대시보드는 건너뜀
+
 > **참고**: `install.sh`는 인프라 구성(VM + K8s + 오픈소스 설치)만 자동화합니다.
-> SRE 운영 대시보드(`dashboard/`)는 별도의 React+Express 앱으로, 인프라 구성 완료 후 독립적으로 실행합니다.
+> SRE 운영 대시보드(`dashboard/`)는 별도의 React+Express 앱으로, `demo.sh`를 사용하거나 `cd dashboard && npm run dev`로 독립 실행합니다.
 
 ### 자동화 핵심 설계
 
@@ -109,7 +118,7 @@ sudo kubeadm join 192.168.64.5:6443 --token <토큰> ...
 
 | 수동 작업 | 자동화 방식 | 담당 코드 |
 |-----------|------------|-----------|
-| 매일 VM 10대 시작/종료 | `boot.sh` / `shutdown.sh`로 **일괄 관리** | `scripts/boot.sh`, `scripts/shutdown.sh` |
+| 매일 VM 10대 시작/종료 | `boot.sh` / `shutdown.sh` / `shutdown-all.sh`로 **일괄 관리** | `scripts/boot.sh`, `scripts/shutdown.sh`, `scripts/shutdown-all.sh` |
 | 인프라 상태 확인 | `status.sh`로 **VM + 클러스터 + 서비스 한눈에 확인** | `scripts/status.sh` |
 | 실시간 모니터링 | **SRE 대시보드**로 4개 클러스터 상태를 웹 UI에서 확인 | `dashboard/` (React + Express, 별도 실행) |
 
@@ -140,7 +149,7 @@ clusters.json (설정 파일 하나)
 
 ```bash
 ./scripts/build-golden-image.sh    # 골든 이미지 빌드 (1회)
-# → config/clusters.json의 baseImage를 "k8s-golden"으로 변경
+# → config/clusters.json의 base_image를 "k8s-golden"으로 변경
 # → 이후 install.sh 실행 시 2~4단계가 자동 스킵
 ```
 
@@ -161,9 +170,11 @@ tart-infra/
 │   └── clusters.json          ← 모든 설정의 단일 원천 (VM 스펙, CIDR, SSH 정보)
 │
 ├── scripts/
+│   ├── demo.sh                ← 원스톱 데모 (install + dashboard 한번에)
 │   ├── install.sh             ← 전체 설치 오케스트레이터 (12단계)
 │   ├── boot.sh                ← 매일 아침 VM 시작
-│   ├── shutdown.sh            ← 매일 저녁 VM 종료
+│   ├── shutdown.sh            ← 단일 클러스터 종료
+│   ├── shutdown-all.sh        ← 전체 클러스터 일괄 종료
 │   ├── status.sh              ← 인프라 상태 확인
 │   ├── destroy.sh             ← 전체 삭제
 │   ├── build-golden-image.sh  ← 골든 이미지 빌드 (설치 시간 단축)
@@ -197,7 +208,7 @@ tart-infra/
 │   └── demo/                  ← nginx, httpbin, redis, k6, stress-ng
 │
 ├── dashboard/
-│   ├── server/                ← Express 백엔드 (API 9개)
+│   ├── server/                ← Express 백엔드 (API 11개)
 │   │   ├── index.ts           ← API 라우팅
 │   │   ├── collector.ts       ← 5초 주기 데이터 수집
 │   │   ├── collectors/        ← tart, ssh, kubectl, hubble, scaling, services
@@ -208,9 +219,21 @@ tart-infra/
 │   │   └── components/        ← UI 컴포넌트
 │   └── shared/types.ts        ← 공유 TypeScript 타입
 │
-├── kubeconfig/                ← 생성된 kubeconfig 파일
-└── doc/                       ← 기존 문서
+├── kubeconfig/                ← 생성된 kubeconfig 파일 (클러스터별 .yaml)
+│
+├── doc/                       ← 상세 기술 문서
+│   ├── analysis/              ← 프로젝트 분석 (아키텍처 결정, 데이터 플로우 등 5편)
+│   ├── learning/              ← 기술 학습 가이드 (아키텍처, IaC, 모니터링 등 5편)
+│   ├── bug-reports/           ← 버그 리포트 및 트러블슈팅 기록
+│   ├── dashboard.md           ← 대시보드 설계 문서
+│   ├── tart.md                ← Tart VM 참고 문서
+│   └── terraform.md           ← Terraform 모듈 참고 문서
+│
+└── EDU/                       ← 학습 가이드 (이 문서 시리즈)
 ```
+
+> **`doc/` vs `EDU/` 차이**: `doc/`은 설계 의도, 아키텍처 결정, 트러블슈팅 기록 등 **참고 자료**입니다.
+> `EDU/`는 프로젝트를 처음 접하는 사람을 위한 **단계별 학습 가이드**입니다.
 
 ## 설정의 단일 원천: clusters.json
 
@@ -218,21 +241,22 @@ tart-infra/
 
 ```json
 {
-  "baseImage": "ghcr.io/cirruslabs/ubuntu:latest",
-  "sshUser": "admin",
-  "sshPassword": "admin",
-  "clusters": {
-    "platform": {
-      "podCIDR": "10.10.0.0/16",
-      "serviceCIDR": "10.110.0.0/16",
-      "nodes": {
-        "platform-master": { "cpu": 2, "memory": 4096, "role": "master" },
-        "platform-worker1": { "cpu": 3, "memory": 12288, "role": "worker" },
-        "platform-worker2": { "cpu": 2, "memory": 8192, "role": "worker" }
-      }
+  "base_image": "ghcr.io/cirruslabs/ubuntu:latest",
+  "ssh_user": "admin",
+  "ssh_password": "admin",
+  "clusters": [
+    {
+      "name": "platform",
+      "pod_cidr": "10.10.0.0/16",
+      "service_cidr": "10.96.0.0/16",
+      "nodes": [
+        { "name": "platform-master", "role": "master", "cpu": 2, "memory": 4096, "disk": 20 },
+        { "name": "platform-worker1", "role": "worker", "cpu": 3, "memory": 12288, "disk": 20 },
+        { "name": "platform-worker2", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
+      ]
     }
-    // dev, staging, prod도 동일 구조
-  }
+    // dev, staging, prod도 동일 구조 (배열 원소)
+  ]
 }
 ```
 
@@ -260,15 +284,20 @@ tart-infra/
 
 ## 기술 스택 요약
 
+> 전체 기술 스택의 상세 버전과 설정은 [09-tech-stack.md](09-tech-stack.md)를 참고하세요.
+
 | 계층 | 기술 | 역할 |
 |------|------|------|
 | 가상화 | Tart (Apple Hypervisor.framework) | ARM64 VM 관리 |
-| OS | Ubuntu 24.04 ARM64 | 게스트 OS |
-| 컨테이너 런타임 | containerd | 컨테이너 실행 |
+| OS | Ubuntu (ghcr.io/cirruslabs/ubuntu:latest) | 게스트 OS |
+| 컨테이너 런타임 | containerd (SystemdCgroup) | 컨테이너 실행 |
 | 오케스트레이션 | Kubernetes 1.31 (kubeadm) | 컨테이너 오케스트레이션 |
-| CNI | Cilium (eBPF) | 네트워킹 + kube-proxy 대체 |
-| 관측성 | Hubble + Prometheus + Grafana + Loki | 메트릭, 로그, 네트워크 플로우 |
+| CNI | Cilium (eBPF) + Hubble | 네트워킹 + kube-proxy 대체 + 네트워크 관측성 |
+| 관측성 | Prometheus + Grafana + Loki + AlertManager | 메트릭, 로그, 알림 |
 | 서비스 메시 | Istio + Envoy | mTLS, 카나리 배포, 서킷 브레이커 |
 | CI/CD | Jenkins + ArgoCD | 빌드 + GitOps |
-| IaC | Terraform + Bash | 인프라 자동화 |
-| 대시보드 | React 19 + Express 5 + TypeScript | SRE 운영 대시보드 |
+| IaC | Terraform (>= 1.5) + Bash | 인프라 자동화 |
+| 대시보드 | React 19 + Express 5 + TypeScript 5.9 | SRE 운영 대시보드 |
+| 빌드 도구 | Vite 7 + Tailwind CSS 4 | 프론트엔드 빌드 + 스타일링 |
+| 테스트 도구 | k6 + stress-ng | 부하 테스트 + 스트레스 테스트 |
+| 호스트 도구 | tart, kubectl, helm, jq, sshpass | macOS에서 실행하는 CLI 도구 |

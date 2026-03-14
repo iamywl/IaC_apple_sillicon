@@ -1,20 +1,20 @@
-# 14편: 트러블슈팅 — 문제가 생겼을 때 어떻게 해결하는가
+# 14. 트러블슈팅 — 문제가 생겼을 때 어떻게 해결하는가
+
+> Apple Silicon 맥에서 구축하는 멀티 클러스터 Kubernetes 인프라
 
 ## 이번 글에서 배울 것
 
-인프라를 운영하다 보면 **반드시** 문제가 생깁니다. VM이 시작되지 않거나, Pod가 CrashLoopBackOff에 빠지거나, 서비스에 접속이 안 되거나. 이런 상황에서 당황하지 않고 **체계적으로 문제를 찾아 해결하는 방법**을 배웁니다.
+인프라를 운영하다 보면 **반드시** 문제가 생긴다. VM이 시작되지 않거나, Pod가 CrashLoopBackOff에 빠지거나, 서비스에 접속이 안 되거나. 이런 상황에서 당황하지 않고 **체계적으로 문제를 찾아 해결하는 방법**을 다룬다.
 
-이번 글은 이 프로젝트의 `doc/learning/troubleshooting.md`와 `doc/bug-reports/`에 기록된 실제 경험을 바탕으로 합니다.
+왜 체계적 트러블슈팅이 필요한가? 무작위로 설정을 바꿔보는 디버깅("이거 바꿔볼까? 저거 바꿔볼까?")은 두 가지 문제를 일으킨다. 첫째, 원인과 해결의 인과관계를 파악할 수 없어 같은 문제가 재발하면 또 시간을 낭비한다. 둘째, 무작위 변경이 다른 컴포넌트에 부작용을 만들어 문제를 확대시킬 수 있다. 체계적 접근은 가설-검증 루프를 통해 **최소한의 변경으로 정확한 원인을 격리**하는 것이 핵심이다.
+
+이번 글은 이 프로젝트의 `doc/learning/troubleshooting.md`와 `doc/bug-reports/`에 기록된 실제 경험을 바탕으로 한다.
 
 ---
 
 ## 6단계 디버깅 프레임워크
 
-### 비유로 이해하기
-
-의사가 환자를 진료할 때 무작정 약을 처방하지 않습니다. "어디가 아프세요?" → "언제부터요?" → "이런 원인이 아닐까요?" → "검사해 봅시다" → "이 약을 드세요" → "다음에 이런 일이 없도록 합시다"의 순서를 따릅니다.
-
-인프라 트러블슈팅도 동일한 프레임워크를 따릅니다.
+인프라 트러블슈팅은 다음 6단계 프레임워크를 따른다. 증상을 먼저 정확히 식별하고, 범위를 좁힌 뒤 가설을 세우고 검증하는 체계적 접근 방식이다.
 
 ```
 1. 증상 확인(Symptom)    → 무엇이 동작하지 않는가?
@@ -25,24 +25,24 @@
 6. 회고(Retrospect)      → 재발 방지
 ```
 
-### 왜 이게 필요한가?
-
-초보자가 가장 많이 하는 실수는 **"문제가 뭔지 정확히 모른 채 이것저것 바꿔보는 것"**입니다. 이렇게 하면 문제가 해결되더라도 **왜 해결되었는지 모르고**, 더 나쁜 경우 **새로운 문제를 만들 수 있습니다**.
+초보자가 가장 많이 하는 실수는 **"문제가 뭔지 정확히 모른 채 이것저것 바꿔보는 것"**이다. 이렇게 하면 문제가 해결되더라도 **왜 해결되었는지 모르고**, 더 나쁜 경우 **새로운 문제를 만들 수 있다**.
 
 6단계를 따르면:
-- 문제의 원인을 **정확히** 파악할 수 있습니다
-- 같은 문제가 다시 발생했을 때 빠르게 해결할 수 있습니다
-- 해결 과정을 문서로 남겨 팀원들과 공유할 수 있습니다
+- 문제의 원인을 **정확히** 파악할 수 있다
+- 같은 문제가 다시 발생했을 때 빠르게 해결할 수 있다
+- 해결 과정을 문서로 남겨 팀원들과 공유할 수 있다
 
 ### 실제 프로젝트에서는
 
-Google SRE 팀은 이 프레임워크를 **Postmortem(사후 분석)**이라고 부릅니다. 장애가 발생하면 반드시 문서를 작성하고, "누가 잘못했나"가 아니라 "시스템을 어떻게 개선할 수 있나"에 초점을 맞춥니다. 이 프로젝트의 `doc/bug-reports/` 디렉토리가 바로 이 Postmortem의 축소판입니다.
+Google SRE 팀은 이 프레임워크를 **Postmortem(사후 분석)**이라고 부른다. 장애가 발생하면 반드시 문서를 작성하고, "누가 잘못했나"가 아니라 "시스템을 어떻게 개선할 수 있나"에 초점을 맞춘다. 이 프로젝트의 `doc/bug-reports/` 디렉토리가 바로 이 Postmortem의 축소판이다.
 
 ---
 
 ## 레이어별 디버깅 체크리스트
 
-이 프로젝트는 여러 레이어로 구성되어 있습니다. 문제가 발생하면 **아래 레이어부터 위로** 확인합니다. 기초가 무너지면 위에 있는 모든 것이 무너지기 때문입니다.
+이 프로젝트는 여러 레이어로 구성되어 있다. 문제가 발생하면 **아래 레이어부터 위로** 확인해야 한다.
+
+왜 레이어 기반으로 아래에서 위로 접근하는가? 인프라는 의존성 스택이다. VM이 꺼져 있으면 그 위의 K8s, Pod, 서비스, 네트워크 정책은 전부 동작하지 않는다. 상위 레이어 문제의 근본 원인(root cause)이 하위 레이어에 있는 경우가 빈번하다. 예를 들어 "서비스 접속 불가"의 원인이 Pod 장애이고, Pod 장애의 원인이 노드 메모리 부족이고, 노드 메모리 부족의 원인이 VM 메모리 할당 오류일 수 있다. 아래부터 확인하면 하위 레이어를 정상으로 확인한 후 상위 레이어로 범위를 좁혀갈 수 있어, 불필요한 조사를 줄인다.
 
 ```
 Layer 5: 네트워크 정책 (Hubble, DROPPED)
@@ -52,10 +52,6 @@ Layer 2: K8s 클러스터 (kubectl get nodes, NotReady)
 Layer 1: SSH 접속 (sshpass, connectivity)
 Layer 0: VM 실행 (tart list, tart ip)
 ```
-
-### 비유로 이해하기
-
-건물의 엘리베이터가 안 된다고 합시다. 엘리베이터 버튼(Layer 4)만 확인하면 안 됩니다. 전기가 들어오는지(Layer 0), 건물 전원이 정상인지(Layer 1), 엘리베이터 모터가 작동하는지(Layer 2)를 **아래부터** 확인해야 합니다.
 
 ---
 
@@ -140,7 +136,7 @@ tart run platform-worker1
 
 #### "VM IP가 변경되는 문제" 심화
 
-이 프로젝트의 VM은 **DHCP**로 IP를 받습니다. Mac을 재부팅하거나 VM을 재시작하면 IP가 바뀔 수 있습니다.
+이 프로젝트의 VM은 **DHCP**로 IP를 받는다. Mac을 재부팅하거나 VM을 재시작하면 IP가 바뀔 수 있다.
 
 ```bash
 # 재부팅 전
@@ -150,7 +146,7 @@ tart ip dev-worker1  → 192.168.64.5
 tart ip dev-worker1  → 192.168.64.8  ← 변경됨!
 ```
 
-이 프로젝트의 자동화 스크립트(`scripts/lib/vm.sh`)는 `vm_wait_for_ip()` 함수로 이 문제를 해결합니다. 3초 간격으로 최대 60회 IP를 확인하여, IP가 할당될 때까지 기다립니다.
+이 프로젝트의 자동화 스크립트(`scripts/lib/vm.sh`)는 `vm_wait_for_ip()` 함수로 이 문제를 해결한다. 3초 간격으로 최대 60회 IP를 확인하여, IP가 할당될 때까지 대기한다.
 
 ---
 
@@ -217,7 +213,9 @@ kubectl --kubeconfig kubeconfig/dev.yaml describe pod httpbin-7f8d9c6b5-def34 -n
 
 #### CrashLoopBackOff 해결하기
 
-CrashLoopBackOff는 "Pod가 시작 → 크래시 → 재시작 → 크래시를 반복"하는 상태입니다.
+CrashLoopBackOff는 "Pod가 시작 → 크래시 → 재시작 → 크래시를 반복"하는 상태이다. 컨테이너가 기동 직후 비정상 종료되어 kubelet이 재시작을 반복하되, 백오프 간격을 점점 늘리는 상태를 뜻한다.
+
+왜 Pod 상태를 구분하는 것이 중요한가? Pending, CrashLoopBackOff, ImagePullBackOff, OOMKilled는 각각 원인이 완전히 다르다. Pending은 스케줄러가 노드를 찾지 못한 것(리소스 부족 또는 taint)이고, CrashLoopBackOff는 애플리케이션이 시작 직후 비정상 종료되는 것이고, ImagePullBackOff는 컨테이너 이미지를 가져오지 못한 것이고, OOMKilled는 메모리 limits를 초과한 것이다. 상태를 정확히 식별해야 올바른 디버깅 경로를 선택할 수 있다.
 
 ```bash
 # 현재 로그 확인
@@ -227,11 +225,9 @@ kubectl --kubeconfig kubeconfig/dev.yaml logs httpbin-7f8d9c6b5-def34 -n demo
 kubectl --kubeconfig kubeconfig/dev.yaml logs httpbin-7f8d9c6b5-def34 -n demo --previous
 ```
 
-**비유**: CrashLoopBackOff는 "직원이 출근 → 쓰러짐 → 다시 출근 → 또 쓰러짐"을 반복하는 상황입니다. 왜 쓰러지는지(로그) 확인해야 합니다.
-
 #### OOMKilled 해결하기
 
-OOMKilled는 "메모리를 너무 많이 사용해서 강제 종료"된 상태입니다.
+OOMKilled는 "메모리를 너무 많이 사용해서 강제 종료"된 상태이다.
 
 ```bash
 # OOMKilled 확인
@@ -240,7 +236,7 @@ kubectl --kubeconfig kubeconfig/dev.yaml get pod httpbin-7f8d9c6b5-def34 -n demo
 # → {"terminated":{"reason":"OOMKilled", ...}}
 ```
 
-**해결법**: Pod의 `resources.limits.memory`를 늘립니다.
+**해결법**: Pod의 `resources.limits.memory`를 늘린다.
 
 ```yaml
 resources:
@@ -252,7 +248,7 @@ resources:
 
 #### Pending 상태 해결하기
 
-Pending은 "스케줄링이 안 됨" — Pod를 실행할 노드를 찾지 못한 상태입니다.
+Pending은 스케줄러가 Pod를 배치할 노드를 찾지 못한 상태이다. 노드의 가용 리소스가 Pod의 requests를 충족하지 못하거나, taint/toleration 조건이 맞지 않을 때 발생한다.
 
 ```bash
 # describe에서 Events 확인
@@ -263,11 +259,9 @@ kubectl describe pod redis-8e7f6d5c4-ghi56 -n demo
 # "0/2 nodes are available: 1 node(s) had taint"  ← 마스터 노드만 있음
 ```
 
-**비유**: Pending은 "호텔에 체크인하려는데 빈 방이 없는 상태"입니다. 방(노드 리소스)을 더 확보하거나, 다른 손님(Pod)을 체크아웃시켜야 합니다.
-
 #### ImagePullBackOff 해결하기
 
-ImagePullBackOff는 "컨테이너 이미지를 다운로드하지 못한 상태"입니다.
+ImagePullBackOff는 "컨테이너 이미지를 다운로드하지 못한 상태"이다.
 
 ```bash
 # describe에서 Events 확인
@@ -328,7 +322,11 @@ curl http://$(tart ip dev-worker1):30080
 
 **증상**: Pod 간 통신이 안 되지만, 서비스 자체는 정상
 
-이 프로젝트에서는 10편에서 설정한 **제로 트러스트 네트워크 정책**(기본 차단 + 화이트리스트)이 적용되어 있습니다. 새로운 서비스를 추가했는데 통신이 안 되면, 네트워크 정책이 원인일 가능성이 높습니다.
+이 프로젝트에서는 10편에서 설정한 **제로 트러스트 네트워크 정책**(기본 차단 + 화이트리스트)이 적용되어 있다.
+
+왜 제로 트러스트 환경의 디버깅이 다른가? 일반 Kubernetes 클러스터에서는 모든 Pod 간 통신이 기본적으로 허용된다. 그러나 제로 트러스트 모델에서는 명시적으로 허용하지 않은 트래픽은 전부 차단된다. 따라서 "정상 동작하는 코드인데 통신이 안 된다"는 상황이 빈번하게 발생한다. 이때 애플리케이션 코드에는 문제가 없으므로, 로그만 보면 원인을 찾을 수 없다. 네트워크 정책 레이어를 별도로 확인해야 하며, Hubble로 DROPPED 트래픽을 조회하는 것이 핵심 디버깅 수단이 된다.
+
+새로운 서비스를 추가했는데 통신이 안 되면, 네트워크 정책이 원인일 가능성이 높다.
 
 ```bash
 # 1단계: 현재 네트워크 정책 확인
@@ -349,7 +347,7 @@ hubble observe --namespace demo --verdict DROPPED
 hubble observe --namespace demo --pod demo/nginx-web-5d4f7b8c9-abc12
 ```
 
-**비유**: 제로 트러스트는 "건물의 모든 문이 잠겨 있는 상태"입니다. 특정 직원(Pod)이 특정 방(서비스)에 들어가려면 별도의 출입증(CiliumNetworkPolicy)이 필요합니다. Hubble은 "CCTV"로, 누가 어디서 막혔는지 보여줍니다.
+제로 트러스트 모델에서는 모든 트래픽이 기본적으로 차단된다. 특정 Pod가 특정 서비스에 접근하려면 해당 통신을 명시적으로 허용하는 CiliumNetworkPolicy가 존재해야 한다. Hubble은 네트워크 관측성 도구로, 어떤 트래픽이 어디서 차단되었는지 실시간으로 확인할 수 있다.
 
 ---
 
@@ -377,7 +375,7 @@ sshpass -p admin scp -o StrictHostKeyChecking=no \
   admin@$(tart ip prod-master):.kube/config kubeconfig/prod.yaml
 ```
 
-**예방법**: `scripts/boot.sh`를 사용하면 IP 변경을 자동으로 처리합니다.
+**예방법**: `scripts/boot.sh`를 사용하면 IP 변경을 자동으로 처리한다.
 
 ### 에러 2: Pod가 Pending에 머무름 (리소스 부족)
 
@@ -441,7 +439,7 @@ kubectl --kubeconfig kubeconfig/dev.yaml logs <pod-name> -n demo --previous
 
 **실제 사례 — 이 프로젝트의 BUG-006:**
 
-Grafana가 CrashLoopBackOff에 빠진 적이 있습니다. 원인은 Prometheus와 Loki가 모두 `isDefault: true`로 설정되어 "기본 데이터소스 충돌"이 발생한 것이었습니다.
+Grafana가 CrashLoopBackOff에 빠진 적이 있었다. 원인은 Prometheus와 Loki가 모두 `isDefault: true`로 설정되어 "기본 데이터소스 충돌"이 발생한 것이었다.
 
 ```yaml
 # 해결: loki-values.yaml에서 기본 데이터소스 해제
@@ -483,7 +481,7 @@ kubectl --kubeconfig kubeconfig/dev.yaml exec -it deploy/nginx-web -n demo \
 
 ### BUG-001: SSH heredoc 따옴표 깨짐
 
-SSH를 통해 원격 서버에서 `sed` 명령을 실행했는데, 따옴표가 꼬였습니다.
+SSH를 통해 원격 서버에서 `sed` 명령을 실행했는데, 따옴표가 꼬였다.
 
 ```bash
 # 문제 코드 — bash -c '...' 안에서 작은따옴표 충돌
@@ -499,11 +497,11 @@ sed -i 's/foo/bar/' file
 EOF
 ```
 
-**교훈**: SSH를 통한 원격 명령에서는 따옴표가 **중첩**됩니다. heredoc으로 이 문제를 피할 수 있습니다.
+**교훈**: SSH를 통한 원격 명령에서는 따옴표가 **중첩**된다. heredoc으로 이 문제를 피할 수 있다.
 
 ### BUG-003: VM 간 통신 불가 — NAT 모드의 한계
 
-`kubeadm join`이 타임아웃되었습니다. Worker VM에서 Master VM으로 ping이 안 갔습니다.
+`kubeadm join`이 타임아웃되었다. Worker VM에서 Master VM으로 ping이 안 갔다.
 
 ```bash
 # Host → VM: 가능
@@ -513,13 +511,13 @@ ping -c 2 192.168.66.2  → OK
 ssh admin@192.168.66.3 "ping -c 2 192.168.66.2"  → Destination Host Unreachable
 ```
 
-**원인**: NAT 모드에서는 Host→VM은 가능하지만 VM→VM은 불가합니다.
+**원인**: NAT 모드에서는 Host→VM은 가능하지만 VM→VM은 불가하다.
 
-**해결법**: `--net-softnet-allow=0.0.0.0/0` 옵션으로 소프트웨어 브릿지 네트워크를 사용합니다.
+**해결법**: `--net-softnet-allow=0.0.0.0/0` 옵션으로 소프트웨어 브릿지 네트워크를 사용한다.
 
 ### BUG-004: Cilium 부트스트랩 순환 의존성
 
-Cilium이 CrashLoopBackOff에 빠졌습니다. 원인은 "닭이 먼저냐 달걀이 먼저냐" 문제였습니다.
+Cilium이 CrashLoopBackOff에 빠졌다. 순환 의존성(circular dependency) 문제였다.
 
 ```
 Cilium이 시작되려면 → K8s API 서버에 접근 필요 (ClusterIP: 10.96.0.1)
@@ -530,7 +528,7 @@ ClusterIP가 작동하려면 → kube-proxy 또는 Cilium이 필요
 → 무한 루프!
 ```
 
-**해결법**: Cilium에게 ClusterIP 대신 **마스터 노드의 실제 IP**를 알려줍니다.
+**해결법**: Cilium에게 ClusterIP 대신 **마스터 노드의 실제 IP**를 알려준다.
 
 ```bash
 helm install cilium cilium/cilium \
@@ -540,13 +538,13 @@ helm install cilium cilium/cilium \
 
 ### BUG-007: kubeadm CPU 최소 요구사항
 
-리소스를 아끼려고 master에 CPU 1개만 할당했더니 `kubeadm init`이 실패했습니다.
+리소스를 아끼려고 master에 CPU 1개만 할당했더니 `kubeadm init`이 실패했다.
 
 ```
 [ERROR NumCPU]: the number of available CPUs 1 is less than the required 2
 ```
 
-**교훈**: kubeadm은 **최소 2 CPU, 2GB RAM**을 요구합니다. etcd, kube-apiserver, kube-scheduler가 동시에 실행되어야 하기 때문입니다.
+**교훈**: kubeadm은 **최소 2 CPU, 2GB RAM**을 요구한다. etcd, kube-apiserver, kube-scheduler가 동시에 실행되어야 하기 때문이다.
 
 ---
 
@@ -656,7 +654,7 @@ sshpass -p admin scp -o StrictHostKeyChecking=no \
 
 ### 특정 클러스터 완전 재구축
 
-최후의 수단입니다. VM을 삭제하고 처음부터 다시 만듭니다.
+최후의 수단이다. VM을 삭제하고 처음부터 다시 만든다.
 
 ```bash
 # VM 삭제
@@ -695,8 +693,8 @@ done
 
 ### 실제 프로젝트에서는
 
-실제 기업 환경에서는 이런 트러블슈팅 패턴을 **런북(Runbook)**으로 문서화합니다. "알림 X가 울리면 → A 확인 → B 확인 → C로 해결"의 형태로 정리하여, **새벽 3시에 알림을 받은 온콜 엔지니어**도 빠르게 대응할 수 있게 합니다.
+실제 기업 환경에서는 이런 트러블슈팅 패턴을 **런북(Runbook)**으로 문서화한다. "알림 X가 울리면 → A 확인 → B 확인 → C로 해결"의 형태로 정리하여, **새벽 3시에 알림을 받은 온콜 엔지니어**도 빠르게 대응할 수 있게 한다.
 
-우리 프로젝트의 `doc/learning/troubleshooting.md`가 바로 이 런북의 역할을 합니다.
+이 프로젝트의 `doc/learning/troubleshooting.md`가 바로 이 런북의 역할을 한다.
 
-다음 편에서는 지금까지 배운 모든 것을 **하나로 통합**하여, 처음부터 끝까지 전체 프로젝트를 정리합니다.
+다음 편에서는 지금까지 배운 모든 것을 **하나로 통합**하여, 처음부터 끝까지 전체 프로젝트를 정리한다.

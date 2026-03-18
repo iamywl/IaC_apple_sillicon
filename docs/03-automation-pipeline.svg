@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="phase1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e94560"/>
+      <stop offset="100%" stop-color="#ff6b6b"/>
+    </linearGradient>
+    <linearGradient id="phase2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00b4d8"/>
+      <stop offset="100%" stop-color="#48cae4"/>
+    </linearGradient>
+    <linearGradient id="phase3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#52b788"/>
+      <stop offset="100%" stop-color="#74c69d"/>
+    </linearGradient>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrDown" markerWidth="6" markerHeight="8" refX="3" refY="8" orient="auto">
+      <polygon points="0 0, 6 0, 3 8" fill="#58a6ff"/>
+    </marker>
+    <filter id="s3">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="900" fill="url(#bg3)"/>
+
+  <text x="600" y="40" text-anchor="middle" fill="#e6edf3" font-size="24" font-weight="700">12-Phase Automation Pipeline</text>
+  <text x="600" y="62" text-anchor="middle" fill="#8b949e" font-size="13">Single Source of Truth: clusters.json → install.sh orchestrator → 12 phases</text>
+
+  <!-- Source of Truth -->
+  <rect x="440" y="85" width="320" height="55" rx="10" fill="#21262d" stroke="#f0883e" stroke-width="2" filter="url(#s3)"/>
+  <text x="600" y="108" text-anchor="middle" fill="#f0883e" font-size="14" font-weight="700">clusters.json</text>
+  <text x="600" y="126" text-anchor="middle" fill="#8b949e" font-size="11">4 clusters · 10 VMs · CIDR · node specs</text>
+
+  <line x1="600" y1="140" x2="600" y2="165" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrDown)"/>
+
+  <!-- Orchestrator -->
+  <rect x="420" y="165" width="360" height="40" rx="8" fill="#58a6ff" filter="url(#s3)"/>
+  <text x="600" y="190" text-anchor="middle" fill="white" font-size="14" font-weight="700">install.sh — Orchestrator</text>
+
+  <line x1="600" y1="205" x2="600" y2="230" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrDown)"/>
+
+  <!-- Phase Group 1: Infrastructure -->
+  <rect x="40" y="235" width="1120" height="155" rx="10" fill="#161b22" stroke="#e94560" stroke-width="1.5"/>
+  <text x="60" y="260" fill="#e94560" font-size="13" font-weight="700">PHASE GROUP 1 — Infrastructure Setup</text>
+  <text x="295" y="260" fill="#8b949e" font-size="10">(Phases 01–04 · can skip 02–04 with golden image)</text>
+
+  <!-- Phase 01 -->
+  <rect x="60" y="275" width="250" height="100" rx="8" fill="#21262d" stroke="#e94560" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="60" y="275" width="35" height="100" rx="8" fill="url(#phase1)"/>
+  <rect x="85" y="275" width="10" height="100" fill="url(#phase1)"/>
+  <text x="78" y="330" text-anchor="middle" fill="white" font-size="14" font-weight="800">01</text>
+  <text x="105" y="298" fill="#e6edf3" font-size="12" font-weight="700">Create VMs</text>
+  <text x="105" y="316" fill="#c9d1d9" font-size="10">tart clone × 10</text>
+  <text x="105" y="332" fill="#c9d1d9" font-size="10">CPU / Memory / Disk allocation</text>
+  <text x="105" y="348" fill="#8b949e" font-size="9">scripts/install/01-create-vms.sh</text>
+  <text x="105" y="364" fill="#8b949e" font-size="9">lib/vm.sh → vm_wait_for_ip()</text>
+
+  <!-- Phase 02 -->
+  <rect x="325" y="275" width="250" height="100" rx="8" fill="#21262d" stroke="#e94560" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="325" y="275" width="35" height="100" rx="8" fill="url(#phase1)"/>
+  <rect x="350" y="275" width="10" height="100" fill="url(#phase1)"/>
+  <text x="343" y="330" text-anchor="middle" fill="white" font-size="14" font-weight="800">02</text>
+  <text x="370" y="298" fill="#e6edf3" font-size="12" font-weight="700">Prepare Nodes</text>
+  <text x="370" y="316" fill="#c9d1d9" font-size="10">swap off · kernel modules</text>
+  <text x="370" y="332" fill="#c9d1d9" font-size="10">sysctl · bridge-nf-call</text>
+  <text x="370" y="348" fill="#8b949e" font-size="9">scripts/install/02-prepare-nodes.sh</text>
+  <text x="370" y="364" fill="#f9c74f" font-size="9">⚡ skip with golden image</text>
+
+  <!-- Phase 03 -->
+  <rect x="590" y="275" width="250" height="100" rx="8" fill="#21262d" stroke="#e94560" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="590" y="275" width="35" height="100" rx="8" fill="url(#phase1)"/>
+  <rect x="615" y="275" width="10" height="100" fill="url(#phase1)"/>
+  <text x="608" y="330" text-anchor="middle" fill="white" font-size="14" font-weight="800">03</text>
+  <text x="635" y="298" fill="#e6edf3" font-size="12" font-weight="700">Install Runtime</text>
+  <text x="635" y="316" fill="#c9d1d9" font-size="10">containerd</text>
+  <text x="635" y="332" fill="#c9d1d9" font-size="10">SystemdCgroup = true</text>
+  <text x="635" y="348" fill="#8b949e" font-size="9">scripts/install/03-install-runtime.sh</text>
+  <text x="635" y="364" fill="#f9c74f" font-size="9">⚡ skip with golden image</text>
+
+  <!-- Phase 04 -->
+  <rect x="855" y="275" width="285" height="100" rx="8" fill="#21262d" stroke="#e94560" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="855" y="275" width="35" height="100" rx="8" fill="url(#phase1)"/>
+  <rect x="880" y="275" width="10" height="100" fill="url(#phase1)"/>
+  <text x="873" y="330" text-anchor="middle" fill="white" font-size="14" font-weight="800">04</text>
+  <text x="900" y="298" fill="#e6edf3" font-size="12" font-weight="700">Install K8s Tools</text>
+  <text x="900" y="316" fill="#c9d1d9" font-size="10">kubeadm · kubelet · kubectl</text>
+  <text x="900" y="332" fill="#c9d1d9" font-size="10">v1.31 · APT repo setup</text>
+  <text x="900" y="348" fill="#8b949e" font-size="9">scripts/install/04-install-kubeadm.sh</text>
+  <text x="900" y="364" fill="#f9c74f" font-size="9">⚡ skip with golden image</text>
+
+  <line x1="600" y1="390" x2="600" y2="410" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrDown)"/>
+
+  <!-- Phase Group 2: Cluster Bootstrap -->
+  <rect x="40" y="415" width="1120" height="125" rx="10" fill="#161b22" stroke="#00b4d8" stroke-width="1.5"/>
+  <text x="60" y="440" fill="#00b4d8" font-size="13" font-weight="700">PHASE GROUP 2 — Cluster Bootstrap</text>
+  <text x="300" y="440" fill="#8b949e" font-size="10">(Phases 05–06 · Core cluster initialization)</text>
+
+  <rect x="60" y="455" width="520" height="70" rx="8" fill="#21262d" stroke="#00b4d8" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="60" y="455" width="35" height="70" rx="8" fill="url(#phase2)"/>
+  <rect x="85" y="455" width="10" height="70" fill="url(#phase2)"/>
+  <text x="78" y="495" text-anchor="middle" fill="white" font-size="14" font-weight="800">05</text>
+  <text x="105" y="478" fill="#e6edf3" font-size="12" font-weight="700">Init Clusters</text>
+  <text x="105" y="496" fill="#c9d1d9" font-size="10">kubeadm init (×4 masters) → token extract → kubeadm join (×6 workers)</text>
+  <text x="105" y="514" fill="#8b949e" font-size="9">scripts/install/05-init-clusters.sh · lib/k8s.sh → SCP kubeconfig</text>
+
+  <rect x="600" y="455" width="540" height="70" rx="8" fill="#21262d" stroke="#00b4d8" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="600" y="455" width="35" height="70" rx="8" fill="url(#phase2)"/>
+  <rect x="625" y="455" width="10" height="70" fill="url(#phase2)"/>
+  <text x="618" y="495" text-anchor="middle" fill="white" font-size="14" font-weight="800">06</text>
+  <text x="645" y="478" fill="#e6edf3" font-size="12" font-weight="700">Install Cilium CNI</text>
+  <text x="645" y="496" fill="#c9d1d9" font-size="10">Cilium eBPF (kube-proxy replacement) + Hubble UI on all 4 clusters</text>
+  <text x="645" y="514" fill="#8b949e" font-size="9">scripts/install/06-install-cilium.sh · Helm values: cilium-values.yaml</text>
+
+  <line x1="600" y1="540" x2="600" y2="560" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrDown)"/>
+
+  <!-- Phase Group 3: Platform Services -->
+  <rect x="40" y="565" width="1120" height="310" rx="10" fill="#161b22" stroke="#52b788" stroke-width="1.5"/>
+  <text x="60" y="590" fill="#52b788" font-size="13" font-weight="700">PHASE GROUP 3 — Platform Services &amp; Workloads</text>
+  <text x="395" y="590" fill="#8b949e" font-size="10">(Phases 07–12 · Monitoring, CI/CD, Security, Mesh)</text>
+
+  <!-- Phase 07 -->
+  <rect x="60" y="605" width="340" height="60" rx="8" fill="#21262d" stroke="#52b788" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="60" y="605" width="30" height="60" rx="8" fill="url(#phase3)"/>
+  <rect x="82" y="605" width="8" height="60" fill="url(#phase3)"/>
+  <text x="75" y="640" text-anchor="middle" fill="white" font-size="12" font-weight="800">07</text>
+  <text x="100" y="625" fill="#e6edf3" font-size="11" font-weight="700">Monitoring Stack</text>
+  <text x="100" y="641" fill="#c9d1d9" font-size="9">Prometheus + Grafana + Loki → platform cluster</text>
+  <text x="100" y="655" fill="#8b949e" font-size="9">07-install-monitoring.sh · monitoring-values.yaml</text>
+
+  <!-- Phase 08 -->
+  <rect x="415" y="605" width="340" height="60" rx="8" fill="#21262d" stroke="#52b788" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="415" y="605" width="30" height="60" rx="8" fill="url(#phase3)"/>
+  <rect x="437" y="605" width="8" height="60" fill="url(#phase3)"/>
+  <text x="430" y="640" text-anchor="middle" fill="white" font-size="12" font-weight="800">08</text>
+  <text x="455" y="625" fill="#e6edf3" font-size="11" font-weight="700">CI/CD Pipeline</text>
+  <text x="455" y="641" fill="#c9d1d9" font-size="9">Jenkins + ArgoCD → platform cluster</text>
+  <text x="455" y="655" fill="#8b949e" font-size="9">08-install-cicd.sh · jenkins/argocd-values.yaml</text>
+
+  <!-- Phase 09 -->
+  <rect x="770" y="605" width="370" height="60" rx="8" fill="#21262d" stroke="#52b788" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="770" y="605" width="30" height="60" rx="8" fill="url(#phase3)"/>
+  <rect x="792" y="605" width="8" height="60" fill="url(#phase3)"/>
+  <text x="785" y="640" text-anchor="middle" fill="white" font-size="12" font-weight="800">09</text>
+  <text x="810" y="625" fill="#e6edf3" font-size="11" font-weight="700">Alerting Rules</text>
+  <text x="810" y="641" fill="#c9d1d9" font-size="9">AlertManager + 8 PrometheusRules → platform</text>
+  <text x="810" y="655" fill="#8b949e" font-size="9">09-install-alerting.sh · manifests/alerting/</text>
+
+  <!-- Phase 10 -->
+  <rect x="60" y="680" width="340" height="60" rx="8" fill="#21262d" stroke="#52b788" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="60" y="680" width="30" height="60" rx="8" fill="url(#phase3)"/>
+  <rect x="82" y="680" width="8" height="60" fill="url(#phase3)"/>
+  <text x="75" y="715" text-anchor="middle" fill="white" font-size="12" font-weight="800">10</text>
+  <text x="100" y="700" fill="#e6edf3" font-size="11" font-weight="700">Network Policies</text>
+  <text x="100" y="716" fill="#c9d1d9" font-size="9">CiliumNetworkPolicy · Zero-Trust L7 → dev cluster</text>
+  <text x="100" y="730" fill="#8b949e" font-size="9">10-install-network-policies.sh · manifests/network-policies/</text>
+
+  <!-- Phase 11 -->
+  <rect x="415" y="680" width="340" height="60" rx="8" fill="#21262d" stroke="#52b788" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="415" y="680" width="30" height="60" rx="8" fill="url(#phase3)"/>
+  <rect x="437" y="680" width="8" height="60" fill="url(#phase3)"/>
+  <text x="430" y="715" text-anchor="middle" fill="white" font-size="12" font-weight="800">11</text>
+  <text x="455" y="700" fill="#e6edf3" font-size="11" font-weight="700">HPA + Autoscaling</text>
+  <text x="455" y="716" fill="#c9d1d9" font-size="9">metrics-server + HPA + PDB → dev, staging</text>
+  <text x="455" y="730" fill="#8b949e" font-size="9">11-install-hpa.sh · manifests/hpa/</text>
+
+  <!-- Phase 12 -->
+  <rect x="770" y="680" width="370" height="60" rx="8" fill="#21262d" stroke="#52b788" stroke-width="1.5" filter="url(#s3)"/>
+  <rect x="770" y="680" width="30" height="60" rx="8" fill="url(#phase3)"/>
+  <rect x="792" y="680" width="8" height="60" fill="url(#phase3)"/>
+  <text x="785" y="715" text-anchor="middle" fill="white" font-size="12" font-weight="800">12</text>
+  <text x="810" y="700" fill="#e6edf3" font-size="11" font-weight="700">Service Mesh (Istio)</text>
+  <text x="810" y="716" fill="#c9d1d9" font-size="9">Istio mTLS + Canary + Circuit Breaker → dev</text>
+  <text x="810" y="730" fill="#8b949e" font-size="9">12-install-istio.sh · manifests/istio/</text>
+
+  <!-- Demo apps -->
+  <rect x="60" y="755" width="1080" height="50" rx="8" fill="#21262d" stroke="#bb86fc" stroke-width="1.5"/>
+  <text x="100" y="777" fill="#bb86fc" font-size="11" font-weight="700">Demo Apps (deployed during install)</text>
+  <text x="100" y="795" fill="#c9d1d9" font-size="10">nginx-web · httpbin v1/v2 · redis · postgres · rabbitmq · keycloak → dev cluster (manifests/demo/)</text>
+
+  <!-- Terraform alternative -->
+  <rect x="60" y="820" width="1080" height="45" rx="8" fill="#21262d" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="100" y="840" fill="#f0883e" font-size="11" font-weight="700">Alternative: Terraform</text>
+  <text x="100" y="856" fill="#c9d1d9" font-size="10">terraform/ → modules: tart-vm (Phase 1) → k8s-cluster (Phase 2) → helm-releases (Phase 3) → null_resource (Phase 4)</text>
+</svg>

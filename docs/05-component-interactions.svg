@@ -1,0 +1,243 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg5" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <marker id="a1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/>
+    </marker>
+    <marker id="a2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#3fb950"/>
+    </marker>
+    <marker id="a3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f0883e"/>
+    </marker>
+    <marker id="a4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#e94560"/>
+    </marker>
+    <marker id="a5" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#bb86fc"/>
+    </marker>
+    <marker id="a6" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f9c74f"/>
+    </marker>
+    <filter id="s5">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="900" fill="url(#bg5)"/>
+
+  <text x="600" y="40" text-anchor="middle" fill="#e6edf3" font-size="24" font-weight="700">Component Interaction &amp; Data Flow Map</text>
+  <text x="600" y="62" text-anchor="middle" fill="#8b949e" font-size="13">How tools, services, and clusters communicate across the infrastructure</text>
+
+  <!-- ===== USER ZONE ===== -->
+  <rect x="40" y="85" width="1120" height="80" rx="10" fill="#21262d" stroke="#bb86fc" stroke-width="1.5"/>
+  <text x="60" y="108" fill="#bb86fc" font-size="13" font-weight="700">USER / OPERATOR</text>
+
+  <rect x="60" y="115" width="120" height="38" rx="6" fill="#161b22" stroke="#bb86fc" stroke-width="1"/>
+  <text x="120" y="139" text-anchor="middle" fill="#bb86fc" font-size="11" font-weight="600">Browser</text>
+
+  <rect x="200" y="115" width="170" height="38" rx="6" fill="#161b22" stroke="#bb86fc" stroke-width="1"/>
+  <text x="285" y="139" text-anchor="middle" fill="#bb86fc" font-size="11" font-weight="600">SRE Dashboard</text>
+
+  <rect x="390" y="115" width="140" height="38" rx="6" fill="#161b22" stroke="#bb86fc" stroke-width="1"/>
+  <text x="460" y="139" text-anchor="middle" fill="#bb86fc" font-size="11" font-weight="600">Terminal / CLI</text>
+
+  <rect x="550" y="115" width="180" height="38" rx="6" fill="#161b22" stroke="#f0883e" stroke-width="1"/>
+  <text x="640" y="139" text-anchor="middle" fill="#f0883e" font-size="11" font-weight="600">./scripts/install.sh</text>
+
+  <rect x="750" y="115" width="180" height="38" rx="6" fill="#161b22" stroke="#844FBA" stroke-width="1"/>
+  <text x="840" y="139" text-anchor="middle" fill="#844FBA" font-size="11" font-weight="600">terraform apply</text>
+
+  <!-- ===== CONTROL PLANE ===== -->
+  <rect x="40" y="190" width="540" height="320" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="60" y="215" fill="#58a6ff" font-size="14" font-weight="700">SRE Dashboard Backend (Express 5)</text>
+  <text x="310" y="215" fill="#8b949e" font-size="10">localhost:3001</text>
+
+  <!-- Dashboard API endpoints -->
+  <rect x="60" y="228" width="240" height="130" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="75" y="248" fill="#3fb950" font-size="11" font-weight="600">REST API Endpoints (11)</text>
+  <text x="75" y="268" fill="#c9d1d9" font-size="9">/api/cluster-status</text>
+  <text x="75" y="282" fill="#c9d1d9" font-size="9">/api/node-resources</text>
+  <text x="75" y="296" fill="#c9d1d9" font-size="9">/api/pod-status</text>
+  <text x="75" y="310" fill="#c9d1d9" font-size="9">/api/network-flows</text>
+  <text x="75" y="324" fill="#c9d1d9" font-size="9">/api/load-test · /api/stress-test</text>
+  <text x="75" y="338" fill="#c9d1d9" font-size="9">/api/hpa-status · /api/services</text>
+  <text x="75" y="352" fill="#c9d1d9" font-size="9">+ 3 more...</text>
+
+  <!-- SSH Pool -->
+  <rect x="320" y="228" width="240" height="130" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="335" y="248" fill="#f9c74f" font-size="11" font-weight="600">SSH Connection Pool</text>
+  <text x="335" y="268" fill="#c9d1d9" font-size="9">10 persistent SSH connections</text>
+  <text x="335" y="288" fill="#8b949e" font-size="9">ssh2 npm module</text>
+  <text x="335" y="310" fill="#c9d1d9" font-size="9">platform: master, worker1, worker2</text>
+  <text x="335" y="324" fill="#c9d1d9" font-size="9">dev: master, worker1</text>
+  <text x="335" y="338" fill="#c9d1d9" font-size="9">staging: master, worker1</text>
+  <text x="335" y="352" fill="#c9d1d9" font-size="9">prod: master, worker1, worker2</text>
+
+  <!-- Collectors -->
+  <rect x="60" y="370" width="500" height="55" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="75" y="390" fill="#00b4d8" font-size="11" font-weight="600">Data Collectors &amp; Parsers</text>
+  <text x="75" y="408" fill="#c9d1d9" font-size="9">kubectl (remote) · top · free · df · ss · /proc/net/dev · k6 output · stress-ng output</text>
+  <text x="75" y="420" fill="#8b949e" font-size="9">server/collectors/ · server/parsers/ — parse Linux command output into structured JSON</text>
+
+  <!-- React Frontend -->
+  <rect x="60" y="435" width="500" height="60" rx="6" fill="#21262d" stroke="#61DAFB" stroke-width="1.5"/>
+  <text x="75" y="458" fill="#61DAFB" font-size="11" font-weight="600">React 19 Frontend (Vite · Tailwind · Recharts)</text>
+  <text x="75" y="476" fill="#c9d1d9" font-size="9">6 Pages: Overview · Cluster · Network · Load Test · HPA · Services</text>
+  <text x="75" y="490" fill="#8b949e" font-size="9">Time-series charts · real-time polling · dark theme dashboard</text>
+
+  <!-- ===== PLATFORM CLUSTER ===== -->
+  <rect x="610" y="190" width="550" height="215" rx="10" fill="#161b22" stroke="#e94560" stroke-width="1.5"/>
+  <text x="630" y="215" fill="#e94560" font-size="14" font-weight="700">Platform Cluster — Monitoring &amp; CI/CD</text>
+
+  <rect x="630" y="228" width="120" height="55" rx="6" fill="#21262d" stroke="#E6522C" stroke-width="1"/>
+  <text x="690" y="252" text-anchor="middle" fill="#E6522C" font-size="11" font-weight="600">Prometheus</text>
+  <text x="690" y="270" text-anchor="middle" fill="#8b949e" font-size="9">:9090 Metrics</text>
+
+  <rect x="760" y="228" width="100" height="55" rx="6" fill="#21262d" stroke="#F46800" stroke-width="1"/>
+  <text x="810" y="252" text-anchor="middle" fill="#F46800" font-size="11" font-weight="600">Grafana</text>
+  <text x="810" y="270" text-anchor="middle" fill="#8b949e" font-size="9">:3000 Dashboards</text>
+
+  <rect x="870" y="228" width="80" height="55" rx="6" fill="#21262d" stroke="#F9C74F" stroke-width="1"/>
+  <text x="910" y="252" text-anchor="middle" fill="#F9C74F" font-size="11" font-weight="600">Loki</text>
+  <text x="910" y="270" text-anchor="middle" fill="#8b949e" font-size="9">:3100 Logs</text>
+
+  <rect x="960" y="228" width="120" height="55" rx="6" fill="#21262d" stroke="#E94560" stroke-width="1"/>
+  <text x="1020" y="252" text-anchor="middle" fill="#E94560" font-size="11" font-weight="600">AlertManager</text>
+  <text x="1020" y="270" text-anchor="middle" fill="#8b949e" font-size="9">:9093 Alerts</text>
+
+  <rect x="630" y="295" width="150" height="50" rx="6" fill="#21262d" stroke="#D24939" stroke-width="1"/>
+  <text x="705" y="318" text-anchor="middle" fill="#D24939" font-size="11" font-weight="600">Jenkins</text>
+  <text x="705" y="336" text-anchor="middle" fill="#8b949e" font-size="9">:8080 CI Pipeline</text>
+
+  <rect x="790" y="295" width="150" height="50" rx="6" fill="#21262d" stroke="#EF7B4D" stroke-width="1"/>
+  <text x="865" y="318" text-anchor="middle" fill="#EF7B4D" font-size="11" font-weight="600">ArgoCD</text>
+  <text x="865" y="336" text-anchor="middle" fill="#8b949e" font-size="9">:443 GitOps CD</text>
+
+  <rect x="630" y="355" width="520" height="35" rx="6" fill="#21262d" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="890" y="377" text-anchor="middle" fill="#8B5CF6" font-size="10" font-weight="600">Cilium eBPF CNI + Hubble Observability</text>
+
+  <!-- ===== DEV CLUSTER ===== -->
+  <rect x="610" y="420" width="550" height="190" rx="10" fill="#161b22" stroke="#00b4d8" stroke-width="1.5"/>
+  <text x="630" y="445" fill="#00b4d8" font-size="14" font-weight="700">Dev Cluster — Workloads &amp; Experiments</text>
+
+  <rect x="630" y="458" width="80" height="40" rx="5" fill="#21262d" stroke="#3fb950" stroke-width="1"/>
+  <text x="670" y="483" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="600">nginx</text>
+
+  <rect x="720" y="458" width="100" height="40" rx="5" fill="#21262d" stroke="#f0883e" stroke-width="1"/>
+  <text x="770" y="483" text-anchor="middle" fill="#f0883e" font-size="10" font-weight="600">httpbin v1/v2</text>
+
+  <rect x="830" y="458" width="70" height="40" rx="5" fill="#21262d" stroke="#e94560" stroke-width="1"/>
+  <text x="865" y="483" text-anchor="middle" fill="#e94560" font-size="10" font-weight="600">Redis</text>
+
+  <rect x="910" y="458" width="100" height="40" rx="5" fill="#21262d" stroke="#336791" stroke-width="1"/>
+  <text x="960" y="483" text-anchor="middle" fill="#336791" font-size="10" font-weight="600">PostgreSQL</text>
+
+  <rect x="1020" y="458" width="90" height="40" rx="5" fill="#21262d" stroke="#FF6600" stroke-width="1"/>
+  <text x="1065" y="483" text-anchor="middle" fill="#FF6600" font-size="10" font-weight="600">RabbitMQ</text>
+
+  <rect x="630" y="508" width="120" height="35" rx="5" fill="#21262d" stroke="#466BB0" stroke-width="1"/>
+  <text x="690" y="530" text-anchor="middle" fill="#466BB0" font-size="10" font-weight="600">Istio Mesh</text>
+
+  <rect x="760" y="508" width="130" height="35" rx="5" fill="#21262d" stroke="#e94560" stroke-width="1"/>
+  <text x="825" y="530" text-anchor="middle" fill="#e94560" font-size="10" font-weight="600">NetworkPolicy L7</text>
+
+  <rect x="900" y="508" width="90" height="35" rx="5" fill="#21262d" stroke="#f9c74f" stroke-width="1"/>
+  <text x="945" y="530" text-anchor="middle" fill="#f9c74f" font-size="10" font-weight="600">HPA + PDB</text>
+
+  <rect x="1000" y="508" width="100" height="35" rx="5" fill="#21262d" stroke="#00B8E3" stroke-width="1"/>
+  <text x="1050" y="530" text-anchor="middle" fill="#00B8E3" font-size="10" font-weight="600">Keycloak</text>
+
+  <rect x="630" y="553" width="520" height="30" rx="5" fill="#21262d" stroke="#8B5CF6" stroke-width="1"/>
+  <text x="890" y="573" text-anchor="middle" fill="#8B5CF6" font-size="10" font-weight="600">Cilium eBPF CNI + Hubble + k6 Load Test + stress-ng</text>
+
+  <!-- ===== STAGING + PROD ===== -->
+  <rect x="610" y="625" width="260" height="80" rx="10" fill="#161b22" stroke="#f9c74f" stroke-width="1.5"/>
+  <text x="630" y="648" fill="#f9c74f" font-size="12" font-weight="700">Staging</text>
+  <text x="630" y="666" fill="#c9d1d9" font-size="9">Cilium + Hubble + metrics-server</text>
+  <text x="630" y="682" fill="#8b949e" font-size="9">Pre-prod validation · 2 nodes</text>
+
+  <rect x="890" y="625" width="270" height="80" rx="10" fill="#161b22" stroke="#52b788" stroke-width="1.5"/>
+  <text x="910" y="648" fill="#52b788" font-size="12" font-weight="700">Production</text>
+  <text x="910" y="666" fill="#c9d1d9" font-size="9">Cilium + Hubble · HA (2 workers)</text>
+  <text x="910" y="682" fill="#8b949e" font-size="9">Stability-first · 3 nodes</text>
+
+  <!-- ===== ARROWS ===== -->
+  <!-- Browser → Dashboard -->
+  <path d="M120 153 L120 170 Q120 180 130 180 L270 180 Q280 180 280 188" stroke="#bb86fc" stroke-width="1.5" fill="none" marker-end="url(#a5)"/>
+
+  <!-- Dashboard → SSH Pool → VMs -->
+  <path d="M440 370 L440 365 Q440 360 445 360 L560 360 Q570 360 575 365 L575 395 Q575 405 580 410" stroke="#f9c74f" stroke-width="1.5" fill="none" stroke-dasharray="4,3"/>
+  <text x="505" y="355" fill="#f9c74f" font-size="8">SSH exec</text>
+
+  <!-- Dashboard → Platform cluster -->
+  <path d="M560 290 L590 290 Q600 290 600 280 L600 260 Q600 250 610 250" stroke="#58a6ff" stroke-width="1.5" fill="none" marker-end="url(#a1)"/>
+  <text x="568" y="255" fill="#58a6ff" font-size="8">kubectl</text>
+
+  <!-- Dashboard → Dev cluster -->
+  <path d="M560 340 L590 340 Q600 340 600 400 L600 450 Q600 460 610 460" stroke="#58a6ff" stroke-width="1.5" fill="none" marker-end="url(#a1)"/>
+
+  <!-- Prometheus scrapes all clusters -->
+  <path d="M690 283 L690 420" stroke="#E6522C" stroke-width="1" fill="none" marker-end="url(#a4)" stroke-dasharray="3,3"/>
+  <text x="695" y="355" fill="#E6522C" font-size="8">scrape</text>
+
+  <!-- Prometheus → AlertManager -->
+  <path d="M750 260 L960 260" stroke="#E6522C" stroke-width="1" fill="none" marker-end="url(#a4)" stroke-dasharray="3,3"/>
+
+  <!-- ArgoCD → Dev -->
+  <path d="M865 345 L865 420" stroke="#EF7B4D" stroke-width="1.5" fill="none" marker-end="url(#a3)"/>
+  <text x="870" y="385" fill="#EF7B4D" font-size="8">deploy</text>
+
+  <!-- install.sh → clusters -->
+  <path d="M640 153 L640 170 Q640 180 650 180 L880 180 Q890 180 890 188" stroke="#f0883e" stroke-width="1.5" fill="none" marker-end="url(#a3)"/>
+  <text x="760" y="175" fill="#f0883e" font-size="8">12-phase install</text>
+
+  <!-- ===== IaC Zone ===== -->
+  <rect x="40" y="530" width="540" height="175" rx="10" fill="#161b22" stroke="#844FBA" stroke-width="1.5"/>
+  <text x="60" y="555" fill="#844FBA" font-size="14" font-weight="700">Infrastructure as Code</text>
+
+  <rect x="60" y="568" width="240" height="55" rx="6" fill="#21262d" stroke="#4EAA25" stroke-width="1"/>
+  <text x="75" y="590" fill="#4EAA25" font-size="11" font-weight="600">Bash Scripts (12 phases)</text>
+  <text x="75" y="606" fill="#c9d1d9" font-size="9">scripts/install/ · scripts/lib/</text>
+  <text x="75" y="618" fill="#8b949e" font-size="9">vm.sh · ssh.sh · k8s.sh · helm.sh</text>
+
+  <rect x="320" y="568" width="240" height="55" rx="6" fill="#21262d" stroke="#844FBA" stroke-width="1"/>
+  <text x="335" y="590" fill="#844FBA" font-size="11" font-weight="600">Terraform Modules</text>
+  <text x="335" y="606" fill="#c9d1d9" font-size="9">tart-vm · k8s-cluster · helm-releases</text>
+  <text x="335" y="618" fill="#8b949e" font-size="9">providers: local · null · helm</text>
+
+  <rect x="60" y="635" width="500" height="55" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="75" y="655" fill="#f0883e" font-size="11" font-weight="600">Configuration Source</text>
+  <text x="75" y="673" fill="#c9d1d9" font-size="9">clusters.json — 4 clusters · 10 nodes · CIDR ranges · resource specs</text>
+  <text x="75" y="685" fill="#8b949e" font-size="9">Single Source of Truth → drives both Bash scripts and Terraform</text>
+
+  <!-- ===== LEGEND ===== -->
+  <rect x="40" y="730" width="1120" height="155" rx="10" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="60" y="755" fill="#e6edf3" font-size="14" font-weight="700">Legend — Data Flow Types</text>
+
+  <line x1="60" y1="775" x2="120" y2="775" stroke="#bb86fc" stroke-width="2"/>
+  <text x="130" y="779" fill="#c9d1d9" font-size="10">User interaction (Browser → Dashboard)</text>
+
+  <line x1="60" y1="800" x2="120" y2="800" stroke="#58a6ff" stroke-width="2" marker-end="url(#a1)"/>
+  <text x="130" y="804" fill="#c9d1d9" font-size="10">kubectl / API calls (Dashboard → K8s clusters)</text>
+
+  <line x1="60" y1="825" x2="120" y2="825" stroke="#f9c74f" stroke-width="2" stroke-dasharray="4,3"/>
+  <text x="130" y="829" fill="#c9d1d9" font-size="10">SSH remote execution (Dashboard → VM nodes)</text>
+
+  <line x1="400" y1="775" x2="460" y2="775" stroke="#E6522C" stroke-width="2" stroke-dasharray="3,3"/>
+  <text x="470" y="779" fill="#c9d1d9" font-size="10">Metrics scraping (Prometheus → all clusters)</text>
+
+  <line x1="400" y1="800" x2="460" y2="800" stroke="#EF7B4D" stroke-width="2" marker-end="url(#a3)"/>
+  <text x="470" y="804" fill="#c9d1d9" font-size="10">GitOps deployment (ArgoCD → workload clusters)</text>
+
+  <line x1="400" y1="825" x2="460" y2="825" stroke="#f0883e" stroke-width="2" marker-end="url(#a3)"/>
+  <text x="470" y="829" fill="#c9d1d9" font-size="10">Automation (install.sh / Terraform → infrastructure)</text>
+
+  <!-- Key metrics -->
+  <rect x="60" y="845" width="1080" height="28" rx="4" fill="#161b22"/>
+  <text x="80" y="864" fill="#58a6ff" font-size="11" font-weight="600">Key Numbers:</text>
+  <text x="170" y="864" fill="#c9d1d9" font-size="11">4 Clusters · 10 VMs · 21 vCPU · 71.5 GB RAM · 12 Install Phases · 28 Technologies · 11 APIs · 8 Alert Rules</text>
+</svg>

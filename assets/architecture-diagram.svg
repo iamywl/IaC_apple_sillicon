@@ -1,0 +1,603 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1820" width="1600" height="1820">
+  <defs>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+      .title { font-size: 32px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-size: 14px; fill: #64748b; }
+      .cluster-title { font-size: 18px; font-weight: 700; fill: #fff; }
+      .cluster-sub { font-size: 11px; fill: rgba(255,255,255,0.8); }
+      .vm-title { font-size: 13px; font-weight: 700; fill: #334155; }
+      .vm-spec { font-size: 10px; fill: #94a3b8; }
+      .app-name { font-size: 11px; font-weight: 600; }
+      .app-role { font-size: 9.5px; fill: #64748b; }
+      .section-label { font-size: 10px; font-weight: 700; fill: #94a3b8; letter-spacing: 1px; }
+      .hw-title { font-size: 18px; font-weight: 700; fill: #fff; }
+      .hw-sub { font-size: 12px; fill: #94a3b8; }
+      .port-text { font-size: 9px; fill: #fff; font-weight: 600; }
+      .arrow-label { font-size: 10px; fill: #94a3b8; font-style: italic; }
+    </style>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.08"/>
+    </filter>
+    <filter id="shadow-sm" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.06"/>
+    </filter>
+    <linearGradient id="hw-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="tart-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#FB923C"/>
+    </linearGradient>
+    <linearGradient id="platform-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="dev-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#D97706"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="staging-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="prod-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#DC2626"/>
+      <stop offset="100%" stop-color="#EF4444"/>
+    </linearGradient>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowhead-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#6366F1"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1600" height="1820" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="50" y="48" class="title">Tart Multi-Cluster Kubernetes Infrastructure</text>
+  <text x="50" y="70" class="subtitle">Apple Silicon 한 대에서 4개 클러스터, 10개 VM, 30+ 오픈소스를 운영하는 전체 구조</text>
+
+  <!-- ==================== PLATFORM CLUSTER ==================== -->
+  <rect x="40" y="90" width="760" height="740" fill="#fff" rx="14" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="40" y="90" width="760" height="44" fill="url(#platform-grad)" rx="14"/>
+  <rect x="40" y="120" width="760" height="14" fill="url(#platform-grad)"/>
+  <text x="60" y="118" class="cluster-title">Platform Cluster</text>
+  <text x="280" y="118" class="cluster-sub">관리/운영 전용  ·  Pod CIDR 10.10.0.0/16  ·  Service CIDR 10.96.0.0/16</text>
+
+  <!-- platform-master -->
+  <rect x="60" y="150" width="220" height="260" fill="#fafafe" rx="10" stroke="#e0e7ff" stroke-width="1"/>
+  <rect x="60" y="150" width="220" height="30" fill="#eef2ff" rx="10"/>
+  <rect x="60" y="168" width="220" height="12" fill="#eef2ff"/>
+  <text x="170" y="170" class="vm-title" text-anchor="middle">platform-master</text>
+  <text x="170" y="185" class="vm-spec" text-anchor="middle">2 CPU  ·  4 GB RAM  ·  20 GB Disk</text>
+
+  <text x="75" y="208" class="section-label">K8S CONTROL PLANE</text>
+  <rect x="75" y="215" width="190" height="20" fill="#eef2ff" rx="5"/>
+  <text x="170" y="229" class="app-name" text-anchor="middle" fill="#4338ca">kube-apiserver</text>
+  <text x="170" y="240" class="app-role" text-anchor="middle">API 요청 처리, 인증/인가</text>
+  <rect x="75" y="248" width="190" height="20" fill="#eef2ff" rx="5"/>
+  <text x="170" y="262" class="app-name" text-anchor="middle" fill="#4338ca">etcd</text>
+  <text x="170" y="273" class="app-role" text-anchor="middle">클러스터 상태 저장소 (KV)</text>
+  <rect x="75" y="281" width="190" height="20" fill="#eef2ff" rx="5"/>
+  <text x="170" y="295" class="app-name" text-anchor="middle" fill="#4338ca">kube-scheduler</text>
+  <text x="170" y="306" class="app-role" text-anchor="middle">Pod → Node 배치 결정</text>
+  <rect x="75" y="314" width="190" height="20" fill="#eef2ff" rx="5"/>
+  <text x="170" y="328" class="app-name" text-anchor="middle" fill="#4338ca">controller-manager</text>
+  <text x="170" y="339" class="app-role" text-anchor="middle">Deployment/RS/Job 제어 루프</text>
+  <rect x="75" y="352" width="190" height="20" fill="#eef2ff" rx="5"/>
+  <text x="170" y="366" class="app-name" text-anchor="middle" fill="#4338ca">CoreDNS</text>
+  <text x="170" y="377" class="app-role" text-anchor="middle">클러스터 내부 DNS 해석</text>
+  <rect x="75" y="390" width="190" height="14" fill="#dbeafe" rx="5"/>
+  <text x="170" y="401" class="app-name" text-anchor="middle" fill="#1d4ed8">Cilium Operator</text>
+
+  <!-- platform-worker1 -->
+  <rect x="300" y="150" width="240" height="660" fill="#fafafe" rx="10" stroke="#e0e7ff" stroke-width="1"/>
+  <rect x="300" y="150" width="240" height="30" fill="#eef2ff" rx="10"/>
+  <rect x="300" y="168" width="240" height="12" fill="#eef2ff"/>
+  <text x="420" y="170" class="vm-title" text-anchor="middle">platform-worker1</text>
+  <text x="420" y="185" class="vm-spec" text-anchor="middle">3 CPU  ·  12 GB RAM  ·  20 GB Disk</text>
+
+  <text x="315" y="208" class="section-label">MONITORING</text>
+  <rect x="315" y="215" width="210" height="20" fill="#fdf2f8" rx="5"/>
+  <text x="420" y="229" class="app-name" text-anchor="middle" fill="#9d174d">Prometheus</text>
+  <text x="420" y="240" class="app-role" text-anchor="middle">메트릭 수집 TSDB · 30s scrape · 7일 보관</text>
+  <rect x="315" y="248" width="210" height="20" fill="#fdf2f8" rx="5"/>
+  <text x="420" y="262" class="app-name" text-anchor="middle" fill="#9d174d">Grafana</text>
+  <rect x="480" y="249" width="42" height="14" fill="#9d174d" rx="4"/>
+  <text x="501" y="260" class="port-text" text-anchor="middle">:30300</text>
+  <text x="420" y="273" class="app-role" text-anchor="middle">대시보드 시각화 · 3개 프리셋 보드</text>
+  <rect x="315" y="281" width="210" height="20" fill="#fdf2f8" rx="5"/>
+  <text x="420" y="295" class="app-name" text-anchor="middle" fill="#9d174d">Loki</text>
+  <text x="420" y="306" class="app-role" text-anchor="middle">로그 수집/검색 (Promtail → Loki)</text>
+  <rect x="315" y="314" width="210" height="20" fill="#fdf2f8" rx="5"/>
+  <text x="420" y="328" class="app-name" text-anchor="middle" fill="#9d174d">AlertManager</text>
+  <rect x="484" y="315" width="42" height="14" fill="#9d174d" rx="4"/>
+  <text x="505" y="326" class="port-text" text-anchor="middle">:30903</text>
+  <text x="420" y="339" class="app-role" text-anchor="middle">알림 라우팅 · 8개 규칙 · Webhook</text>
+  <rect x="315" y="352" width="210" height="20" fill="#fdf2f8" rx="5"/>
+  <text x="420" y="366" class="app-name" text-anchor="middle" fill="#9d174d">kube-state-metrics</text>
+  <text x="420" y="377" class="app-role" text-anchor="middle">K8s 오브젝트 메트릭 export</text>
+  <rect x="315" y="385" width="210" height="20" fill="#fdf2f8" rx="5"/>
+  <text x="420" y="399" class="app-name" text-anchor="middle" fill="#9d174d">prometheus-operator</text>
+  <text x="420" y="410" class="app-role" text-anchor="middle">PrometheusRule CRD 관리</text>
+
+  <text x="315" y="435" class="section-label">CI / CD</text>
+  <rect x="315" y="442" width="210" height="20" fill="#f0fdf4" rx="5"/>
+  <text x="420" y="456" class="app-name" text-anchor="middle" fill="#166534">ArgoCD</text>
+  <rect x="470" y="443" width="42" height="14" fill="#166534" rx="4"/>
+  <text x="491" y="454" class="port-text" text-anchor="middle">:30800</text>
+  <text x="420" y="467" class="app-role" text-anchor="middle">GitOps CD · auto-sync · self-heal</text>
+  <rect x="315" y="475" width="210" height="20" fill="#f0fdf4" rx="5"/>
+  <text x="420" y="489" class="app-name" text-anchor="middle" fill="#166534">Jenkins</text>
+  <rect x="470" y="476" width="42" height="14" fill="#166534" rx="4"/>
+  <text x="491" y="487" class="port-text" text-anchor="middle">:30900</text>
+  <text x="420" y="500" class="app-role" text-anchor="middle">CI 파이프라인 · 7단계 빌드</text>
+  <rect x="315" y="508" width="210" height="20" fill="#f0fdf4" rx="5"/>
+  <text x="420" y="522" class="app-name" text-anchor="middle" fill="#166534">argocd-repo-server</text>
+  <text x="420" y="533" class="app-role" text-anchor="middle">Git 레포 매니페스트 렌더링</text>
+  <rect x="315" y="541" width="210" height="20" fill="#f0fdf4" rx="5"/>
+  <text x="420" y="555" class="app-name" text-anchor="middle" fill="#166534">argocd-redis</text>
+  <text x="420" y="566" class="app-role" text-anchor="middle">ArgoCD 내부 캐시</text>
+
+  <text x="315" y="592" class="section-label">STORAGE</text>
+  <rect x="315" y="598" width="210" height="20" fill="#f5f3ff" rx="5"/>
+  <text x="420" y="612" class="app-name" text-anchor="middle" fill="#5b21b6">local-path-provisioner</text>
+  <text x="420" y="623" class="app-role" text-anchor="middle">동적 PV 프로비저닝</text>
+
+  <text x="315" y="648" class="section-label">NETWORK OBSERVABILITY</text>
+  <rect x="315" y="654" width="210" height="20" fill="#ecfeff" rx="5"/>
+  <text x="420" y="668" class="app-name" text-anchor="middle" fill="#0e7490">Hubble UI</text>
+  <rect x="476" y="655" width="42" height="14" fill="#0e7490" rx="4"/>
+  <text x="497" y="666" class="port-text" text-anchor="middle">:31235</text>
+  <text x="420" y="679" class="app-role" text-anchor="middle">네트워크 플로우 시각화</text>
+
+  <text x="315" y="705" class="section-label">CNI</text>
+  <rect x="315" y="710" width="210" height="20" fill="#dbeafe" rx="5"/>
+  <text x="420" y="724" class="app-name" text-anchor="middle" fill="#1d4ed8">Cilium (eBPF CNI)</text>
+  <text x="420" y="735" class="app-role" text-anchor="middle">L3/L4 네트워크 · kube-proxy 대체</text>
+  <rect x="315" y="743" width="210" height="20" fill="#dbeafe" rx="5"/>
+  <text x="420" y="757" class="app-name" text-anchor="middle" fill="#1d4ed8">Hubble Relay</text>
+  <text x="420" y="768" class="app-role" text-anchor="middle">플로우 데이터 수집/전달</text>
+
+  <!-- platform-worker2 -->
+  <rect x="560" y="150" width="220" height="260" fill="#fafafe" rx="10" stroke="#e0e7ff" stroke-width="1"/>
+  <rect x="560" y="150" width="220" height="30" fill="#eef2ff" rx="10"/>
+  <rect x="560" y="168" width="220" height="12" fill="#eef2ff"/>
+  <text x="670" y="170" class="vm-title" text-anchor="middle">platform-worker2</text>
+  <text x="670" y="185" class="vm-spec" text-anchor="middle">2 CPU  ·  8 GB RAM  ·  20 GB Disk</text>
+
+  <text x="575" y="208" class="section-label">WORKLOAD OVERFLOW</text>
+  <text x="670" y="228" class="app-role" text-anchor="middle">worker1의 Pod 부하 분산 대상</text>
+  <text x="670" y="244" class="app-role" text-anchor="middle">Prometheus/Grafana/Jenkins 등이</text>
+  <text x="670" y="258" class="app-role" text-anchor="middle">스케줄러에 의해 분배될 수 있음</text>
+
+  <text x="575" y="285" class="section-label">DAEMONSETS (자동 배포)</text>
+  <rect x="575" y="292" width="190" height="16" fill="#fdf2f8" rx="4"/>
+  <text x="670" y="304" class="app-name" text-anchor="middle" fill="#9d174d" font-size="10">node-exporter (하드웨어 메트릭)</text>
+  <rect x="575" y="314" width="190" height="16" fill="#fdf2f8" rx="4"/>
+  <text x="670" y="326" class="app-name" text-anchor="middle" fill="#9d174d" font-size="10">Promtail (로그 수집 에이전트)</text>
+  <rect x="575" y="336" width="190" height="16" fill="#dbeafe" rx="4"/>
+  <text x="670" y="348" class="app-name" text-anchor="middle" fill="#1d4ed8" font-size="10">Cilium Agent + Hubble</text>
+
+  <!-- ==================== DEV CLUSTER ==================== -->
+  <rect x="820" y="90" width="740" height="740" fill="#fff" rx="14" stroke="#fde68a" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="820" y="90" width="740" height="44" fill="url(#dev-grad)" rx="14"/>
+  <rect x="820" y="120" width="740" height="14" fill="url(#dev-grad)"/>
+  <text x="840" y="118" class="cluster-title">Dev Cluster</text>
+  <text x="980" y="118" class="cluster-sub">개발/데모 환경  ·  Pod CIDR 10.20.0.0/16  ·  Service Mesh + Demo Apps</text>
+
+  <!-- dev-master -->
+  <rect x="840" y="150" width="220" height="260" fill="#fefcf5" rx="10" stroke="#fde68a" stroke-width="1"/>
+  <rect x="840" y="150" width="220" height="30" fill="#fffbeb" rx="10"/>
+  <rect x="840" y="168" width="220" height="12" fill="#fffbeb"/>
+  <text x="950" y="170" class="vm-title" text-anchor="middle">dev-master</text>
+  <text x="950" y="185" class="vm-spec" text-anchor="middle">2 CPU  ·  4 GB RAM  ·  20 GB Disk</text>
+
+  <text x="855" y="208" class="section-label">K8S CONTROL PLANE</text>
+  <rect x="855" y="215" width="190" height="20" fill="#fffbeb" rx="5"/>
+  <text x="950" y="229" class="app-name" text-anchor="middle" fill="#92400e">kube-apiserver</text>
+  <rect x="855" y="241" width="190" height="20" fill="#fffbeb" rx="5"/>
+  <text x="950" y="255" class="app-name" text-anchor="middle" fill="#92400e">etcd</text>
+  <rect x="855" y="267" width="190" height="20" fill="#fffbeb" rx="5"/>
+  <text x="950" y="281" class="app-name" text-anchor="middle" fill="#92400e">kube-scheduler</text>
+  <rect x="855" y="293" width="190" height="20" fill="#fffbeb" rx="5"/>
+  <text x="950" y="307" class="app-name" text-anchor="middle" fill="#92400e">controller-manager</text>
+  <rect x="855" y="319" width="190" height="20" fill="#fffbeb" rx="5"/>
+  <text x="950" y="333" class="app-name" text-anchor="middle" fill="#92400e">CoreDNS</text>
+
+  <text x="855" y="360" class="section-label">ISTIO CONTROL PLANE</text>
+  <rect x="855" y="366" width="190" height="20" fill="#fff7ed" rx="5"/>
+  <text x="950" y="380" class="app-name" text-anchor="middle" fill="#c2410c">istiod</text>
+  <text x="950" y="391" class="app-role" text-anchor="middle">서비스 메시 제어 · mTLS 인증서 발급</text>
+
+  <!-- dev-worker1 -->
+  <rect x="1080" y="150" width="460" height="660" fill="#fefcf5" rx="10" stroke="#fde68a" stroke-width="1"/>
+  <rect x="1080" y="150" width="460" height="30" fill="#fffbeb" rx="10"/>
+  <rect x="1080" y="168" width="460" height="12" fill="#fffbeb"/>
+  <text x="1310" y="170" class="vm-title" text-anchor="middle">dev-worker1</text>
+  <text x="1310" y="185" class="vm-spec" text-anchor="middle">2 CPU  ·  8 GB RAM  ·  20 GB Disk</text>
+
+  <text x="1095" y="208" class="section-label">SERVICE MESH (ISTIO)</text>
+  <rect x="1095" y="215" width="200" height="20" fill="#fff7ed" rx="5"/>
+  <text x="1195" y="229" class="app-name" text-anchor="middle" fill="#c2410c">istio-ingressgateway</text>
+  <rect x="1250" y="216" width="35" height="14" fill="#c2410c" rx="4"/>
+  <text x="1267" y="227" class="port-text" text-anchor="middle">:80</text>
+  <text x="1195" y="240" class="app-role" text-anchor="middle">외부 트래픽 진입점 · L7 라우팅</text>
+  <rect x="1310" y="215" width="215" height="20" fill="#fff7ed" rx="5"/>
+  <text x="1417" y="229" class="app-name" text-anchor="middle" fill="#c2410c">Envoy Sidecar (자동주입)</text>
+  <text x="1417" y="240" class="app-role" text-anchor="middle">mTLS 암호화 · 트래픽 제어 · 텔레메트리</text>
+
+  <text x="1095" y="265" class="section-label">WEB TIER</text>
+  <rect x="1095" y="272" width="430" height="42" fill="#eff6ff" rx="8"/>
+  <rect x="1105" y="278" width="120" height="28" fill="#dbeafe" rx="6"/>
+  <text x="1165" y="296" class="app-name" text-anchor="middle" fill="#1e40af">nginx</text>
+  <rect x="1233" y="280" width="42" height="14" fill="#1e40af" rx="4"/>
+  <text x="1254" y="291" class="port-text" text-anchor="middle">:30080</text>
+  <text x="1340" y="290" class="app-role">웹서버 · HPA 3→10 · PDB minAvailable:2</text>
+  <text x="1340" y="302" class="app-role">CPU 50% 초과 시 자동 스케일링</text>
+
+  <text x="1095" y="330" class="section-label">API TIER</text>
+  <rect x="1095" y="337" width="430" height="58" fill="#fefce8" rx="8"/>
+  <rect x="1105" y="343" width="120" height="28" fill="#fef9c3" rx="6"/>
+  <text x="1165" y="361" class="app-name" text-anchor="middle" fill="#854d0e">httpbin v1</text>
+  <text x="1280" y="355" class="app-role">REST API 테스트 · 80% 트래픽 (Canary)</text>
+  <text x="1280" y="367" class="app-role">HPA 2→6 · L7 GET-only 필터링</text>
+  <rect x="1105" y="375" width="120" height="14" fill="#fef08a" rx="4"/>
+  <text x="1165" y="386" class="app-name" text-anchor="middle" fill="#854d0e" font-size="10">httpbin v2</text>
+  <text x="1280" y="386" class="app-role">카나리 배포 대상 · 20% 트래픽</text>
+
+  <text x="1095" y="413" class="section-label">DATA TIER</text>
+  <rect x="1095" y="420" width="430" height="90" fill="#f0fdf4" rx="8"/>
+  <rect x="1105" y="428" width="130" height="24" fill="#dcfce7" rx="6"/>
+  <text x="1170" y="445" class="app-name" text-anchor="middle" fill="#166534">PostgreSQL 16</text>
+  <text x="1290" y="445" class="app-role">관계형 DB · Keycloak 백엔드 · PDB</text>
+
+  <rect x="1105" y="458" width="130" height="24" fill="#dcfce7" rx="6"/>
+  <text x="1170" y="475" class="app-name" text-anchor="middle" fill="#166534">Redis 7</text>
+  <text x="1290" y="475" class="app-role">인메모리 캐시 · HPA 1→4 · PDB</text>
+
+  <rect x="1105" y="488" width="130" height="16" fill="#dcfce7" rx="4"/>
+  <text x="1170" y="500" class="app-name" text-anchor="middle" fill="#166534" font-size="10">RabbitMQ 3</text>
+  <text x="1290" y="500" class="app-role">메시지 큐 · AMQP · Management UI</text>
+
+  <text x="1095" y="530" class="section-label">AUTH</text>
+  <rect x="1095" y="537" width="430" height="35" fill="#faf5ff" rx="8"/>
+  <rect x="1105" y="543" width="130" height="24" fill="#f3e8ff" rx="6"/>
+  <text x="1170" y="560" class="app-name" text-anchor="middle" fill="#7e22ce">Keycloak</text>
+  <rect x="1240" y="545" width="42" height="14" fill="#7e22ce" rx="4"/>
+  <text x="1261" y="556" class="port-text" text-anchor="middle">:30880</text>
+  <text x="1340" y="560" class="app-role">IAM/SSO · OAuth 2.0 · PostgreSQL 연동</text>
+
+  <text x="1095" y="592" class="section-label">NETWORK SECURITY</text>
+  <rect x="1095" y="598" width="430" height="42" fill="#ecfdf5" rx="8"/>
+  <text x="1310" y="614" class="app-name" text-anchor="middle" fill="#065f46">CiliumNetworkPolicy x 10</text>
+  <text x="1310" y="628" class="app-role" text-anchor="middle">Zero-Trust L7 · Default-Deny → nginx→redis, httpbin→postgres, DNS egress</text>
+
+  <text x="1095" y="660" class="section-label">AUTOSCALING</text>
+  <rect x="1095" y="666" width="430" height="42" fill="#f0f9ff" rx="8"/>
+  <rect x="1105" y="672" width="110" height="20" fill="#e0f2fe" rx="5"/>
+  <text x="1160" y="686" class="app-name" text-anchor="middle" fill="#0c4a6e">metrics-server</text>
+  <text x="1230" y="686" class="app-role">Pod CPU/Memory 실시간 메트릭 수집</text>
+  <rect x="1105" y="696" width="50" height="10" fill="#bae6fd" rx="3"/>
+  <text x="1130" y="704" font-size="8" fill="#0369a1" text-anchor="middle" font-weight="600">HPA x5</text>
+  <rect x="1165" y="696" width="50" height="10" fill="#bae6fd" rx="3"/>
+  <text x="1190" y="704" font-size="8" fill="#0369a1" text-anchor="middle" font-weight="600">PDB x6</text>
+
+  <text x="1095" y="730" class="section-label">TRAFFIC FLOW</text>
+  <rect x="1095" y="736" width="430" height="28" fill="#fff7ed" rx="6"/>
+  <text x="1310" y="755" class="app-role" text-anchor="middle" fill="#9a3412">Gateway → VirtualService (80/20) → DestinationRule (Circuit Breaker) → mTLS STRICT</text>
+
+  <!-- ==================== STAGING CLUSTER ==================== -->
+  <rect x="40" y="850" width="380" height="310" fill="#fff" rx="14" stroke="#a7f3d0" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="40" y="850" width="380" height="44" fill="url(#staging-grad)" rx="14"/>
+  <rect x="40" y="880" width="380" height="14" fill="url(#staging-grad)"/>
+  <text x="60" y="878" class="cluster-title">Staging Cluster</text>
+  <text x="250" y="878" class="cluster-sub">Pre-Production · 10.30.0.0/16</text>
+
+  <rect x="60" y="910" width="165" height="230" fill="#f0fdf8" rx="10" stroke="#a7f3d0" stroke-width="1"/>
+  <rect x="60" y="910" width="165" height="28" fill="#ecfdf5" rx="10"/>
+  <rect x="60" y="928" width="165" height="10" fill="#ecfdf5"/>
+  <text x="142" y="930" class="vm-title" text-anchor="middle">staging-master</text>
+  <text x="142" y="945" class="vm-spec" text-anchor="middle">2 CPU · 4 GB</text>
+  <text x="72" y="965" class="section-label">CONTROL PLANE</text>
+  <rect x="72" y="972" width="140" height="16" fill="#d1fae5" rx="4"/>
+  <text x="142" y="984" class="app-name" text-anchor="middle" fill="#065f46" font-size="10">kube-apiserver</text>
+  <rect x="72" y="993" width="140" height="16" fill="#d1fae5" rx="4"/>
+  <text x="142" y="1005" class="app-name" text-anchor="middle" fill="#065f46" font-size="10">etcd</text>
+  <rect x="72" y="1014" width="140" height="16" fill="#d1fae5" rx="4"/>
+  <text x="142" y="1026" class="app-name" text-anchor="middle" fill="#065f46" font-size="10">scheduler</text>
+  <rect x="72" y="1035" width="140" height="16" fill="#d1fae5" rx="4"/>
+  <text x="142" y="1047" class="app-name" text-anchor="middle" fill="#065f46" font-size="10">controller-manager</text>
+  <rect x="72" y="1056" width="140" height="16" fill="#d1fae5" rx="4"/>
+  <text x="142" y="1068" class="app-name" text-anchor="middle" fill="#065f46" font-size="10">CoreDNS</text>
+  <rect x="72" y="1082" width="140" height="16" fill="#dbeafe" rx="4"/>
+  <text x="142" y="1094" class="app-name" text-anchor="middle" fill="#1d4ed8" font-size="10">Cilium Operator</text>
+
+  <rect x="240" y="910" width="165" height="230" fill="#f0fdf8" rx="10" stroke="#a7f3d0" stroke-width="1"/>
+  <rect x="240" y="910" width="165" height="28" fill="#ecfdf5" rx="10"/>
+  <rect x="240" y="928" width="165" height="10" fill="#ecfdf5"/>
+  <text x="322" y="930" class="vm-title" text-anchor="middle">staging-worker1</text>
+  <text x="322" y="945" class="vm-spec" text-anchor="middle">2 CPU · 8 GB</text>
+  <text x="252" y="965" class="section-label">WORKLOADS</text>
+  <rect x="252" y="972" width="140" height="16" fill="#e0f2fe" rx="4"/>
+  <text x="322" y="984" class="app-name" text-anchor="middle" fill="#0c4a6e" font-size="10">metrics-server</text>
+  <text x="322" y="1000" class="app-role" text-anchor="middle">HPA용 메트릭</text>
+  <text x="252" y="1025" class="section-label">READY FOR DEPLOY</text>
+  <text x="322" y="1045" class="app-role" text-anchor="middle">프로덕션 배포 전</text>
+  <text x="322" y="1058" class="app-role" text-anchor="middle">검증 환경</text>
+  <text x="322" y="1071" class="app-role" text-anchor="middle">(앱 미배포 상태)</text>
+  <rect x="252" y="1090" width="140" height="16" fill="#dbeafe" rx="4"/>
+  <text x="322" y="1102" class="app-name" text-anchor="middle" fill="#1d4ed8" font-size="10">Cilium Agent + Hubble</text>
+
+  <!-- ==================== PROD CLUSTER ==================== -->
+  <rect x="440" y="850" width="560" height="310" fill="#fff" rx="14" stroke="#fca5a5" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="440" y="850" width="560" height="44" fill="url(#prod-grad)" rx="14"/>
+  <rect x="440" y="880" width="560" height="14" fill="url(#prod-grad)"/>
+  <text x="460" y="878" class="cluster-title">Prod Cluster</text>
+  <text x="600" y="878" class="cluster-sub">Production · 10.40.0.0/16 · 운영 환경 (별도 배포)</text>
+
+  <rect x="460" y="910" width="160" height="230" fill="#fef5f5" rx="10" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="460" y="910" width="160" height="28" fill="#fef2f2" rx="10"/>
+  <rect x="460" y="928" width="160" height="10" fill="#fef2f2"/>
+  <text x="540" y="930" class="vm-title" text-anchor="middle">prod-master</text>
+  <text x="540" y="945" class="vm-spec" text-anchor="middle">2 CPU · 3 GB</text>
+  <text x="472" y="965" class="section-label">CONTROL PLANE</text>
+  <rect x="472" y="972" width="136" height="16" fill="#fee2e2" rx="4"/>
+  <text x="540" y="984" class="app-name" text-anchor="middle" fill="#991b1b" font-size="10">kube-apiserver</text>
+  <rect x="472" y="993" width="136" height="16" fill="#fee2e2" rx="4"/>
+  <text x="540" y="1005" class="app-name" text-anchor="middle" fill="#991b1b" font-size="10">etcd</text>
+  <rect x="472" y="1014" width="136" height="16" fill="#fee2e2" rx="4"/>
+  <text x="540" y="1026" class="app-name" text-anchor="middle" fill="#991b1b" font-size="10">scheduler</text>
+  <rect x="472" y="1035" width="136" height="16" fill="#fee2e2" rx="4"/>
+  <text x="540" y="1047" class="app-name" text-anchor="middle" fill="#991b1b" font-size="10">controller-manager</text>
+  <rect x="472" y="1056" width="136" height="16" fill="#fee2e2" rx="4"/>
+  <text x="540" y="1068" class="app-name" text-anchor="middle" fill="#991b1b" font-size="10">CoreDNS</text>
+  <rect x="472" y="1082" width="136" height="16" fill="#dbeafe" rx="4"/>
+  <text x="540" y="1094" class="app-name" text-anchor="middle" fill="#1d4ed8" font-size="10">Cilium Operator</text>
+
+  <rect x="640" y="910" width="160" height="230" fill="#fef5f5" rx="10" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="640" y="910" width="160" height="28" fill="#fef2f2" rx="10"/>
+  <rect x="640" y="928" width="160" height="10" fill="#fef2f2"/>
+  <text x="720" y="930" class="vm-title" text-anchor="middle">prod-worker1</text>
+  <text x="720" y="945" class="vm-spec" text-anchor="middle">2 CPU · 8 GB</text>
+  <text x="652" y="965" class="section-label">PRODUCTION APPS</text>
+  <text x="720" y="988" class="app-role" text-anchor="middle">운영 워크로드</text>
+  <text x="720" y="1003" class="app-role" text-anchor="middle">배포 대상</text>
+  <text x="720" y="1020" class="app-role" text-anchor="middle">(ArgoCD 자동 배포)</text>
+  <rect x="652" y="1090" width="136" height="16" fill="#dbeafe" rx="4"/>
+  <text x="720" y="1102" class="app-name" text-anchor="middle" fill="#1d4ed8" font-size="10">Cilium Agent + Hubble</text>
+
+  <rect x="820" y="910" width="160" height="230" fill="#fef5f5" rx="10" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="820" y="910" width="160" height="28" fill="#fef2f2" rx="10"/>
+  <rect x="820" y="928" width="160" height="10" fill="#fef2f2"/>
+  <text x="900" y="930" class="vm-title" text-anchor="middle">prod-worker2</text>
+  <text x="900" y="945" class="vm-spec" text-anchor="middle">2 CPU · 8 GB</text>
+  <text x="832" y="965" class="section-label">PRODUCTION APPS</text>
+  <text x="900" y="988" class="app-role" text-anchor="middle">고가용성 보장</text>
+  <text x="900" y="1003" class="app-role" text-anchor="middle">워커 이중화</text>
+  <rect x="832" y="1090" width="136" height="16" fill="#dbeafe" rx="4"/>
+  <text x="900" y="1102" class="app-name" text-anchor="middle" fill="#1d4ed8" font-size="10">Cilium Agent + Hubble</text>
+
+  <!-- ==================== SRE DASHBOARD ==================== -->
+  <rect x="1020" y="850" width="540" height="310" fill="#fff" rx="14" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="1020" y="850" width="540" height="44" fill="#4F46E5" rx="14"/>
+  <rect x="1020" y="880" width="540" height="14" fill="#4F46E5"/>
+  <text x="1040" y="878" class="cluster-title">SRE Dashboard</text>
+  <text x="1210" y="878" class="cluster-sub">localhost:5173 + :3001 · macOS에서 직접 실행</text>
+
+  <rect x="1040" y="910" width="250" height="230" fill="#fafafe" rx="10" stroke="#e0e7ff" stroke-width="1"/>
+  <rect x="1040" y="910" width="250" height="28" fill="#eef2ff" rx="10"/>
+  <rect x="1040" y="928" width="250" height="10" fill="#eef2ff"/>
+  <text x="1165" y="930" class="vm-title" text-anchor="middle">Frontend (React 19)</text>
+  <text x="1165" y="945" class="vm-spec" text-anchor="middle">Vite 7 · TypeScript · Tailwind CSS</text>
+  <text x="1052" y="965" class="section-label">6 PAGES</text>
+  <rect x="1052" y="972" width="226" height="15" fill="#eef2ff" rx="4"/>
+  <text x="1165" y="983" class="app-name" text-anchor="middle" fill="#4338ca" font-size="10">Overview — 4개 클러스터 요약</text>
+  <rect x="1052" y="991" width="226" height="15" fill="#eef2ff" rx="4"/>
+  <text x="1165" y="1002" class="app-name" text-anchor="middle" fill="#4338ca" font-size="10">ClusterDetail — 노드/Pod 상세</text>
+  <rect x="1052" y="1010" width="226" height="15" fill="#eef2ff" rx="4"/>
+  <text x="1165" y="1021" class="app-name" text-anchor="middle" fill="#4338ca" font-size="10">Testing — 16개 부하 테스트 실행</text>
+  <rect x="1052" y="1029" width="226" height="15" fill="#eef2ff" rx="4"/>
+  <text x="1165" y="1040" class="app-name" text-anchor="middle" fill="#4338ca" font-size="10">Traffic — Hubble 네트워크 토폴로지</text>
+  <rect x="1052" y="1048" width="226" height="15" fill="#eef2ff" rx="4"/>
+  <text x="1165" y="1059" class="app-name" text-anchor="middle" fill="#4338ca" font-size="10">Scaling — HPA 리플리카 히스토리</text>
+  <rect x="1052" y="1067" width="226" height="15" fill="#eef2ff" rx="4"/>
+  <text x="1165" y="1078" class="app-name" text-anchor="middle" fill="#4338ca" font-size="10">LoadAnalysis — p95/p99 분석</text>
+  <rect x="1052" y="1095" width="100" height="14" fill="#dbeafe" rx="4"/>
+  <text x="1102" y="1106" font-size="9" fill="#1d4ed8" text-anchor="middle" font-weight="600">5s polling</text>
+
+  <rect x="1310" y="910" width="230" height="230" fill="#fafafe" rx="10" stroke="#e0e7ff" stroke-width="1"/>
+  <rect x="1310" y="910" width="230" height="28" fill="#eef2ff" rx="10"/>
+  <rect x="1310" y="928" width="230" height="10" fill="#eef2ff"/>
+  <text x="1425" y="930" class="vm-title" text-anchor="middle">Backend (Express 5)</text>
+  <text x="1425" y="945" class="vm-spec" text-anchor="middle">Node.js · ssh2 · execa</text>
+  <text x="1322" y="965" class="section-label">11 API ENDPOINTS</text>
+  <rect x="1322" y="972" width="206" height="15" fill="#f0fdf4" rx="4"/>
+  <text x="1425" y="983" class="app-name" text-anchor="middle" fill="#166534" font-size="10">Snapshot — VM/클러스터 상태</text>
+  <rect x="1322" y="991" width="206" height="15" fill="#f0fdf4" rx="4"/>
+  <text x="1425" y="1002" class="app-name" text-anchor="middle" fill="#166534" font-size="10">Traffic — Hubble 플로우 수집</text>
+  <rect x="1322" y="1010" width="206" height="15" fill="#f0fdf4" rx="4"/>
+  <text x="1425" y="1021" class="app-name" text-anchor="middle" fill="#166534" font-size="10">Tests — k6/stress-ng 실행</text>
+  <rect x="1322" y="1029" width="206" height="15" fill="#f0fdf4" rx="4"/>
+  <text x="1425" y="1040" class="app-name" text-anchor="middle" fill="#166534" font-size="10">Scaling — HPA 히스토리</text>
+  <rect x="1322" y="1048" width="206" height="15" fill="#f0fdf4" rx="4"/>
+  <text x="1425" y="1059" class="app-name" text-anchor="middle" fill="#166534" font-size="10">Services — 서비스 목록</text>
+  <text x="1322" y="1085" class="section-label">COLLECTORS</text>
+  <rect x="1322" y="1092" width="65" height="14" fill="#e0f2fe" rx="4"/>
+  <text x="1354" y="1103" font-size="8" fill="#0369a1" text-anchor="middle" font-weight="600">tart CLI</text>
+  <rect x="1392" y="1092" width="65" height="14" fill="#e0f2fe" rx="4"/>
+  <text x="1424" y="1103" font-size="8" fill="#0369a1" text-anchor="middle" font-weight="600">kubectl</text>
+  <rect x="1462" y="1092" width="55" height="14" fill="#e0f2fe" rx="4"/>
+  <text x="1489" y="1103" font-size="8" fill="#0369a1" text-anchor="middle" font-weight="600">SSH</text>
+
+  <!-- ==================== CONNECTION ARROWS ==================== -->
+  <!-- Dashboard → Clusters -->
+  <path d="M 1290 1155 L 1290 1200 Q 1290 1220 1270 1220 L 500 1220 Q 480 1220 480 1200 L 480 1170" fill="none" stroke="#6366F1" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrowhead-blue)"/>
+  <text x="880" y="1215" class="arrow-label" fill="#6366F1" text-anchor="middle">SSH + kubectl + tart CLI로 모든 클러스터 제어</text>
+
+  <!-- ArgoCD → Dev -->
+  <path d="M 540 810 Q 540 830 600 830 Q 900 830 1200 830 L 1200 850" fill="none" stroke="#166534" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+  <text x="870" y="842" class="arrow-label" fill="#166534" text-anchor="middle">ArgoCD GitOps 자동 배포</text>
+
+  <!-- ==================== INSTALL PIPELINE ==================== -->
+  <rect x="40" y="1190" width="960" height="390" fill="#fff" rx="14" stroke="#ddd6fe" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="40" y="1190" width="960" height="40" fill="#7C3AED" rx="14"/>
+  <rect x="40" y="1216" width="960" height="14" fill="#7C3AED"/>
+  <text x="60" y="1216" class="cluster-title">12-Phase Automated Installation Pipeline</text>
+  <text x="460" y="1216" class="cluster-sub">15~20분 (골든이미지) · 45~60분 (풀 설치) · Bash 자동화</text>
+
+  <!-- Row 1 -->
+  <rect x="60" y="1245" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="130" y="1265" class="app-name" text-anchor="middle" fill="#5b21b6">01 VM 생성</text>
+  <text x="130" y="1280" class="app-role" text-anchor="middle">Tart clone x 10</text>
+  <text x="208" y="1272" fill="#c4b5fd" font-size="14">→</text>
+  <rect x="220" y="1245" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="290" y="1265" class="app-name" text-anchor="middle" fill="#5b21b6">02 노드 준비</text>
+  <text x="290" y="1280" class="app-role" text-anchor="middle">swap off · sysctl</text>
+  <text x="368" y="1272" fill="#c4b5fd" font-size="14">→</text>
+  <rect x="380" y="1245" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="450" y="1265" class="app-name" text-anchor="middle" fill="#5b21b6">03 런타임</text>
+  <text x="450" y="1280" class="app-role" text-anchor="middle">containerd 설치</text>
+  <text x="528" y="1272" fill="#c4b5fd" font-size="14">→</text>
+  <rect x="540" y="1245" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="610" y="1265" class="app-name" text-anchor="middle" fill="#5b21b6">04 K8s 도구</text>
+  <text x="610" y="1280" class="app-role" text-anchor="middle">kubeadm · kubectl</text>
+  <text x="688" y="1272" fill="#c4b5fd" font-size="14">→</text>
+  <rect x="700" y="1245" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="770" y="1265" class="app-name" text-anchor="middle" fill="#5b21b6">05 클러스터 초기화</text>
+  <text x="770" y="1280" class="app-role" text-anchor="middle">kubeadm init x 4</text>
+  <text x="848" y="1272" fill="#c4b5fd" font-size="14">→</text>
+  <rect x="860" y="1245" width="120" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="920" y="1265" class="app-name" text-anchor="middle" fill="#5b21b6">06 CNI</text>
+  <text x="920" y="1280" class="app-role" text-anchor="middle">Cilium + Hubble</text>
+
+  <!-- Row 2 -->
+  <text x="920" y="1315" fill="#c4b5fd" font-size="14" text-anchor="middle">↓</text>
+  <rect x="860" y="1325" width="120" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="920" y="1345" class="app-name" text-anchor="middle" fill="#5b21b6">07 모니터링</text>
+  <text x="920" y="1360" class="app-role" text-anchor="middle">Prometheus Stack</text>
+  <text x="848" y="1352" fill="#c4b5fd" font-size="14">←</text>
+  <rect x="700" y="1325" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="770" y="1345" class="app-name" text-anchor="middle" fill="#5b21b6">08 CI/CD</text>
+  <text x="770" y="1360" class="app-role" text-anchor="middle">ArgoCD + Jenkins</text>
+  <text x="688" y="1352" fill="#c4b5fd" font-size="14">←</text>
+  <rect x="540" y="1325" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="610" y="1345" class="app-name" text-anchor="middle" fill="#5b21b6">09 알림</text>
+  <text x="610" y="1360" class="app-role" text-anchor="middle">AlertManager</text>
+  <text x="528" y="1352" fill="#c4b5fd" font-size="14">←</text>
+  <rect x="380" y="1325" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="450" y="1345" class="app-name" text-anchor="middle" fill="#5b21b6">10 네트워크 보안</text>
+  <text x="450" y="1360" class="app-role" text-anchor="middle">Zero-Trust L7</text>
+  <text x="368" y="1352" fill="#c4b5fd" font-size="14">←</text>
+  <rect x="220" y="1325" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="290" y="1345" class="app-name" text-anchor="middle" fill="#5b21b6">11 오토스케일링</text>
+  <text x="290" y="1360" class="app-role" text-anchor="middle">HPA + PDB</text>
+  <text x="208" y="1352" fill="#c4b5fd" font-size="14">←</text>
+  <rect x="60" y="1325" width="140" height="50" fill="#f5f3ff" rx="8" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="130" y="1345" class="app-name" text-anchor="middle" fill="#5b21b6">12 서비스 메시</text>
+  <text x="130" y="1360" class="app-role" text-anchor="middle">Istio + Envoy</text>
+
+  <!-- Phase targeting -->
+  <text x="60" y="1400" class="section-label">PHASE TARGET</text>
+  <rect x="60" y="1408" width="180" height="20" fill="#eef2ff" rx="5"/>
+  <text x="150" y="1422" class="app-role" text-anchor="middle" fill="#4338ca">Phase 01~06: 모든 클러스터</text>
+  <rect x="250" y="1408" width="200" height="20" fill="#fdf2f8" rx="5"/>
+  <text x="350" y="1422" class="app-role" text-anchor="middle" fill="#9d174d">Phase 07~09: platform 전용</text>
+  <rect x="460" y="1408" width="190" height="20" fill="#fff7ed" rx="5"/>
+  <text x="555" y="1422" class="app-role" text-anchor="middle" fill="#c2410c">Phase 10~12: dev 전용</text>
+
+  <!-- ==================== PORT SUMMARY ==================== -->
+  <rect x="1020" y="1190" width="540" height="390" fill="#fff" rx="14" stroke="#e2e8f0" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="1020" y="1190" width="540" height="40" fill="#334155" rx="14"/>
+  <rect x="1020" y="1216" width="540" height="14" fill="#334155"/>
+  <text x="1040" y="1216" class="cluster-title">Service Access Ports</text>
+
+  <text x="1040" y="1254" class="section-label">PLATFORM CLUSTER</text>
+  <rect x="1040" y="1262" width="500" height="22" fill="#f8fafc" rx="4"/>
+  <text x="1050" y="1278" class="app-name" fill="#334155" font-size="11">Grafana</text>
+  <text x="1200" y="1278" class="app-role">메트릭 대시보드</text>
+  <rect x="1430" y="1265" width="60" height="16" fill="#4F46E5" rx="4"/>
+  <text x="1460" y="1277" class="port-text" text-anchor="middle">:30300</text>
+  <rect x="1040" y="1288" width="500" height="22" fill="#fff" rx="4"/>
+  <text x="1050" y="1304" class="app-name" fill="#334155" font-size="11">ArgoCD</text>
+  <text x="1200" y="1304" class="app-role">GitOps CD 콘솔</text>
+  <rect x="1430" y="1291" width="60" height="16" fill="#166534" rx="4"/>
+  <text x="1460" y="1303" class="port-text" text-anchor="middle">:30800</text>
+  <rect x="1040" y="1314" width="500" height="22" fill="#f8fafc" rx="4"/>
+  <text x="1050" y="1330" class="app-name" fill="#334155" font-size="11">Jenkins</text>
+  <text x="1200" y="1330" class="app-role">CI 파이프라인 콘솔</text>
+  <rect x="1430" y="1317" width="60" height="16" fill="#166534" rx="4"/>
+  <text x="1460" y="1329" class="port-text" text-anchor="middle">:30900</text>
+  <rect x="1040" y="1340" width="500" height="22" fill="#fff" rx="4"/>
+  <text x="1050" y="1356" class="app-name" fill="#334155" font-size="11">AlertManager</text>
+  <text x="1200" y="1356" class="app-role">알림 관리 UI</text>
+  <rect x="1430" y="1343" width="60" height="16" fill="#9d174d" rx="4"/>
+  <text x="1460" y="1355" class="port-text" text-anchor="middle">:30903</text>
+  <rect x="1040" y="1366" width="500" height="22" fill="#f8fafc" rx="4"/>
+  <text x="1050" y="1382" class="app-name" fill="#334155" font-size="11">Hubble UI</text>
+  <text x="1200" y="1382" class="app-role">네트워크 플로우 시각화</text>
+  <rect x="1430" y="1369" width="60" height="16" fill="#0e7490" rx="4"/>
+  <text x="1460" y="1381" class="port-text" text-anchor="middle">:31235</text>
+
+  <text x="1040" y="1410" class="section-label">DEV CLUSTER</text>
+  <rect x="1040" y="1418" width="500" height="22" fill="#fffbeb" rx="4"/>
+  <text x="1050" y="1434" class="app-name" fill="#334155" font-size="11">nginx-web</text>
+  <text x="1200" y="1434" class="app-role">데모 웹서버</text>
+  <rect x="1430" y="1421" width="60" height="16" fill="#D97706" rx="4"/>
+  <text x="1460" y="1433" class="port-text" text-anchor="middle">:30080</text>
+  <rect x="1040" y="1444" width="500" height="22" fill="#fff" rx="4"/>
+  <text x="1050" y="1460" class="app-name" fill="#334155" font-size="11">Keycloak</text>
+  <text x="1200" y="1460" class="app-role">SSO/OAuth 2.0 콘솔</text>
+  <rect x="1430" y="1447" width="60" height="16" fill="#7e22ce" rx="4"/>
+  <text x="1460" y="1459" class="port-text" text-anchor="middle">:30880</text>
+  <rect x="1040" y="1470" width="500" height="22" fill="#fffbeb" rx="4"/>
+  <text x="1050" y="1486" class="app-name" fill="#334155" font-size="11">Istio Gateway</text>
+  <text x="1200" y="1486" class="app-role">서비스 메시 진입점</text>
+  <rect x="1430" y="1473" width="60" height="16" fill="#c2410c" rx="4"/>
+  <text x="1460" y="1485" class="port-text" text-anchor="middle">:80</text>
+
+  <text x="1040" y="1515" class="section-label">LOCALHOST (DASHBOARD)</text>
+  <rect x="1040" y="1523" width="500" height="22" fill="#eef2ff" rx="4"/>
+  <text x="1050" y="1539" class="app-name" fill="#334155" font-size="11">Dashboard Frontend</text>
+  <text x="1200" y="1539" class="app-role">SRE 운영 대시보드</text>
+  <rect x="1430" y="1526" width="60" height="16" fill="#4F46E5" rx="4"/>
+  <text x="1460" y="1538" class="port-text" text-anchor="middle">:5173</text>
+  <rect x="1040" y="1549" width="500" height="22" fill="#fff" rx="4"/>
+  <text x="1050" y="1565" class="app-name" fill="#334155" font-size="11">Dashboard Backend</text>
+  <text x="1200" y="1565" class="app-role">REST API 서버</text>
+  <rect x="1430" y="1552" width="60" height="16" fill="#4F46E5" rx="4"/>
+  <text x="1460" y="1564" class="port-text" text-anchor="middle">:3001</text>
+
+  <!-- ==================== COMMON + TART + HW ==================== -->
+  <rect x="40" y="1600" width="1520" height="58" fill="#fff" rx="10" stroke="#e2e8f0" stroke-width="1" filter="url(#shadow-sm)"/>
+  <text x="60" y="1620" class="section-label">ALL 10 NODES COMMON</text>
+  <rect x="220" y="1608" width="95" height="22" fill="#e0f2fe" rx="6"/>
+  <text x="267" y="1623" class="app-name" text-anchor="middle" fill="#0369a1">containerd</text>
+  <rect x="325" y="1608" width="70" height="22" fill="#e0f2fe" rx="6"/>
+  <text x="360" y="1623" class="app-name" text-anchor="middle" fill="#0369a1">kubelet</text>
+  <rect x="405" y="1608" width="80" height="22" fill="#e0f2fe" rx="6"/>
+  <text x="445" y="1623" class="app-name" text-anchor="middle" fill="#0369a1">kubeadm</text>
+  <rect x="495" y="1608" width="110" height="22" fill="#dbeafe" rx="6"/>
+  <text x="550" y="1623" class="app-name" text-anchor="middle" fill="#1d4ed8">Cilium Agent</text>
+  <rect x="615" y="1608" width="80" height="22" fill="#dbeafe" rx="6"/>
+  <text x="655" y="1623" class="app-name" text-anchor="middle" fill="#1d4ed8">Hubble</text>
+  <rect x="705" y="1608" width="110" height="22" fill="#f0fdf4" rx="6"/>
+  <text x="760" y="1623" class="app-name" text-anchor="middle" fill="#166534">node-exporter</text>
+  <rect x="825" y="1608" width="80" height="22" fill="#f0fdf4" rx="6"/>
+  <text x="865" y="1623" class="app-name" text-anchor="middle" fill="#166534">Promtail</text>
+  <text x="60" y="1648" class="app-role">Ubuntu 24.04 ARM64  ·  swap off  ·  br_netfilter  ·  overlay  ·  ip_forward  ·  eBPF datapath (kube-proxy 미사용)</text>
+
+  <rect x="40" y="1670" width="1520" height="50" fill="url(#tart-grad)" rx="10"/>
+  <text x="800" y="1698" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">Tart  (Apple Hypervisor.framework)</text>
+  <text x="800" y="1713" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.85)">ARM64 Native VM Runtime  ·  ghcr.io/cirruslabs/ubuntu:latest  ·  softnet networking</text>
+
+  <rect x="40" y="1730" width="1520" height="55" fill="url(#hw-grad)" rx="10"/>
+  <text x="800" y="1758" class="hw-title" text-anchor="middle">Apple Silicon M4 Max</text>
+  <text x="800" y="1775" class="hw-sub" text-anchor="middle">16 CPU  ·  RAM 128 GB  ·  macOS Sequoia</text>
+
+</svg>

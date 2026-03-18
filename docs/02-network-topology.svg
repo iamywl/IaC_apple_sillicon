@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 850" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3fb950"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f0883e"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#bb86fc"/>
+    </marker>
+    <filter id="s2">
+      <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="850" fill="url(#bg2)"/>
+
+  <!-- Title -->
+  <text x="600" y="40" text-anchor="middle" fill="#e6edf3" font-size="24" font-weight="700">Network Topology &amp; CIDR Allocation</text>
+  <text x="600" y="62" text-anchor="middle" fill="#8b949e" font-size="13">Cilium eBPF CNI · Hubble Observability · Istio Service Mesh · Zero-Trust Network Policies</text>
+
+  <!-- Host Network -->
+  <rect x="40" y="80" width="1120" height="110" rx="12" fill="#21262d" stroke="#30363d" stroke-width="1.5" filter="url(#s2)"/>
+  <text x="60" y="108" fill="#e6edf3" font-size="15" font-weight="700">Host Network — macOS Shared Network (192.168.64.0/24)</text>
+  <text x="60" y="128" fill="#8b949e" font-size="11">Apple Hypervisor vmnet — Each VM gets a dynamic IP via DHCP on the shared network bridge</text>
+
+  <!-- VM IPs -->
+  <g transform="translate(60, 140)">
+    <rect width="240" height="38" rx="6" fill="#e945601a" stroke="#e94560" stroke-width="1"/>
+    <text x="12" y="24" fill="#e94560" font-size="10" font-weight="600">PLATFORM</text>
+    <text x="100" y="24" fill="#c9d1d9" font-size="10">master · worker1 · worker2</text>
+  </g>
+  <g transform="translate(315, 140)">
+    <rect width="190" height="38" rx="6" fill="#00b4d81a" stroke="#00b4d8" stroke-width="1"/>
+    <text x="12" y="24" fill="#00b4d8" font-size="10" font-weight="600">DEV</text>
+    <text x="50" y="24" fill="#c9d1d9" font-size="10">master · worker1</text>
+  </g>
+  <g transform="translate(520, 140)">
+    <rect width="200" height="38" rx="6" fill="#f9c74f1a" stroke="#f9c74f" stroke-width="1"/>
+    <text x="12" y="24" fill="#f9c74f" font-size="10" font-weight="600">STAGING</text>
+    <text x="72" y="24" fill="#c9d1d9" font-size="10">master · worker1</text>
+  </g>
+  <g transform="translate(735, 140)">
+    <rect width="260" height="38" rx="6" fill="#52b7881a" stroke="#52b788" stroke-width="1"/>
+    <text x="12" y="24" fill="#52b788" font-size="10" font-weight="600">PROD</text>
+    <text x="52" y="24" fill="#c9d1d9" font-size="10">master · worker1 · worker2</text>
+  </g>
+
+  <!-- Cluster Network Boxes -->
+  <!-- Platform -->
+  <rect x="40" y="220" width="270" height="340" rx="12" fill="#161b22" stroke="#e94560" stroke-width="2" filter="url(#s2)"/>
+  <rect x="40" y="220" width="270" height="35" rx="12" fill="#e94560"/>
+  <rect x="40" y="245" width="270" height="10" fill="#e94560"/>
+  <text x="175" y="244" text-anchor="middle" fill="white" font-size="14" font-weight="700">platform</text>
+
+  <text x="60" y="280" fill="#e6edf3" font-size="12" font-weight="600">Pod Network</text>
+  <rect x="60" y="288" width="230" height="30" rx="6" fill="#e945601a" stroke="#e94560" stroke-width="1"/>
+  <text x="175" y="308" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.10.0.0/16</text>
+
+  <text x="60" y="340" fill="#e6edf3" font-size="12" font-weight="600">Service Network</text>
+  <rect x="60" y="348" width="230" height="30" rx="6" fill="#e945601a" stroke="#e94560" stroke-width="1"/>
+  <text x="175" y="368" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.96.0.0/16</text>
+
+  <text x="60" y="402" fill="#8b949e" font-size="11" font-weight="600">CNI: Cilium eBPF</text>
+  <text x="60" y="418" fill="#8b949e" font-size="10">kube-proxy replacement</text>
+  <text x="60" y="434" fill="#8b949e" font-size="10">Hubble L3/L4/L7 flow logs</text>
+
+  <rect x="60" y="450" width="230" height="48" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="70" y="470" fill="#bb86fc" font-size="10" font-weight="600">Monitoring Endpoints</text>
+  <text x="70" y="486" fill="#c9d1d9" font-size="9">Prometheus :9090 · Grafana :3000 · Loki :3100</text>
+
+  <rect x="60" y="502" width="230" height="38" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="70" y="520" fill="#3fb950" font-size="10" font-weight="600">CI/CD Endpoints</text>
+  <text x="70" y="534" fill="#c9d1d9" font-size="9">Jenkins :8080 · ArgoCD :443</text>
+
+  <!-- Dev -->
+  <rect x="330" y="220" width="270" height="340" rx="12" fill="#161b22" stroke="#00b4d8" stroke-width="2" filter="url(#s2)"/>
+  <rect x="330" y="220" width="270" height="35" rx="12" fill="#00b4d8"/>
+  <rect x="330" y="245" width="270" height="10" fill="#00b4d8"/>
+  <text x="465" y="244" text-anchor="middle" fill="white" font-size="14" font-weight="700">dev</text>
+
+  <text x="350" y="280" fill="#e6edf3" font-size="12" font-weight="600">Pod Network</text>
+  <rect x="350" y="288" width="230" height="30" rx="6" fill="#00b4d81a" stroke="#00b4d8" stroke-width="1"/>
+  <text x="465" y="308" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.20.0.0/16</text>
+
+  <text x="350" y="340" fill="#e6edf3" font-size="12" font-weight="600">Service Network</text>
+  <rect x="350" y="348" width="230" height="30" rx="6" fill="#00b4d81a" stroke="#00b4d8" stroke-width="1"/>
+  <text x="465" y="368" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.97.0.0/16</text>
+
+  <text x="350" y="402" fill="#8b949e" font-size="11" font-weight="600">CNI: Cilium eBPF + Hubble</text>
+
+  <rect x="350" y="415" width="230" height="55" rx="6" fill="#21262d" stroke="#f0883e" stroke-width="1"/>
+  <text x="360" y="434" fill="#f0883e" font-size="10" font-weight="600">Istio Service Mesh</text>
+  <text x="360" y="450" fill="#c9d1d9" font-size="9">mTLS STRICT · Canary 80/20</text>
+  <text x="360" y="462" fill="#c9d1d9" font-size="9">Circuit Breaker · 5xx → 30s eject</text>
+
+  <rect x="350" y="478" width="230" height="42" rx="6" fill="#21262d" stroke="#e94560" stroke-width="1"/>
+  <text x="360" y="496" fill="#e94560" font-size="10" font-weight="600">Zero-Trust Network Policies</text>
+  <text x="360" y="510" fill="#c9d1d9" font-size="9">default-deny + L7 whitelist rules</text>
+
+  <rect x="350" y="528" width="230" height="22" rx="4" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="360" y="543" fill="#c9d1d9" font-size="9">HPA: metrics-server → 3→10 pods</text>
+
+  <!-- Staging -->
+  <rect x="620" y="220" width="270" height="240" rx="12" fill="#161b22" stroke="#f9c74f" stroke-width="2" filter="url(#s2)"/>
+  <rect x="620" y="220" width="270" height="35" rx="12" fill="#f9c74f"/>
+  <rect x="620" y="245" width="270" height="10" fill="#f9c74f"/>
+  <text x="755" y="244" text-anchor="middle" fill="#1a1a2e" font-size="14" font-weight="700">staging</text>
+
+  <text x="640" y="280" fill="#e6edf3" font-size="12" font-weight="600">Pod Network</text>
+  <rect x="640" y="288" width="230" height="30" rx="6" fill="#f9c74f1a" stroke="#f9c74f" stroke-width="1"/>
+  <text x="755" y="308" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.30.0.0/16</text>
+
+  <text x="640" y="340" fill="#e6edf3" font-size="12" font-weight="600">Service Network</text>
+  <rect x="640" y="348" width="230" height="30" rx="6" fill="#f9c74f1a" stroke="#f9c74f" stroke-width="1"/>
+  <text x="755" y="368" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.98.0.0/16</text>
+
+  <text x="640" y="402" fill="#8b949e" font-size="11" font-weight="600">CNI: Cilium eBPF + Hubble</text>
+  <text x="640" y="418" fill="#8b949e" font-size="10">metrics-server installed</text>
+
+  <!-- Prod -->
+  <rect x="910" y="220" width="250" height="240" rx="12" fill="#161b22" stroke="#52b788" stroke-width="2" filter="url(#s2)"/>
+  <rect x="910" y="220" width="250" height="35" rx="12" fill="#52b788"/>
+  <rect x="910" y="245" width="250" height="10" fill="#52b788"/>
+  <text x="1035" y="244" text-anchor="middle" fill="white" font-size="14" font-weight="700">prod</text>
+
+  <text x="930" y="280" fill="#e6edf3" font-size="12" font-weight="600">Pod Network</text>
+  <rect x="930" y="288" width="210" height="30" rx="6" fill="#52b7881a" stroke="#52b788" stroke-width="1"/>
+  <text x="1035" y="308" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.40.0.0/16</text>
+
+  <text x="930" y="340" fill="#e6edf3" font-size="12" font-weight="600">Service Network</text>
+  <rect x="930" y="348" width="210" height="30" rx="6" fill="#52b7881a" stroke="#52b788" stroke-width="1"/>
+  <text x="1035" y="368" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">10.99.0.0/16</text>
+
+  <text x="930" y="402" fill="#8b949e" font-size="11" font-weight="600">CNI: Cilium eBPF + Hubble</text>
+  <text x="930" y="418" fill="#8b949e" font-size="10">HA: 2 worker nodes</text>
+
+  <!-- Data Flow Section -->
+  <rect x="40" y="590" width="1120" height="240" rx="12" fill="#21262d" stroke="#30363d" stroke-width="1.5"/>
+  <text x="60" y="618" fill="#e6edf3" font-size="15" font-weight="700">Data Flow &amp; Network Policies (dev cluster)</text>
+
+  <!-- Flow diagram inside dev -->
+  <!-- Nodes -->
+  <rect x="80" y="640" width="100" height="50" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="130" y="660" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">External</text>
+  <text x="130" y="676" text-anchor="middle" fill="#8b949e" font-size="9">Client</text>
+
+  <rect x="240" y="640" width="100" height="50" rx="8" fill="#161b22" stroke="#bb86fc" stroke-width="1.5"/>
+  <text x="290" y="660" text-anchor="middle" fill="#bb86fc" font-size="11" font-weight="600">Keycloak</text>
+  <text x="290" y="676" text-anchor="middle" fill="#8b949e" font-size="9">:8080 OAuth</text>
+
+  <rect x="400" y="640" width="100" height="50" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="450" y="660" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600">nginx</text>
+  <text x="450" y="676" text-anchor="middle" fill="#8b949e" font-size="9">:80 Frontend</text>
+
+  <rect x="560" y="640" width="100" height="50" rx="8" fill="#161b22" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="610" y="660" text-anchor="middle" fill="#f0883e" font-size="11" font-weight="600">httpbin</text>
+  <text x="610" y="676" text-anchor="middle" fill="#8b949e" font-size="9">v1/v2 API</text>
+
+  <rect x="720" y="620" width="100" height="40" rx="8" fill="#161b22" stroke="#e94560" stroke-width="1.5"/>
+  <text x="770" y="645" text-anchor="middle" fill="#e94560" font-size="11" font-weight="600">PostgreSQL</text>
+
+  <rect x="720" y="670" width="100" height="40" rx="8" fill="#161b22" stroke="#f9c74f" stroke-width="1.5"/>
+  <text x="770" y="695" text-anchor="middle" fill="#f9c74f" font-size="11" font-weight="600">RabbitMQ</text>
+
+  <rect x="880" y="640" width="100" height="50" rx="8" fill="#161b22" stroke="#00b4d8" stroke-width="1.5"/>
+  <text x="930" y="660" text-anchor="middle" fill="#00b4d8" font-size="11" font-weight="600">Redis</text>
+  <text x="930" y="676" text-anchor="middle" fill="#8b949e" font-size="9">Cache</text>
+
+  <!-- Arrows -->
+  <line x1="180" y1="665" x2="235" y2="665" stroke="#bb86fc" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+  <line x1="340" y1="665" x2="395" y2="665" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <line x1="500" y1="665" x2="555" y2="665" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+  <text x="528" y="658" text-anchor="middle" fill="#3fb950" font-size="8">GET only</text>
+
+  <line x1="660" y1="655" x2="715" y2="640" stroke="#f0883e" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+  <text x="688" y="638" fill="#f0883e" font-size="8">:5432</text>
+
+  <line x1="660" y1="675" x2="715" y2="690" stroke="#f0883e" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+  <text x="688" y="698" fill="#f0883e" font-size="8">:5672</text>
+
+  <line x1="290" y1="690" x2="290" y2="720" stroke="#bb86fc" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="290" y1="720" x2="720" y2="720" stroke="#bb86fc" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="720" y1="720" x2="720" y2="660" stroke="#bb86fc" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+  <text x="500" y="715" text-anchor="middle" fill="#bb86fc" font-size="8">Keycloak → PostgreSQL :5432</text>
+
+  <!-- Istio mTLS overlay -->
+  <rect x="370" y="730" width="660" height="35" rx="6" fill="#f0883e1a" stroke="#f0883e" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="700" y="752" text-anchor="middle" fill="#f0883e" font-size="11" font-weight="600">Istio mTLS STRICT — All pod-to-pod traffic encrypted (PeerAuthentication)</text>
+
+  <!-- Network isolation note -->
+  <rect x="60" y="780" width="300" height="40" rx="6" fill="#e945601a" stroke="#e94560" stroke-width="1"/>
+  <text x="70" y="798" fill="#e94560" font-size="10" font-weight="600">default-deny-ingress</text>
+  <text x="70" y="812" fill="#c9d1d9" font-size="9">All ingress blocked. Only whitelisted flows allowed.</text>
+
+  <!-- Canary note -->
+  <rect x="380" y="780" width="250" height="40" rx="6" fill="#00b4d81a" stroke="#00b4d8" stroke-width="1"/>
+  <text x="390" y="798" fill="#00b4d8" font-size="10" font-weight="600">Canary: httpbin VirtualService</text>
+  <text x="390" y="812" fill="#c9d1d9" font-size="9">v1: 80% traffic · v2: 20% traffic</text>
+
+  <!-- Circuit breaker note -->
+  <rect x="650" y="780" width="250" height="40" rx="6" fill="#f9c74f1a" stroke="#f9c74f" stroke-width="1"/>
+  <text x="660" y="798" fill="#f9c74f" font-size="10" font-weight="600">Circuit Breaker: DestinationRule</text>
+  <text x="660" y="812" fill="#c9d1d9" font-size="9">3x consecutive 5xx → 30s eject</text>
+</svg>

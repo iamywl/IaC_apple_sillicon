@@ -190,8 +190,35 @@ Cilium Agent (각 노드의 DaemonSet)
   └→ kubectl apply ──→ [대상 클러스터 (dev/staging/prod)]
       ├→ Deployment 업데이트
       ├→ Rolling update 실행
-      └→ 상태 확인 → Synced / Healthy
+      └→ 상태 확인 → Sync Status + Health Status 조합
 ```
+
+**ArgoCD 상태 체계:**
+
+ArgoCD는 **Sync Status**와 **Health Status** 두 축으로 애플리케이션 상태를 판단한다.
+
+| Sync Status | 의미 |
+|-------------|------|
+| Synced | Git 매니페스트와 클러스터 상태가 일치 |
+| OutOfSync | Git과 클러스터가 불일치 (배포 필요) |
+| Unknown | 상태를 판단할 수 없음 (연결 불가 등) |
+
+| Health Status | 의미 |
+|---------------|------|
+| Healthy | 모든 리소스가 정상 동작 |
+| Progressing | 배포/롤아웃 진행 중 (예: Rolling update) |
+| Degraded | 일부 리소스 비정상 (예: Pod CrashLoopBackOff, 레플리카 부족) |
+| Suspended | 의도적으로 중단됨 (예: CronJob, 일시정지된 Deployment) |
+| Missing | Git에 정의되었지만 클러스터에 리소스가 없음 |
+| Unknown | 건강 상태를 판단할 수 없음 |
+
+| 흔한 조합 | 의미 |
+|-----------|------|
+| Synced / Healthy | 이상적인 상태. Git과 일치하고 모든 리소스 정상 |
+| OutOfSync / Healthy | Git에 새 변경이 있지만 아직 배포 안 됨 |
+| Synced / Progressing | 배포 적용 완료, 롤아웃 진행 중 |
+| Synced / Degraded | 배포는 했지만 Pod가 정상 기동 실패 |
+| OutOfSync / Missing | 리소스가 아예 생성되지 않음 |
 
 **언제 호출되는가:**
 - Jenkins: Git 웹훅 수신 시 또는 polling 주기에 코드 변경 감지 시 파이프라인 시작

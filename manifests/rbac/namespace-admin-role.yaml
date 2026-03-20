@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: namespace-admin
+  labels:
+    rbac.tart-infra/type: custom
+rules:
+  - apiGroups: ["", "apps", "batch", "autoscaling"]
+    resources: ["pods", "deployments", "replicasets", "statefulsets", "daemonsets", "jobs", "cronjobs", "services", "configmaps", "horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log", "pods/exec", "pods/portforward"]
+    verbs: ["get", "create"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  # Secrets are read-only
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]

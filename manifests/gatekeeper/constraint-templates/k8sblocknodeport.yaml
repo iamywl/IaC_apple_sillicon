@@ -1,0 +1,19 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sblocknodeport
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sBlockNodePort
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sblocknodeport
+
+        violation[{"msg": msg}] {
+          input.review.object.spec.type == "NodePort"
+          not input.review.object.metadata.labels["allow-nodeport"]
+          msg := "NodePort services are not allowed without 'allow-nodeport' label. Use ClusterIP or LoadBalancer instead."
+        }

@@ -1,28 +1,33 @@
-# 재연 가이드 03. 12단계 설치 파이프라인 상세
+# 재연 가이드 03. 17단계 설치 파이프라인 상세
 
-이 문서는 `scripts/install.sh`가 실행하는 12개 설치 단계를 각각 분해하여 설명한다. 각 단계마다 수행하는 작업, 순서의 이유, 핵심 명령어, 예상 출력, 문제 해결 방법을 포함한다.
+이 문서는 `scripts/install.sh`가 실행하는 17개 설치 단계를 각각 분해하여 설명한다. 각 단계마다 수행하는 작업, 순서의 이유, 핵심 명령어, 예상 출력, 문제 해결 방법을 포함한다.
 
 ---
 
 ## 오케스트레이터: install.sh
 
-`scripts/install.sh`가 12단계를 순서대로 호출한다. Golden image 사용 시 Phase 2~4를 자동으로 건너뛴다.
+`scripts/install.sh`가 17단계를 순서대로 호출한다. Golden image 사용 시 Phase 2~4를 자동으로 건너뛴다.
 
 ```
 install.sh
-├── Phase 1:  01-create-vms.sh         ← VM 생성
+├── Phase 1:  01-create-vms.sh              ← VM 생성
 ├── (VM 시작 + SSH 대기)
-├── Phase 2:  02-prepare-nodes.sh       ← OS 설정 (golden image 시 스킵)
-├── Phase 3:  03-install-runtime.sh     ← containerd (golden image 시 스킵)
-├── Phase 4:  04-install-kubeadm.sh     ← kubeadm (golden image 시 스킵)
-├── Phase 5:  05-init-clusters.sh       ← kubeadm init/join
-├── Phase 6:  06-install-cilium.sh      ← CNI + Hubble
-├── Phase 7:  07-install-monitoring.sh  ← Prometheus + Grafana + Loki
-├── Phase 8:  08-install-cicd.sh        ← ArgoCD + Jenkins
-├── Phase 9:  09-install-alerting.sh    ← AlertManager + rules
+├── Phase 2:  02-prepare-nodes.sh            ← OS 설정 (golden image 시 스킵)
+├── Phase 3:  03-install-runtime.sh          ← containerd (golden image 시 스킵)
+├── Phase 4:  04-install-kubeadm.sh          ← kubeadm (golden image 시 스킵)
+├── Phase 5:  05-init-clusters.sh            ← kubeadm init/join
+├── Phase 6:  06-install-cilium.sh           ← CNI + Hubble
+├── Phase 7:  07-install-monitoring.sh       ← Prometheus + Grafana + Loki
+├── Phase 8:  08-install-cicd.sh             ← ArgoCD + Jenkins
+├── Phase 9:  09-install-alerting.sh         ← AlertManager + rules
 ├── Phase 10: 10-install-network-policies.sh ← CiliumNetworkPolicy
-├── Phase 11: 11-install-hpa.sh         ← metrics-server + HPA + PDB
-└── Phase 12: 12-install-istio.sh       ← Istio service mesh
+├── Phase 11: 11-install-hpa.sh              ← metrics-server + HPA + PDB
+├── Phase 12: 12-install-istio.sh            ← Istio service mesh
+├── Phase 13: 13-install-sealed-secrets.sh   ← Sealed Secrets 시크릿 관리
+├── Phase 14: 14-install-rbac-gatekeeper.sh  ← RBAC + OPA Gatekeeper
+├── Phase 15: 15-install-backup.sh           ← etcd 백업 + Velero
+├── Phase 16: 16-install-resource-quotas.sh  ← ResourceQuota + LimitRange
+└── Phase 17: 17-install-harbor.sh           ← Harbor 프라이빗 레지스트리
 ```
 
 ---
@@ -998,6 +1003,296 @@ kubectl --kubeconfig kubeconfig/dev.yaml get namespace demo --show-labels
 
 ```bash
 kubectl --kubeconfig kubeconfig/dev.yaml -n demo delete pods --all
+```
+
+---
+
+## Phase 13: Sealed Secrets (13-install-sealed-secrets.sh)
+
+### 이 단계가 하는 일
+
+platform 클러스터에 Sealed Secrets 컨트롤러를 설치하고, dev 클러스터에 데모용 Secret과 RBAC을 생성한다.
+
+### 왜 이 순서인가
+
+데모 앱(Phase 11)과 서비스 메시(Phase 12)가 동작한 후, 시크릿을 안전하게 관리할 수 있는 인프라를 구성한다. 이 컨트롤러가 있어야 SealedSecret 오브젝트를 Git에 저장하고 클러스터에서 복호화할 수 있다.
+
+### 핵심 명령어
+
+```bash
+helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+
+# Sealed Secrets 컨트롤러 설치 (platform 클러스터)
+kubectl --kubeconfig kubeconfig/platform.yaml create namespace sealed-secrets
+helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
+  --kubeconfig kubeconfig/platform.yaml \
+  --namespace sealed-secrets \
+  --set fullnameOverride=sealed-secrets-controller \
+  --wait --timeout 5m
+
+# 데모 시크릿 적용 (dev 클러스터)
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f manifests/sealed-secrets/demo-db-secret.yaml
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f manifests/sealed-secrets/demo-api-secret.yaml
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f manifests/sealed-secrets/secret-reader-rbac.yaml
+```
+
+### 예상 출력
+
+```
+========== Phase 13: Installing Sealed Secrets on 'platform' ==========
+
+[INFO] Installing Sealed Secrets controller...
+[INFO] Waiting for Sealed Secrets controller...
+[INFO] Creating demo secrets on 'dev' cluster...
+[INFO] Applying example secret manifests...
+[INFO] Applying secret access RBAC...
+[INFO] Sealed Secrets controller status:
+NAME                                         READY   STATUS    RESTARTS   AGE
+sealed-secrets-controller-xxx-xxx            1/1     Running   0          1m
+[INFO] Phase 13 complete.
+```
+
+### 문제 발생 시 확인 사항
+
+- 컨트롤러 로그 확인:
+
+```bash
+kubectl --kubeconfig kubeconfig/platform.yaml -n sealed-secrets logs deploy/sealed-secrets-controller
+```
+
+---
+
+## Phase 14: RBAC + OPA Gatekeeper (14-install-rbac-gatekeeper.sh)
+
+### 이 단계가 하는 일
+
+1. **RBAC**: 모든 클러스터에 커스텀 역할(namespace-admin, cluster-readonly, developer-rolebinding) 적용
+2. **OPA Gatekeeper**: dev 클러스터에 정책 엔진 설치 + 4개 ConstraintTemplate + 4개 Constraint 적용
+
+### 왜 이 순서인가
+
+시크릿 관리(Phase 13) 후에 접근 제어를 강화한다. RBAC으로 "누가 무엇을 할 수 있는지"를 정의하고, Gatekeeper로 "무엇이 생성될 수 있는지"를 강제한다.
+
+### 핵심 명령어
+
+```bash
+# RBAC 적용 (모든 클러스터)
+for cluster in platform dev staging prod; do
+  kubectl --kubeconfig kubeconfig/${cluster}.yaml apply -f manifests/rbac/
+done
+
+# OPA Gatekeeper 설치 (dev 클러스터)
+helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+helm upgrade --install gatekeeper gatekeeper/gatekeeper \
+  --kubeconfig kubeconfig/dev.yaml \
+  --namespace gatekeeper-system --create-namespace \
+  --set replicas=1 --set audit.replicas=1 \
+  --wait --timeout 5m
+
+# ConstraintTemplate + Constraint 적용
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f manifests/gatekeeper/constraint-templates/
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f manifests/gatekeeper/constraints/
+```
+
+### 예상 출력
+
+```
+========== Phase 14: Installing RBAC & OPA Gatekeeper ==========
+
+[INFO] Applying RBAC manifests on 'platform'...
+[INFO] Applying RBAC manifests on 'dev'...
+[INFO] Applying RBAC manifests on 'staging'...
+[INFO] Applying RBAC manifests on 'prod'...
+[INFO] Installing OPA Gatekeeper on 'dev'...
+[INFO] Waiting for Gatekeeper webhook...
+[INFO] Applying ConstraintTemplates...
+[INFO] Applying Constraints...
+[INFO] Phase 14 complete.
+```
+
+### OPA Gatekeeper 정책
+
+| Constraint | 동작 | 설명 |
+|---|---|---|
+| `require-app-label` | warn | Deployment에 `app` 라벨 필수 |
+| `container-must-have-limits` | warn | 컨테이너에 CPU/메모리 limits 필수 |
+| `block-nodeport-services` | warn | NodePort 서비스 제한 |
+| `disallow-privileged-containers` | deny | 특권 컨테이너 차단 |
+
+### 문제 발생 시 확인 사항
+
+- Gatekeeper webhook이 타임아웃: Pod가 Ready 상태인지 확인
+
+```bash
+kubectl --kubeconfig kubeconfig/dev.yaml -n gatekeeper-system get pods
+kubectl --kubeconfig kubeconfig/dev.yaml -n gatekeeper-system logs deploy/gatekeeper-controller-manager
+```
+
+---
+
+## Phase 15: etcd 백업 + Velero (15-install-backup.sh)
+
+### 이 단계가 하는 일
+
+1. **Velero**: platform 클러스터에 K8s 리소스 백업 도구 설치
+2. **etcd 백업**: 모든 마스터 노드에 etcd 스냅샷 스크립트 + cron job 설정
+3. **초기 백업**: 각 마스터에서 첫 etcd 스냅샷 실행
+
+### 왜 이 순서인가
+
+모든 컴포넌트(Phase 1~14)가 설치된 후, 이 완성된 상태를 백업한다. 백업 대상이 존재해야 의미 있는 스냅샷이 생성된다.
+
+### 핵심 명령어
+
+```bash
+# Velero 설치 (platform 클러스터)
+helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
+helm upgrade --install velero vmware-tanzu/velero \
+  --kubeconfig kubeconfig/platform.yaml \
+  --namespace velero --create-namespace \
+  --values manifests/velero-values.yaml \
+  --wait --timeout 5m
+
+# etcd 백업 스크립트 배포 (모든 마스터)
+# → /opt/etcd-backup/backup.sh 생성
+# → cron: 매일 02:00 자동 실행
+
+# Velero Schedule 적용
+kubectl --kubeconfig kubeconfig/platform.yaml apply -f manifests/backup/velero-schedule.yaml
+```
+
+### 예상 출력
+
+```
+========== Phase 15: Setting up etcd Backup & Disaster Recovery ==========
+
+[INFO] Installing Velero on 'platform' (local backup provider)...
+[INFO] Velero installed on 'platform'.
+[INFO] Setting up etcd backup script on platform-master (192.168.64.x)...
+[INFO] Running initial etcd backup on platform-master...
++----------+----------+------------+------------+
+|   HASH   | REVISION |    TOTAL KEYS    | TOTAL SIZE |
++----------+----------+------------+------------+
+| abcd1234 |   12345  |        850       |   3.2 MB   |
++----------+----------+------------+------------+
+Backup completed: /opt/etcd-backup/etcd-snapshot-20260320-xxx.db
+[INFO] etcd backup configured on platform-master
+...
+[INFO] Phase 15 complete.
+```
+
+### 문제 발생 시 확인 사항
+
+- etcdctl이 설치되어 있지 않으면 초기 백업이 실패할 수 있다 (경고만 출력되고 cron은 정상 설정됨)
+- Velero MinIO가 시작되지 않으면 메모리 확인: platform-worker1에 12GB 할당 필요
+
+---
+
+## Phase 16: ResourceQuota + LimitRange (16-install-resource-quotas.sh)
+
+### 이 단계가 하는 일
+
+dev, staging, prod 클러스터의 demo 네임스페이스에 ResourceQuota와 LimitRange를 적용한다.
+
+### 왜 이 순서인가
+
+모든 앱과 보안 정책이 설치된 후, 리소스 사용량을 제한한다. OPA Gatekeeper(Phase 14)가 "리소스 제한을 설정하라"고 강제하고, 이 Phase에서 실제 기본값과 상한을 적용한다.
+
+### 핵심 명령어
+
+```bash
+# 각 클러스터별 LimitRange + ResourceQuota 적용
+for cluster in dev staging prod; do
+  kubectl --kubeconfig kubeconfig/${cluster}.yaml apply -f manifests/resource-quotas/limitrange-${cluster}.yaml
+  kubectl --kubeconfig kubeconfig/${cluster}.yaml apply -f manifests/resource-quotas/quota-${cluster}.yaml
+done
+```
+
+### 환경별 차이
+
+| 항목 | dev | staging | prod |
+|------|-----|---------|------|
+| 성격 | 넉넉한 실험 환경 | 보수적 검증 | 대용량 통제 |
+| 최대 Pod 수 | 30 | 20 | 50 |
+| 최대 CPU (총합) | 8 cores | 4 cores | 12 cores |
+| 최대 메모리 (총합) | 16Gi | 8Gi | 24Gi |
+| 컨테이너 기본 CPU | 500m | 300m | 500m |
+| 컨테이너 최소 CPU | 50m | 50m | 100m |
+
+### 예상 출력
+
+```
+========== Phase 16: Installing Resource Quotas & LimitRange ==========
+
+[INFO] Applying ResourceQuota and LimitRange on 'dev' cluster...
+[INFO] Verifying on 'dev':
+NAME         AGE   REQUEST                                      LIMIT
+demo-quota   1s    requests.cpu: 1200m/4, requests.memory: ...  limits.cpu: 4500m/8, ...
+[INFO] Applying ResourceQuota and LimitRange on 'staging' cluster...
+[INFO] Applying ResourceQuota and LimitRange on 'prod' cluster...
+[INFO] Phase 16 complete.
+```
+
+---
+
+## Phase 17: Harbor 레지스트리 (17-install-harbor.sh)
+
+### 이 단계가 하는 일
+
+platform 클러스터에 Harbor 프라이빗 컨테이너 이미지 레지스트리를 설치하고, 모든 노드의 containerd를 Harbor를 trust하도록 설정한다.
+
+### 왜 이 순서인가
+
+17단계의 마지막 Phase이다. 프라이빗 레지스트리는 모든 인프라가 완성된 후, 운영 환경에서 이미지를 자체 관리하기 위해 설치한다. containerd 설정 변경 시 재시작이 필요하므로 모든 앱 배포가 완료된 후에 적용한다.
+
+### 핵심 명령어
+
+```bash
+# Harbor 설치 (platform 클러스터)
+helm repo add harbor https://helm.goharbor.io
+kubectl --kubeconfig kubeconfig/platform.yaml create namespace harbor
+helm upgrade --install harbor harbor/harbor \
+  --kubeconfig kubeconfig/platform.yaml \
+  --namespace harbor \
+  --values manifests/harbor-values.yaml \
+  --wait --timeout 10m
+
+# 모든 노드에 Harbor 인증 설정
+# → /etc/containerd/certs.d/<ip>:30500/hosts.toml 생성
+# → containerd 재시작
+```
+
+### 예상 출력
+
+```
+========== Phase 17: Installing Harbor Private Registry on 'platform' ==========
+
+[INFO] Installing Harbor registry...
+[INFO] Waiting for Harbor components...
+[INFO] Configuring containerd to trust Harbor registry on all nodes...
+  Configuring platform-master (192.168.64.x)...
+  Configuring platform-worker1 (192.168.64.x)...
+  ...
+[INFO] Harbor status:
+NAME                       READY   STATUS    RESTARTS   AGE
+harbor-core-xxx            1/1     Running   0          3m
+harbor-registry-xxx        1/1     Running   0          3m
+harbor-portal-xxx          1/1     Running   0          3m
+[INFO] Harbor Registry:
+[INFO]   URL:       http://192.168.64.x:30500
+[INFO]   Portal:    http://192.168.64.x:30400
+[INFO]   인증:      admin / Harbor12345
+[INFO] Phase 17 complete.
+```
+
+### 문제 발생 시 확인 사항
+
+- Harbor Pod가 Pending: PV가 없으면 dynamic provisioning이 필요. 로컬 환경에서는 hostPath를 사용한다.
+- containerd 재시작 후 기존 Pod 영향: Static Pod(etcd, apiserver 등)는 자동 복구된다. 일반 Pod는 이미 실행 중이므로 영향 없다.
+
+```bash
+kubectl --kubeconfig kubeconfig/platform.yaml -n harbor get pods
+kubectl --kubeconfig kubeconfig/platform.yaml -n harbor logs deploy/harbor-core
 ```
 
 - NetworkPolicy가 Istio 트래픽을 차단: Phase 12 마지막에 `allow-istio-sidecars.yaml`을 적용한다. 이 정책이 누락되면 Envoy 프록시 간 통신(포트 15001, 15006 등)이 차단된다.

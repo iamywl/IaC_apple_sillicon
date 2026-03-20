@@ -63,9 +63,9 @@ Kubernetes 멀티클러스터 환경을 수동으로 구축하려면 VM 10대에
 | containerd + kubeadm 설치 | **APT 저장소 추가부터 설치까지 스크립트로 자동화** | `scripts/install/03~04-*.sh` |
 | kubeadm init + join 토큰 복사 | master init 후 **토큰을 자동 추출하여 worker에 전달** | `scripts/install/05-init-clusters.sh` + `scripts/lib/k8s.sh` |
 | kubeconfig 파일 복사 | master에서 **SCP로 자동 다운로드** → `kubeconfig/` 디렉토리에 저장 | `scripts/lib/k8s.sh` → `scp_from()` |
-| Cilium, Prometheus 등 설치 | **Helm 차트 + values 파일로 선언적(Declarative) 설치** | `scripts/install/06~12-*.sh` + `manifests/` |
+| Cilium, Prometheus 등 설치 | **Helm 차트 + values 파일로 선언적(Declarative) 설치** | `scripts/install/06~17-*.sh` + `manifests/` |
 
-### 자동화 12단계 파이프라인(12-Phase Automation Pipeline)
+### 자동화 17단계 파이프라인(17-Phase Automation Pipeline)
 
 ```
 clusters.json (설정 파일 하나 — Single Source of Truth)
@@ -83,7 +83,12 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
           ├─ 09. 알림(Alerting)            : AlertManager + Prometheus Rules
           ├─ 10. 네트워크 정책(NetPol)     : Cilium L3/L4/L7 Zero-Trust
           ├─ 11. 오토스케일링(HPA)         : metrics-server + HPA + PDB
-          └─ 12. 서비스 메시(Service Mesh) : Istio mTLS + 카나리 + 서킷브레이커
+          ├─ 12. 서비스 메시(Service Mesh) : Istio mTLS + 카나리 + 서킷브레이커
+          ├─ 13. 시크릿 관리(Secrets)      : Sealed Secrets 컨트롤러 + RBAC
+          ├─ 14. 정책 강제(Policy)         : RBAC + OPA Gatekeeper 제약 조건
+          ├─ 15. 백업/DR(Backup)           : etcd 스냅샷 + Velero 리소스 백업
+          ├─ 16. 리소스 관리(Quotas)       : ResourceQuota + LimitRange
+          └─ 17. 이미지 레지스트리(Registry): Harbor 프라이빗 컨테이너 레지스트리
 ```
 
 ---
@@ -226,6 +231,13 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 | **HPA(Horizontal Pod Autoscaler) + PDB(Pod Disruption Budget)** | — | O | O (metrics-server) | — |
 | **Prometheus/Grafana** | O | — | — | — |
 | **Jenkins/ArgoCD** | O | — | — | — |
+| **Sealed Secrets** | O (controller) | O (secrets) | — | — |
+| **OPA Gatekeeper** | — | O | — | — |
+| **RBAC 커스텀 역할(Custom Roles)** | O | O | O | O |
+| **etcd 백업(Backup)** | O | O | O | O |
+| **Velero 리소스 백업(Resource Backup)** | O | — | — | — |
+| **ResourceQuota + LimitRange** | — | O | O | O |
+| **Harbor 레지스트리(Registry)** | O | — | — | — |
 | **데모 앱(Demo Apps)** | — | O | — | — |
 
 ---
@@ -262,11 +274,14 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 | <img src="https://img.shields.io/badge/AlertManager-E6522C?logo=prometheus&logoColor=white" height="22"/> | **AlertManager** | 알림 라우팅(Alert Routing) — 8개 규칙, 웹훅 수신기(Webhook Receiver) |
 | <img src="https://img.shields.io/badge/Hubble-F8C517?logo=cilium&logoColor=black" height="22"/> | **Hubble** | Cilium 내장 네트워크 플로우 관측(Network Flow Observation) |
 
-### 4계층(Layer 4) — 네트워크 보안(Network Security)
+### 4계층(Layer 4) — 보안 & 정책(Security & Policy)
 
 | | 기술(Technology) | 역할(Role) |
 |:---:|------|------|
 | <img src="https://img.shields.io/badge/Cilium-F8C517?logo=cilium&logoColor=black" height="22"/> | **CiliumNetworkPolicy** | L3/L4/L7 제로 트러스트(Zero Trust) — 기본 차단(Default Deny) + 화이트리스트(Whitelist) |
+| <img src="https://img.shields.io/badge/Sealed_Secrets-326CE5?logo=kubernetes&logoColor=white" height="22"/> | **Sealed Secrets** | 시크릿 관리(Secret Management) — Git에 안전하게 암호화된 시크릿 저장 |
+| <img src="https://img.shields.io/badge/OPA_Gatekeeper-7D64FF?logo=openpolicyagent&logoColor=white" height="22"/> | **OPA Gatekeeper** | 정책 강제(Policy Enforcement) — ConstraintTemplate + Constraint (라벨 필수, 리소스 제한 필수, 특권 컨테이너 차단) |
+| <img src="https://img.shields.io/badge/RBAC-326CE5?logo=kubernetes&logoColor=white" height="22"/> | **RBAC** | 역할 기반 접근 제어(Role-Based Access Control) — namespace-admin, cluster-readonly, developer 역할 |
 
 ### 3계층(Layer 3) — 오케스트레이션(Orchestration) & 스케일링(Scaling)
 
@@ -305,11 +320,31 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 | <img src="https://img.shields.io/badge/RabbitMQ_3-FF6600?logo=rabbitmq&logoColor=white" height="22"/> | **RabbitMQ** 3 | 메시지 큐(Message Queue) — 비동기 메시지 브로커, Management UI |
 | <img src="https://img.shields.io/badge/Keycloak-4D4D4D?logo=keycloak&logoColor=white" height="22"/> | **Keycloak** | ID/인증 관리(Identity & Access Management) — SSO, OAuth 2.0, PostgreSQL 백엔드 |
 
+### 백업 & 복구(Backup & Disaster Recovery)
+
+| | 기술(Technology) | 역할(Role) |
+|:---:|------|------|
+| <img src="https://img.shields.io/badge/etcd-419EDA?logo=etcd&logoColor=white" height="22"/> | **etcd 스냅샷** | 클러스터 상태 백업(Cluster State Backup) — 일 1회 자동, 5개 보관, 전체 마스터 노드 |
+| <img src="https://img.shields.io/badge/Velero-43A047?logo=kubernetes&logoColor=white" height="22"/> | **Velero** | K8s 리소스 백업/복원(Resource Backup/Restore) — Schedule 기반 자동 백업, 네임스페이스 단위 |
+
+### 리소스 관리(Resource Management)
+
+| | 기술(Technology) | 역할(Role) |
+|:---:|------|------|
+| <img src="https://img.shields.io/badge/ResourceQuota-326CE5?logo=kubernetes&logoColor=white" height="22"/> | **ResourceQuota** | 네임스페이스 리소스 상한(Namespace Resource Caps) — CPU, 메모리, Pod 수 제한 |
+| <img src="https://img.shields.io/badge/LimitRange-326CE5?logo=kubernetes&logoColor=white" height="22"/> | **LimitRange** | 컨테이너 기본 리소스(Default Container Resources) — 기본 request/limit 자동 적용 |
+
+### 컨테이너 레지스트리(Container Registry)
+
+| | 기술(Technology) | 역할(Role) |
+|:---:|------|------|
+| <img src="https://img.shields.io/badge/Harbor-60B932?logo=harbor&logoColor=white" height="22"/> | **Harbor** | 프라이빗 이미지 레지스트리(Private Image Registry) — 이미지 저장소 + Trivy 취약점 스캔 |
+
 ### IaC(Infrastructure as Code) & 자동화(Automation)
 
 | | 기술(Technology) | 역할(Role) |
 |:---:|------|------|
-| <img src="https://img.shields.io/badge/Bash-4EAA25?logo=gnubash&logoColor=white" height="22"/> | **Bash** 스크립트 | 명령형 자동화(Imperative Automation) — 12단계 설치, 부팅, 종료, 상태 확인 |
+| <img src="https://img.shields.io/badge/Bash-4EAA25?logo=gnubash&logoColor=white" height="22"/> | **Bash** 스크립트 | 명령형 자동화(Imperative Automation) — 17단계 설치, 부팅, 종료, 상태 확인 |
 | <img src="https://img.shields.io/badge/Terraform-844FBA?logo=terraform&logoColor=white" height="22"/> | **Terraform** | 선언형 인프라 관리(Declarative Infrastructure Management) — 상태 추적(State Tracking), plan 미리보기 |
 | <img src="https://img.shields.io/badge/Helm-0F1689?logo=helm&logoColor=white" height="22"/> | **Helm** | K8s 패키지 관리(Package Management) — values 파일 기반 재현 가능(Reproducible) 배포 |
 
@@ -508,6 +543,11 @@ Phase 9  → AlertManager + 알림 규칙 (platform)
 Phase 10 → CiliumNetworkPolicy L7 보안 (dev)
 Phase 11 → metrics-server + HPA 오토스케일링 (dev, staging)
 Phase 12 → Istio Service Mesh (dev)
+Phase 13 → Sealed Secrets 시크릿 관리 (platform, dev)
+Phase 14 → RBAC + OPA Gatekeeper 정책 강제 (전체, dev)
+Phase 15 → etcd 백업 + Velero 리소스 백업 (전체, platform)
+Phase 16 → ResourceQuota + LimitRange (dev, staging, prod)
+Phase 17 → Harbor 프라이빗 레지스트리 (platform)
 ```
 
 | 방식(Method) | 소요 시간(Duration) |
@@ -608,6 +648,7 @@ tart ip platform-worker1
 | ArgoCD | `http://<platform-worker1>:30800` | admin / 아래 명령(see below) |
 | Jenkins | `http://<platform-worker1>:30900` | admin / admin |
 | Hubble UI | `http://<platform-worker1>:31235` | — |
+| Harbor | `http://<platform-worker1>:30400` | admin / Harbor12345 |
 
 ```bash
 # ArgoCD 비밀번호 확인(Get ArgoCD Password)
@@ -741,7 +782,7 @@ tart-infra/
 │
 ├── scripts/
 │   ├── demo.sh                         ← 원스톱 데모(One-stop Demo) — 설치 + 대시보드 한 번에
-│   ├── install.sh                      ← 전체 설치(Full Install) — Phase 1~12
+│   ├── install.sh                      ← 전체 설치(Full Install) — Phase 1~17
 │   ├── build-golden-image.sh           ← 골든 이미지 빌드(Golden Image Build) — 최초 1회
 │   ├── boot.sh                         ← 일상 시작(Daily Boot) — VM 부팅 → 헬스체크(Health Check)
 │   ├── shutdown.sh                     ← 안전 종료(Graceful Shutdown) — 드레인(Drain) → 정지(Stop)
@@ -752,7 +793,7 @@ tart-infra/
 │   │   ├── vm.sh                       ← VM 생명주기(Lifecycle) — clone/start/stop/delete
 │   │   ├── ssh.sh                      ← SSH 연결(Connection) — exec/scp/wait
 │   │   └── k8s.sh                      ← K8s 관리(Management) — init/join/cilium/hubble
-│   ├── install/                        ← 설치 단계(Install Phases) 01~12
+│   ├── install/                        ← 설치 단계(Install Phases) 01~17
 │   └── boot/                           ← 부팅 단계(Boot Phases) 01~03
 │
 ├── manifests/
@@ -763,10 +804,17 @@ tart-infra/
 │   ├── argocd-values.yaml              ← ArgoCD GitOps
 │   ├── jenkins-values.yaml             ← Jenkins CI
 │   ├── metrics-server-values.yaml      ← metrics-server — HPA 메트릭(Metrics)
+│   ├── velero-values.yaml              ← Velero 백업 설정(Backup Config)
+│   ├── harbor-values.yaml              ← Harbor 레지스트리 설정(Registry Config)
 │   ├── alerting/                       ← PrometheusRule + 웹훅 수신기(Webhook Receiver)
 │   ├── network-policies/               ← CiliumNetworkPolicy — 제로 트러스트(Zero Trust) L7
 │   ├── hpa/                            ← HPA + PDB
 │   ├── istio/                          ← Istio 전체 설정 — mTLS, 카나리(Canary), 서킷브레이커(Circuit Breaker)
+│   ├── sealed-secrets/                 ← Sealed Secrets 데모 시크릿 + RBAC
+│   ├── rbac/                           ← RBAC 커스텀 역할(Custom Roles) — namespace-admin, readonly, developer
+│   ├── gatekeeper/                     ← OPA Gatekeeper ConstraintTemplate + Constraint
+│   ├── backup/                         ← Velero Schedule (일간 + 시간별 백업)
+│   ├── resource-quotas/                ← ResourceQuota + LimitRange (dev/staging/prod)
 │   ├── argocd/                         ← ArgoCD Application CR — GitOps 배포(Deployment)
 │   ├── jenkins/                        ← Jenkins Pipeline ConfigMap — CI 데모(Demo)
 │   └── demo/                           ← nginx, httpbin, redis, postgres, rabbitmq, keycloak, k6, stress-ng 매니페스트(Manifests)
@@ -898,6 +946,27 @@ open http://$(tart ip platform-worker1):30903
 
 # Grafana 접속(Grafana Access)
 open http://$(tart ip platform-worker1):30300
+
+# Harbor 레지스트리 접속(Harbor Registry Access)
+open http://$(tart ip platform-worker1):30400
+
+# Sealed Secrets 상태(Sealed Secrets Status)
+kubectl --kubeconfig kubeconfig/platform.yaml -n sealed-secrets get pods
+
+# OPA Gatekeeper 제약 조건 위반 확인(Gatekeeper Constraint Violations)
+kubectl --kubeconfig kubeconfig/dev.yaml get constraints
+
+# RBAC 역할 확인(RBAC Roles)
+kubectl --kubeconfig kubeconfig/dev.yaml get clusterrole | grep tart-infra
+
+# ResourceQuota 사용량 확인(ResourceQuota Usage)
+kubectl --kubeconfig kubeconfig/dev.yaml describe resourcequota demo-quota -n demo
+
+# etcd 백업 상태 확인(etcd Backup Status)
+ssh admin@$(tart ip platform-master) 'ls -la /opt/etcd-backup/'
+
+# Velero 백업 확인(Velero Backup List)
+kubectl --kubeconfig kubeconfig/platform.yaml -n velero get schedules
 ```
 
 ---

@@ -1,0 +1,39 @@
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      bucket: velero-backups
+      config:
+        region: minio
+        s3ForcePathStyle: "true"
+        s3Url: http://minio.velero.svc:9000
+  volumeSnapshotLocation:
+    - name: default
+      provider: aws
+      config:
+        region: minio
+
+# Use local MinIO for backup storage (no cloud dependency)
+deployNodeAgent: true
+nodeAgent:
+  podVolumePath: /var/lib/kubelet/pods
+
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.10.0
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+# Deploy MinIO alongside Velero for local storage
+kubectl:
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

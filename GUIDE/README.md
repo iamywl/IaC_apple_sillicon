@@ -2,7 +2,7 @@
 
 이 가이드는 Apple Silicon Mac에서 멀티 클러스터 Kubernetes 인프라를 처음부터 구축하는 과정을 단계별로 설명한다.
 
-4개 클러스터(platform, dev, staging, prod), 10개 VM을 Tart 가상화로 구성하고, Cilium CNI, Prometheus/Grafana 모니터링, ArgoCD/Jenkins CI/CD, Istio 서비스 메시까지 설치하는 전체 과정을 다룬다.
+4개 클러스터(platform, dev, staging, prod), 10개 VM을 Tart 가상화로 구성하고, Cilium CNI, Prometheus/Grafana 모니터링, ArgoCD/Jenkins CI/CD, Istio 서비스 메시, Sealed Secrets 시크릿 관리, OPA Gatekeeper 정책 강제, etcd/Velero 백업, ResourceQuota/LimitRange, Harbor 프라이빗 레지스트리까지 설치하는 전체 과정을 다룬다.
 
 ---
 
@@ -13,13 +13,16 @@
 | 00 | [사전 준비](00-prerequisites.md) | 필수 도구 설치, 시스템 요구사항 확인 |
 | 01 | [아키텍처 이해](01-architecture.md) | 4 클러스터 구조, 네트워크 설계, 컴포넌트 배치 |
 | 02 | [빠른 시작](02-quick-start.md) | demo.sh 한 줄로 전체 구축 |
-| 03 | [12단계 설치 파이프라인 상세](03-phase-by-phase.md) | 각 Phase 스크립트의 동작 원리 |
+| 03 | [17단계 설치 파이프라인 상세](03-phase-by-phase.md) | 각 Phase 스크립트의 동작 원리 |
 | 04 | [클러스터 검증](04-cluster-verification.md) | 노드, Pod, 서비스 정상 동작 확인 |
 | 05 | [SRE 대시보드](05-dashboard-guide.md) | 웹 대시보드 설치 및 사용법 |
 | 06 | [CI/CD 워크플로우](06-cicd-workflow.md) | Jenkins + ArgoCD 파이프라인 구성 |
 | 07 | [테스트 시나리오](07-testing-scenarios.md) | 장애 시뮬레이션, 부하 테스트 |
 | 08 | [트러블슈팅](08-troubleshooting.md) | 계층별 문제 진단 및 해결 |
 | 09 | [Terraform 대안](09-terraform-alternative.md) | Terraform 모듈로 동일 인프라 구축 |
+| 10 | [보안 & 시크릿 관리](10-security-secrets.md) | Sealed Secrets, RBAC, OPA Gatekeeper |
+| 11 | [백업 & 재해 복구](11-backup-dr.md) | etcd 스냅샷, Velero 리소스 백업/복원 |
+| 12 | [리소스 관리 & 레지스트리](12-resource-management.md) | ResourceQuota, LimitRange, Harbor |
 
 ---
 
@@ -75,7 +78,7 @@ brew install terraform
 | 스크립트 | 용도 |
 |----------|------|
 | `demo.sh` | 원스톱 전체 구축 |
-| `install.sh` | 12 Phase 순차 실행 |
+| `install.sh` | 17 Phase 순차 실행 |
 | `boot.sh` | 모든 VM 시작 |
 | `shutdown.sh` | 모든 VM 정지 |
 | `destroy.sh` | 모든 VM 삭제 및 정리 |

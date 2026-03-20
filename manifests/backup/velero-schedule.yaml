@@ -1,0 +1,31 @@
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: daily-full-backup
+  namespace: velero
+spec:
+  schedule: "0 3 * * *"
+  template:
+    includedNamespaces:
+      - demo
+      - monitoring
+      - jenkins
+      - argocd
+    storageLocation: default
+    ttl: 168h0m0s
+    includeClusterResources: true
+  useOwnerReferencesInBackup: false
+---
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: hourly-demo-backup
+  namespace: velero
+spec:
+  schedule: "0 * * * *"
+  template:
+    includedNamespaces:
+      - demo
+    storageLocation: default
+    ttl: 24h0m0s
+  useOwnerReferencesInBackup: false

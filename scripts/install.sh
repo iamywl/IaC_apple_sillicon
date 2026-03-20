@@ -81,6 +81,21 @@ bash "$SCRIPT_DIR/install/11-install-hpa.sh"
 # Phase 12: Istio Service Mesh (dev cluster)
 bash "$SCRIPT_DIR/install/12-install-istio.sh"
 
+# Phase 13: Sealed Secrets (secret management)
+bash "$SCRIPT_DIR/install/13-install-sealed-secrets.sh"
+
+# Phase 14: RBAC + OPA Gatekeeper (policy enforcement)
+bash "$SCRIPT_DIR/install/14-install-rbac-gatekeeper.sh"
+
+# Phase 15: etcd Backup + Velero (disaster recovery)
+bash "$SCRIPT_DIR/install/15-install-backup.sh"
+
+# Phase 16: ResourceQuota + LimitRange
+bash "$SCRIPT_DIR/install/16-install-resource-quotas.sh"
+
+# Phase 17: Harbor private registry
+bash "$SCRIPT_DIR/install/17-install-harbor.sh"
+
 # Summary
 log_section "Installation Complete!"
 log_info "Clusters:"
@@ -96,6 +111,7 @@ log_info "  ArgoCD:   http://${PLATFORM_IP}:30800"
 log_info "  Jenkins:  http://${PLATFORM_IP}:30900"
 log_info "  Hubble:   cilium hubble ui (via port-forward)"
 log_info "  AlertMgr: http://${PLATFORM_IP}:30903"
+log_info "  Harbor:   http://${PLATFORM_IP}:30400  (admin/Harbor12345)"
 echo ""
 log_info "To shut down: ./scripts/shutdown.sh"
 log_info "To restart:   ./scripts/boot.sh"

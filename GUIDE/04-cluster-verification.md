@@ -595,4 +595,266 @@ for cluster in $CLUSTERS; do
 done
 ```
 
-모든 클러스터의 노드가 `Ready`이고 Pod가 정상 실행 중이면 인프라 구성이 완료된 것이다.
+모든 클러스터의 노드가 `Ready`이고 Pod가 정상 실행 중이면 기본 인프라 구성이 완료된 것이다.
+
+
+## 7. 보안 컴포넌트 검증
+
+### 7.1 Sealed Secrets (Platform 클러스터)
+
+```bash
+export KUBECONFIG=kubeconfig/platform.yaml
+kubectl get pods -n sealed-secrets
+```
+
+예상 출력:
+
+```
+NAME                                         READY   STATUS    RESTARTS   AGE
+sealed-secrets-controller-xxxxxxxxxx-xxxxx   1/1     Running   0          2d
+```
+
+데모 시크릿 확인 (Dev 클러스터):
+
+```bash
+export KUBECONFIG=kubeconfig/dev.yaml
+kubectl get secrets -n demo | grep demo-
+```
+
+예상 출력:
+
+```
+demo-api-credentials   Opaque   3      2d
+demo-db-credentials    Opaque   4      2d
+```
+
+### 7.2 OPA Gatekeeper (Dev 클러스터)
+
+```bash
+export KUBECONFIG=kubeconfig/dev.yaml
+kubectl get pods -n gatekeeper-system
+```
+
+예상 출력:
+
+```
+NAME                                            READY   STATUS    RESTARTS   AGE
+gatekeeper-audit-xxxxxxxxxx-xxxxx               1/1     Running   0          2d
+gatekeeper-controller-manager-xxxxxxxxxx-xxxxx  1/1     Running   0          2d
+```
+
+제약 조건 위반 확인:
+
+```bash
+kubectl get constraints
+```
+
+예상 출력:
+
+```
+NAME                              ENFORCEMENT-ACTION   TOTAL-VIOLATIONS
+require-app-label                 warn                 0
+container-must-have-limits        warn                 2
+block-nodeport-services           warn                 1
+disallow-privileged-containers    deny                 0
+```
+
+특권 컨테이너 차단 테스트:
+
+```bash
+kubectl run test-privileged --image=nginx --restart=Never \
+  --overrides='{"spec":{"containers":[{"name":"test","image":"nginx","securityContext":{"privileged":true}}]}}'
+```
+
+예상 출력:
+
+```
+Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request:
+[disallow-privileged-containers] Privileged container 'test' is not allowed
+```
+
+### 7.3 RBAC 커스텀 역할
+
+```bash
+# 모든 클러스터에서 확인
+for cluster in platform dev staging prod; do
+  echo "=== $cluster ==="
+  kubectl --kubeconfig kubeconfig/${cluster}.yaml get clusterrole | grep -E "namespace-admin|cluster-readonly"
+done
+```
+
+예상 출력 (각 클러스터에서):
+
+```
+cluster-readonly    2d
+namespace-admin     2d
+```
+
+
+## 8. 백업 검증
+
+### 8.1 etcd 백업 파일
+
+```bash
+for master in platform-master dev-master staging-master prod-master; do
+  echo "=== $master ==="
+  ssh admin@$(tart ip $master) 'ls -lh /opt/etcd-backup/etcd-snapshot-*.db 2>/dev/null || echo "  백업 없음"'
+done
+```
+
+### 8.2 Velero (Platform 클러스터)
+
+```bash
+export KUBECONFIG=kubeconfig/platform.yaml
+kubectl get pods -n velero
+kubectl get schedules -n velero
+```
+
+예상 출력:
+
+```
+NAME                 SCHEDULE    LAST BACKUP   AGE
+daily-full-backup    0 3 * * *   2d            2d
+hourly-demo-backup   0 * * * *   30m           2d
+```
+
+
+## 9. 리소스 관리 검증
+
+### 9.1 ResourceQuota
+
+```bash
+for cluster in dev staging prod; do
+  echo "=== $cluster ==="
+  kubectl --kubeconfig kubeconfig/${cluster}.yaml get resourcequota -n demo
+done
+```
+
+예상 출력 (dev):
+
+```
+NAME         AGE   REQUEST                                          LIMIT
+demo-quota   2d    requests.cpu: 1200m/4, requests.memory: 1Gi/8Gi  limits.cpu: 4500m/8, limits.memory: 2816Mi/16Gi
+```
+
+### 9.2 LimitRange
+
+```bash
+kubectl --kubeconfig kubeconfig/dev.yaml describe limitrange demo-limitrange -n demo
+```
+
+리소스 미지정 Pod가 기본값을 받는지 확인:
+
+```bash
+kubectl --kubeconfig kubeconfig/dev.yaml run test-limits --image=nginx --restart=Never -n demo
+kubectl --kubeconfig kubeconfig/dev.yaml get pod test-limits -n demo \
+  -o jsonpath='{.spec.containers[0].resources}' | python3 -m json.tool
+kubectl --kubeconfig kubeconfig/dev.yaml delete pod test-limits -n demo
+```
+
+예상 출력:
+
+```json
+{
+    "limits": {
+        "cpu": "500m",
+        "memory": "512Mi"
+    },
+    "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+    }
+}
+```
+
+
+## 10. Harbor 레지스트리 검증
+
+### 10.1 Harbor Pod 상태 (Platform 클러스터)
+
+```bash
+export KUBECONFIG=kubeconfig/platform.yaml
+kubectl get pods -n harbor
+```
+
+예상 출력:
+
+```
+NAME                              READY   STATUS    RESTARTS   AGE
+harbor-core-xxxxxxxxxx-xxxxx      1/1     Running   0          2d
+harbor-portal-xxxxxxxxxx-xxxxx    1/1     Running   0          2d
+harbor-registry-xxxxxxxxxx-xxxxx  2/2     Running   0          2d
+harbor-database-0                 1/1     Running   0          2d
+harbor-redis-0                    1/1     Running   0          2d
+harbor-trivy-0                    1/1     Running   0          2d
+```
+
+### 10.2 Harbor Portal 접속
+
+- URL: `http://<platform-worker1-ip>:30400`
+- 인증: `admin` / `Harbor12345`
+
+```bash
+curl -sf -o /dev/null -w "%{http_code}" http://$PLATFORM_WORKER1_IP:30400
+```
+
+예상 출력:
+
+```
+200
+```
+
+
+## 11. 전체 클러스터 검증 스크립트 (확장판)
+
+아래 스크립트로 기본 인프라 + 보안 + 백업 + 리소스 관리를 한 번에 검증할 수 있다:
+
+```bash
+#!/bin/bash
+CLUSTERS="platform dev staging prod"
+
+for cluster in $CLUSTERS; do
+  echo "========== $cluster 클러스터 =========="
+  export KUBECONFIG=kubeconfig/${cluster}.yaml
+
+  echo "[노드 상태]"
+  kubectl get nodes -o wide 2>/dev/null || echo "  연결 실패"
+
+  echo "[Pod 상태 요약]"
+  TOTAL=$(kubectl get pods -A --no-headers 2>/dev/null | wc -l)
+  RUNNING=$(kubectl get pods -A --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
+  echo "  전체: $TOTAL, Running: $RUNNING"
+
+  echo "[Cilium 상태]"
+  kubectl exec -n kube-system ds/cilium -- cilium status --brief 2>/dev/null | head -3 || echo "  확인 불가"
+
+  echo "[RBAC 역할]"
+  kubectl get clusterrole namespace-admin 2>/dev/null && echo "  namespace-admin: OK" || echo "  namespace-admin: 없음"
+  kubectl get clusterrole cluster-readonly 2>/dev/null && echo "  cluster-readonly: OK" || echo "  cluster-readonly: 없음"
+
+  if [ "$cluster" == "dev" ]; then
+    echo "[OPA Gatekeeper]"
+    kubectl get constraints 2>/dev/null || echo "  미설치"
+  fi
+
+  if [ "$cluster" != "platform" ]; then
+    echo "[ResourceQuota]"
+    kubectl get resourcequota -n demo 2>/dev/null || echo "  미설정"
+    echo "[LimitRange]"
+    kubectl get limitrange -n demo 2>/dev/null || echo "  미설정"
+  fi
+
+  echo ""
+done
+
+echo "========== 추가 컴포넌트 (platform) =========="
+export KUBECONFIG=kubeconfig/platform.yaml
+echo "[Sealed Secrets]"
+kubectl get pods -n sealed-secrets 2>/dev/null || echo "  미설치"
+echo "[Velero]"
+kubectl get schedules -n velero 2>/dev/null || echo "  미설치"
+echo "[Harbor]"
+kubectl get pods -n harbor 2>/dev/null || echo "  미설치"
+```
+
+모든 컴포넌트가 정상이면 17단계 인프라 구성이 완료된 것이다.

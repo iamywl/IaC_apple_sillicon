@@ -113,7 +113,7 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 │  │  └──────────────────────────┘  │  worker2 (2C/8G)             │  │   │
 │  │                                └──────────────────────────────┘  │   │
 │  │                                                                  │   │
-│  │  Total: 10 VMs / 21 vCPU / ~71.5 GB RAM                        │   │
+│  │  Total: 10 VMs / 21 vCPU / ~66 GB RAM                          │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                                                        │
 │  ┌──────────── K8s Layer ───────────────────────────────────────────┐   │
@@ -860,57 +860,27 @@ tart-infra/
 │
 ├── kubeconfig/                         ← 클러스터별 kubeconfig — .gitignore
 │
-├── EDU/
-│   ├── 01~09-*.md                       ← tart-infra 프로젝트 학습 가이드 (9개 문서)
-│   ├── CKA/daily/day01~20.md            ← CKA 시험 대비 20일 과정 (Cluster Architecture, etcd, RBAC, Scheduling, Storage 등)
-│   ├── CKAD/daily/day01~14.md           ← CKAD 시험 대비 14일 과정 (Pod, Deployment, Probes, ConfigMap/Secret 등)
-│   ├── CKS/daily/day01~14.md            ← CKS 시험 대비 14일 과정 (NetworkPolicy, AppArmor, seccomp, Falco, Supply Chain 등)
-│   ├── KCNA/daily/day01~10.md           ← KCNA 시험 대비 10일 과정 (K8s Architecture, Cloud Native, Observability 등)
-│   ├── KCSA/daily/day01~10.md           ← KCSA 시험 대비 10일 과정 (Cloud Native Security, RBAC, MITRE ATT&CK 등)
-│   └── {alertmanager,argocd,...}/       ← 20개 기술별 학습 문서 (alertmanager, cilium, helm, istio, prometheus 등)
+├── LEARN/                                 ← 프로젝트 학습 (이론 + 실습)
+│   ├── STUDY_PLAN.md                    ← 5주(25일) 학습 계획
+│   ├── 01~15-*.md                       ← 학습 가이드 15개 문서
+│   ├── guide/                           ← 실습 가이드 13개 문서
+│   └── presentation.md                  ← 프로젝트 소개 PPT
 │
-└── doc/
-    ├── dashboard.md                    ← 대시보드 상세 기술 문서(Dashboard Technical Spec)
-    ├── tart.md                         ← Tart VM 런타임 개요(Tart VM Runtime Overview)
-    ├── terraform.md                    ← Terraform 모듈 설계(Terraform Module Design)
-    ├── bug-reports/                    ← 버그 리포트 모음(Bug Reports Collection) — 19건
-    └── learning/                       ← 학습용 기술 문서(Learning Documents)
+├── CERT/                                  ← 자격증 공부
+│   ├── CKA,CKAD,CKS,KCNA,KCSA/        ← K8s 자격증 5개 트랙
+│   └── {alertmanager,argocd,...}/       ← 20개 기술별 심화 학습
+│
+└── docs/                                  ← 참고 자료, 다이어그램
 ```
 
 ---
 
-## 학습용 기술 문서(Learning Documents)
+## 프로젝트 학습(Project Learning)
 
-이 프로젝트가 **어떻게 동작하는지**, 소프트웨어 공학(Software Engineering) 관점에서 설명하는 문서:
+이 프로젝트가 **어떻게 동작하는지** 처음부터 끝까지 설명하는 학습 자료:
 
-### 프로젝트 기술 문서(Project Technical Documents)
-
-| 문서(Document) | 내용(Contents) |
-|------|------|
-| [아키텍처 설계(Architecture Design)](doc/learning/architecture.md) | 8계층 레이어드 아키텍처(Layered Architecture), 멀티클러스터 CIDR(Classless Inter-Domain Routing) 설계, clusters.json이 단일 진실 공급원(Single Source of Truth)인 이유, 스크립트 디자인 패턴(Design Patterns) — Facade · Strategy · Template Method, CPU 오버커밋(Overcommit) 전략, 제로 트러스트(Zero Trust) 보안, ADR(Architecture Decision Records) 5건 |
-| [네트워크 심화(Networking Deep Dive)](doc/learning/networking.md) | Tart NAT(Network Address Translation) vs Softnet, Cilium eBPF(extended Berkeley Packet Filter)가 iptables보다 빠른 이유, kubeProxyReplacement 부트스트랩 순환의존성(Circular Dependency), CiliumNetworkPolicy L7 HTTP 필터링(Filtering), Istio 사이드카(Sidecar) mTLS(mutual TLS)/카나리(Canary)/서킷브레이커(Circuit Breaker), 패킷이 nginx→httpbin으로 가는 9단계 전체 경로(Full Packet Journey) |
-| [IaC와 자동화(IaC & Automation)](doc/learning/iac-automation.md) | Bash 명령형(Imperative) vs Terraform 선언형(Declarative) 비교, Phase 1~12 실행 흐름(Execution Flow), null_resource로 Tart CLI(Command Line Interface) 래핑(Wrapping), DHCP(Dynamic Host Configuration Protocol) IP 해결 패턴(Resolution Pattern), 멱등성(Idempotency) 구현, Helm values 관리, GitOps 원칙(Principles), Day 0/1/2 자동화 분류(Automation Classification) |
-| [모니터링/옵저버빌리티(Monitoring/Observability)](doc/learning/monitoring.md) | 옵저버빌리티 3기둥(Three Pillars) — Metrics·Logs·Traces, Prometheus Pull 모델(Pull Model), Grafana 코드 프로비저닝(Code Provisioning), AlertManager 알림 흐름(Alert Flow) — 그룹핑(Grouping)·억제(Inhibition), HPA(Horizontal Pod Autoscaler) 공식(Formula) `⌈replicas × current/target⌉`, PDB(Pod Disruption Budget) 상호작용(Interaction), 커스텀 대시보드 SSH(Secure Shell) 풀(SSH Pool) |
-| [트러블슈팅 가이드(Troubleshooting Guide)](doc/learning/troubleshooting.md) | 6단계 디버깅 프레임워크(Debugging Framework), VM→SSH(Secure Shell)→K8s→Pod→Service 레이어별 체크리스트(Per-layer Checklist), 실제 버그 7건의 근본 원인 분석(Root Cause Analysis)→가설(Hypothesis)→검증(Verification)→해결(Resolution) 과정, kubectl/Helm/Cilium 진단(Diagnostics) 명령, 재해복구(Disaster Recovery) 절차 |
-
-### Kubernetes 자격증 학습 문서(K8s Certification Study Materials) — 68개 파일
-
-tart-infra의 4개 클러스터(platform/dev/staging/prod)를 활용한 실습 포함. 공학적 이론과 표현으로 작성.
-
-| 자격증(Certification) | 일수(Days) | 경로(Path) | 주요 내용(Key Topics) |
-|------|------|------|------|
-| **CKA** (Certified Kubernetes Administrator) | 20일 | [EDU/CKA/daily/](EDU/CKA/daily/) | Cluster Architecture, etcd, RBAC, Scheduling, Services, NetworkPolicy, Storage, Troubleshooting, Mock Exams |
-| **CKAD** (Certified Kubernetes Application Developer) | 14일 | [EDU/CKAD/daily/](EDU/CKAD/daily/) | Pod/Dockerfile, Init/Multi-container, Volumes/Jobs, Deployment 전략, Probes/Debugging, ConfigMap/Secret |
-| **CKS** (Certified Kubernetes Security Specialist) | 14일 | [EDU/CKS/daily/](EDU/CKS/daily/) | NetworkPolicy/CIS Benchmark, RBAC/Audit, AppArmor/seccomp, PSS/Gatekeeper/mTLS, Supply Chain, Falco, Mock Exams |
-| **KCNA** (Kubernetes and Cloud Native Associate) | 10일 | [EDU/KCNA/daily/](EDU/KCNA/daily/) | K8s Architecture, Core Objects, Container Orchestration, Cloud Native Architecture, Observability, App Delivery |
-| **KCSA** (Kubernetes and Cloud Native Security Associate) | 10일 | [EDU/KCSA/daily/](EDU/KCSA/daily/) | Cloud Native Security, Supply Chain, API Server/etcd Security, RBAC/PSA/NetworkPolicy, MITRE ATT&CK/Falco |
-
-### 기술별 학습 문서(Technology Learning Documents) — 20개 기술
-
-| 기술(Technology) | 경로(Path) |
-|------|------|
-| alertmanager, argocd, cilium, containerd, envoy, grafana, helm, hubble, istio, jenkins | [EDU/{tech}/](EDU/) |
-| k6, keycloak, loki, nginx, postgresql, prometheus, rabbitmq, redis, tart, terraform | [EDU/{tech}/](EDU/) |
+- **[LEARN/](LEARN/)** — 프로젝트 학습 (이론 15개 + 실습 13개 + 학습 계획 + PPT)
+- **[CERT/](CERT/)** — K8s 자격증 공부 (CKA, CKAD, CKS, KCNA, KCSA + 기술별 심화)
 
 ---
 
@@ -975,7 +945,7 @@ kubectl --kubeconfig kubeconfig/platform.yaml -n velero get schedules
 
 | 문서(Document) | 설명(Description) |
 |------|------|
-| [대시보드 기술 문서(Dashboard Technical Spec)](doc/dashboard.md) | SRE 대시보드 아키텍처(Architecture), API 11개, Job 관리(Management), 트래픽 토폴로지(Traffic Topology), 스케일링 수집(Scaling Collection) |
-| [버그 리포트(Bug Report)](doc/bug-reports/) | 19건 버그 발견 및 해결 과정(Discovery & Resolution) |
-| [Tart 소개(Tart Introduction)](doc/tart.md) | Tart VM 런타임(Runtime) 개요(Overview) |
-| [Terraform 연동(Terraform Integration)](doc/terraform.md) | Terraform 모듈 설계(Module Design) |
+| [프레젠테이션(Presentation)](docs/presentation.md) | 프로젝트 발표 자료 |
+| [아키텍처 다이어그램(Architecture Diagrams)](docs/) | SVG 형식 아키텍처 다이어그램 5종 |
+| [Tart 소개(Tart Introduction)](docs/tart.md) | Tart VM 런타임(Runtime) 개요(Overview) |
+| [Terraform 연동(Terraform Integration)](docs/terraform.md) | Terraform 모듈 설계(Module Design) |

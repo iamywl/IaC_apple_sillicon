@@ -208,7 +208,8 @@ kubectl --kubeconfig kubeconfig/prod.yaml get pods -n kube-system | grep cilium
 | 원인 | 증상 | 해결법 |
 |------|------|--------|
 | Cilium 미설치/크래시 | 모든 노드 NotReady | Cilium Pod 상태 확인, 재설치 |
-| kubelet이 API 서버에 접근 불가 | worker만 NotReady | 마스터 IP 변경 확인, kubeadm join 재실행 |
+| kubelet이 API 서버에 접근 불가 | worker만 NotReady | `boot.sh` 실행 (인증서 재생성 + IP 갱신 자동 처리) |
+| API 서버/etcd CrashLoopBackOff | connection refused, TLS bad certificate | IP 변경으로 인한 인증서 SAN 불일치 → `boot.sh` 실행 |
 | 리소스 부족 | MemoryPressure | `free -m`으로 메모리 확인, VM 메모리 증가 |
 | kubelet 비정상 | Ready: False | `sudo systemctl restart kubelet` |
 
@@ -377,11 +378,22 @@ hubble observe --namespace demo --pod demo/nginx-web-5d4f7b8c9-abc12
 ### 에러 1: VM IP가 재부팅 후 바뀜 (DHCP)
 
 ```
-증상: 기존 IP로 SSH 접속 불가, kubectl 명령 타임아웃
+증상: 기존 IP로 SSH 접속 불가, kubectl 명령 타임아웃 또는 connection refused
+      etcd/API 서버 CrashLoopBackOff, TLS bad certificate 에러
 원인: Tart VM은 DHCP로 IP를 받아서, 재부팅 시 변경될 수 있음
+      IP 변경 시 TLS 인증서 SAN 불일치, 매니페스트/kubeconfig의 IP 불일치 발생
 ```
 
 **해결법:**
+```bash
+# boot.sh가 자동으로 처리한다:
+# 1. 인증서 SAN에 현재 IP가 있는지 확인
+# 2. 없으면 인증서 재생성 (CA 유지) + 매니페스트 IP 갱신 + kubeconfig 재생성
+# 3. API 서버 /readyz 대기 + SchedulingDisabled 노드 uncordon
+./scripts/boot.sh
+```
+
+수동으로 확인하려면:
 ```bash
 # 모든 VM의 현재 IP 확인
 for vm in platform-master platform-worker1 platform-worker2 \
@@ -390,13 +402,13 @@ for vm in platform-master platform-worker1 platform-worker2 \
   echo "$vm: $(tart ip $vm 2>/dev/null || echo 'not running')"
 done
 
-# kubeconfig 파일은 마스터 IP를 참조하므로,
-# 마스터 IP가 바뀌면 kubeconfig를 다시 복사해야 함
-sshpass -p admin scp -o StrictHostKeyChecking=no \
-  admin@$(tart ip prod-master):.kube/config kubeconfig/prod.yaml
+# 인증서 SAN에 현재 IP가 포함되어 있는지 확인
+IP=$(tart ip platform-master)
+sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$IP \
+  "sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | grep -A1 'Subject Alternative Name'"
 ```
 
-**예방법**: `scripts/boot.sh`를 사용하면 IP 변경을 자동으로 처리한다.
+**예방법**: 항상 `scripts/boot.sh`를 사용하여 VM을 시작한다. 인증서 재생성, IP 갱신, uncordon을 자동으로 처리한다.
 
 ### 에러 2: Pod가 Pending에 머무름 (리소스 부족)
 

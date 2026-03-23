@@ -712,13 +712,22 @@ tart stop golden-builder
 ### boot.sh - 매일 아침 실행
 
 ```bash
-# 1단계: 모든 VM 시작
+# 1단계: 모든 VM 시작 + SSH 대기
 ./scripts/boot/01-start-vms.sh
-# 2단계: SSH 접속 가능할 때까지 대기
+# 2단계: 인증서/IP 갱신 + API 서버 대기 + 노드 Ready 확인
 ./scripts/boot/02-wait-clusters.sh
 # 3단계: 서비스 상태 확인
 ./scripts/boot/03-verify-services.sh
 ```
+
+`02-wait-clusters.sh`의 동작 순서:
+
+1. 마스터 노드의 API 서버 인증서 SAN에 현재 IP가 포함되어 있는지 확인
+2. IP가 변경된 경우: TLS 인증서 재생성(CA 유지) + static pod 매니페스트 IP 갱신 + kubeconfig 재생성
+3. 모든 노드에서 kubelet 재시작
+4. API 서버 `/readyz` 엔드포인트가 응답할 때까지 대기 (최대 120초)
+5. `SchedulingDisabled` 상태의 노드를 자동 uncordon
+6. 모든 노드가 Ready 상태가 될 때까지 대기
 
 ### shutdown.sh - 매일 저녁 실행
 

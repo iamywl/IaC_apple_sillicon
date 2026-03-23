@@ -243,7 +243,111 @@ sudo iptables -t nat -F
 
 ---
 
-### 2.2 노드가 NotReady 상태
+### 2.2 VM 부팅 후 API 서버 connection refused / TLS 인증서 오류
+
+**증상**
+```
+The connection to the server 192.168.66.10:6443 was refused - did you specify the right host or port?
+```
+또는 etcd 로그에서:
+```
+"rejected connection on client endpoint" error="remote error: tls: bad certificate"
+```
+또는 kube-apiserver/etcd가 `CrashLoopBackOff` 상태:
+```
+failed to "StartContainer" for "etcd" with CrashLoopBackOff
+failed to "StartContainer" for "kube-apiserver" with CrashLoopBackOff
+```
+
+**원인**
+
+DHCP 환경에서 VM 재부팅 후 IP가 변경되면, 다음 세 가지가 모두 깨진다:
+
+1. **TLS 인증서 SAN 불일치**: kubeadm이 초기 설치 시 생성한 인증서(apiserver, etcd)에는 이전 IP가 SAN(Subject Alternative Name)으로 포함되어 있다. 새 IP로 접속하면 인증서 검증에 실패한다.
+2. **Static Pod 매니페스트의 IP**: `/etc/kubernetes/manifests/`의 kube-apiserver.yaml, etcd.yaml 등에 이전 IP가 하드코딩되어 있다.
+3. **kubeconfig 파일의 API 서버 주소**: kubelet.conf, admin.conf 등에 이전 IP가 기록되어 있다.
+
+**진단 명령어**
+```bash
+IP=$(tart ip platform-master)
+
+# 인증서 SAN에 현재 IP가 포함되어 있는지 확인
+sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$IP \
+  "sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | grep -A1 'Subject Alternative Name'"
+
+# etcd 로그에서 TLS 오류 확인
+sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$IP \
+  "sudo crictl logs \$(sudo crictl ps -a -q --name etcd | head -1) 2>&1 | tail -10"
+
+# kubelet이 접속 시도하는 API 서버 주소 확인
+sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$IP \
+  "sudo grep 'server:' /etc/kubernetes/kubelet.conf"
+```
+
+**해결 방법**
+
+`boot.sh`(`02-wait-clusters.sh`)가 이 문제를 자동으로 처리한다:
+
+1. 인증서 SAN에 현재 IP가 없으면 인증서를 재생성한다 (CA는 유지)
+2. static pod 매니페스트의 IP를 갱신한다
+3. kubeconfig 파일을 재생성한다
+4. kubelet 재시작 후 API 서버 `/readyz`가 응답할 때까지 대기한다
+
+수동으로 해결하려면:
+```bash
+IP=$(tart ip platform-master)
+
+sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$IP "sudo bash -c '
+  # 이전 IP 확인
+  OLD_IP=\$(openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text \
+    | grep -oP \"IP Address:\K[0-9.]+\" | grep -v \"10\.\" | head -1)
+
+  # kubelet 중지 및 매니페스트 백업
+  systemctl stop kubelet
+  mkdir -p /tmp/k8s-backup
+  mv /etc/kubernetes/manifests/*.yaml /tmp/k8s-backup/
+  sleep 3
+
+  # 인증서 삭제 (CA 유지) 및 재생성
+  rm -f /etc/kubernetes/pki/apiserver.{crt,key}
+  rm -f /etc/kubernetes/pki/etcd/server.{crt,key} /etc/kubernetes/pki/etcd/peer.{crt,key}
+  rm -f /etc/kubernetes/pki/etcd/healthcheck-client.{crt,key}
+  rm -f /etc/kubernetes/pki/apiserver-etcd-client.{crt,key}
+  rm -f /etc/kubernetes/pki/apiserver-kubelet-client.{crt,key}
+  rm -f /etc/kubernetes/pki/front-proxy-client.{crt,key}
+
+  kubeadm init phase certs apiserver --apiserver-advertise-address=$IP
+  kubeadm init phase certs apiserver-kubelet-client
+  kubeadm init phase certs apiserver-etcd-client
+  kubeadm init phase certs etcd-server
+  kubeadm init phase certs etcd-peer
+  kubeadm init phase certs etcd-healthcheck-client
+  kubeadm init phase certs front-proxy-client
+
+  # kubeconfig 재생성
+  rm -f /etc/kubernetes/{admin,kubelet,controller-manager,scheduler}.conf
+  kubeadm init phase kubeconfig admin --apiserver-advertise-address=$IP
+  kubeadm init phase kubeconfig kubelet --apiserver-advertise-address=$IP
+  kubeadm init phase kubeconfig controller-manager --apiserver-advertise-address=$IP
+  kubeadm init phase kubeconfig scheduler --apiserver-advertise-address=$IP
+
+  cp /etc/kubernetes/admin.conf /home/admin/.kube/config
+  chown admin:admin /home/admin/.kube/config
+
+  # 매니페스트 IP 갱신 및 복원
+  sed -i \"s|\$OLD_IP|$IP|g\" /tmp/k8s-backup/*.yaml
+  mv /tmp/k8s-backup/*.yaml /etc/kubernetes/manifests/
+
+  systemctl start kubelet
+'"
+
+# 로컬 kubeconfig 업데이트
+sshpass -p admin scp -o StrictHostKeyChecking=no admin@$IP:.kube/config kubeconfig/platform.yaml
+```
+
+---
+
+### 2.3 노드가 NotReady 상태
 
 **증상**
 ```bash
@@ -295,7 +399,7 @@ tart run platform-master --no-graphics --net-softnet-allow=0.0.0.0/0 &
 
 ---
 
-### 2.3 Pod가 Pending 상태
+### 2.4 Pod가 Pending 상태
 
 **증상**
 ```
@@ -338,7 +442,7 @@ kubectl --kubeconfig=$KUBECONFIG get storageclass
 
 ---
 
-### 2.4 Pod가 CrashLoopBackOff
+### 2.5 Pod가 CrashLoopBackOff
 
 **증상**
 ```
@@ -382,7 +486,7 @@ kubectl --kubeconfig=$KUBECONFIG get configmap -n <namespace>
 
 ---
 
-### 2.5 Pod가 ImagePullBackOff
+### 2.6 Pod가 ImagePullBackOff
 
 **증상**
 ```

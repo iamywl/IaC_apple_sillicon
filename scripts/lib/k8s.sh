@@ -135,6 +135,22 @@ init_cluster() {
   done
 }
 
+wait_apiserver_ready() {
+  local cluster_name="$1"
+  local max_attempts="${2:-40}"
+
+  log_info "Waiting for API server of '$cluster_name' to be ready..."
+  for ((i=1; i<=max_attempts; i++)); do
+    if kubectl_cmd "$cluster_name" get --raw /readyz &>/dev/null; then
+      log_info "API server of '$cluster_name' is ready."
+      return 0
+    fi
+    sleep 3
+  done
+  log_warn "API server of '$cluster_name' is not responding after $((max_attempts * 3))s."
+  return 1
+}
+
 wait_nodes_ready() {
   local cluster_name="$1"
   local max_attempts="${2:-60}"
@@ -142,7 +158,7 @@ wait_nodes_ready() {
   log_info "Waiting for all nodes in '$cluster_name' to be Ready..."
   for ((i=1; i<=max_attempts; i++)); do
     local not_ready
-    not_ready=$(kubectl_cmd "$cluster_name" get nodes --no-headers 2>/dev/null | grep -cv " Ready " || true)
+    not_ready=$(kubectl_cmd "$cluster_name" get nodes --no-headers 2>/dev/null | grep -cE "NotReady| [A-Za-z]*Not" || true)
     if [[ "$not_ready" -eq 0 ]]; then
       log_info "All nodes in '$cluster_name' are Ready."
       kubectl_cmd "$cluster_name" get nodes

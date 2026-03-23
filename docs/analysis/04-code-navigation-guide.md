@@ -101,7 +101,8 @@ install.sh (오케스트레이터)
 ```
 boot.sh
 ├── 01-start-vms.sh      ← VM 시작 + SSH 대기
-├── 02-wait-clusters.sh   ← kubelet 재시작 + kubeconfig IP 업데이트 + Ready 대기
+├── 02-wait-clusters.sh   ← 인증서 SAN 확인 → IP 변경 시 인증서 재생성 + 매니페스트/kubeconfig IP 갱신
+│                            → kubelet 재시작 → API 서버 /readyz 대기 → uncordon → 노드 Ready 대기
 └── 03-verify-services.sh ← Cilium/모니터링/CI/CD 상태 확인 + URL 출력
 ```
 
@@ -139,13 +140,21 @@ boot.sh
 
 2. 02-wait-clusters.sh 열기
    → vm_get_ip()로 새 IP 조회
-   → kubeconfig 파일의 server 주소를 새 IP로 교체 (sed 사용)
+   → openssl로 인증서 SAN에 현재 IP가 있는지 확인
+   → IP 변경 시: kubeadm init phase certs로 인증서 재생성 (CA 유지)
+   → static pod 매니페스트의 IP를 sed로 갱신
+   → kubeadm init phase kubeconfig로 kubeconfig 재생성
+   → API 서버 /readyz 대기 후 SchedulingDisabled 노드 uncordon
 
-3. vm_get_ip()가 어떻게 동작하는지 궁금하면
+3. wait_apiserver_ready()가 어떻게 동작하는지 궁금하면
+   → scripts/lib/k8s.sh에서 wait_apiserver_ready() 확인
+   → kubectl get --raw /readyz로 API 서버 readiness 폴링
+
+4. vm_get_ip()가 어떻게 동작하는지 궁금하면
    → scripts/lib/vm.sh에서 vm_get_ip() 확인
    → tart ip 명령어 래핑
 
-✅ 본 파일: 2개 (02-wait-clusters.sh, vm.sh)
+✅ 본 파일: 3개 (02-wait-clusters.sh, k8s.sh, vm.sh)
 ```
 
 ### 시나리오 3: "새 클러스터를 추가해달라"

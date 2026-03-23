@@ -88,17 +88,47 @@ else
   # Check if VMs already exist
   EXISTING_VMS=$(tart list 2>/dev/null | grep -c "local" || true)
   if [[ "$EXISTING_VMS" -gt 0 ]]; then
-    log_warn "Found $EXISTING_VMS existing VMs."
-    log_warn "If you want a fresh install, run './scripts/destroy.sh' first."
+    log_warn "기존 VM ${EXISTING_VMS}개가 감지되었습니다."
     echo ""
-    read -rp "Boot existing VMs instead of reinstalling? [Y/n] " answer
-    if [[ "${answer:-Y}" =~ ^[Yy]$ ]]; then
-      log_info "Booting existing infrastructure..."
-      bash "$SCRIPT_DIR/boot.sh"
-    else
-      log_info "Starting full installation..."
-      bash "$SCRIPT_DIR/install.sh"
-    fi
+    echo "  다음 중 하나를 선택하세요:"
+    echo ""
+    echo "  1) 기존 VM 부팅 (boot)"
+    echo "     - 이미 설치된 VM을 그대로 부팅합니다."
+    echo "     - 데이터가 보존되며, 빠르게 시작됩니다. (약 2~3분)"
+    echo "     - 이전에 설치를 완료한 적이 있다면 이 옵션을 선택하세요."
+    echo ""
+    echo "  2) 전체 재설치 (reinstall)"
+    echo "     - 기존 VM 위에 처음부터 다시 설치합니다."
+    echo "     - VM 자체는 유지되지만 kubeadm init/join이 재실행됩니다."
+    echo "     - 이미 클러스터가 구성된 경우 에러가 발생할 수 있습니다."
+    echo "     - 완전히 새로 시작하려면 먼저 './scripts/destroy.sh'를 실행하세요."
+    echo "     - 소요 시간: 약 45~60분"
+    echo ""
+    while true; do
+      read -rp "선택 [1/2] (기본값: 1): " answer
+      case "${answer:-1}" in
+        1)
+          log_info "기존 VM을 부팅합니다..."
+          bash "$SCRIPT_DIR/boot.sh"
+          break
+          ;;
+        2)
+          echo ""
+          read -rp "정말 재설치하시겠습니까? 기존 클러스터 설정이 꼬일 수 있습니다. (yes/no): " confirm
+          if [[ "$confirm" == "yes" ]]; then
+            log_info "전체 재설치를 시작합니다..."
+            bash "$SCRIPT_DIR/install.sh"
+          else
+            log_info "취소되었습니다. 기존 VM을 부팅합니다..."
+            bash "$SCRIPT_DIR/boot.sh"
+          fi
+          break
+          ;;
+        *)
+          log_warn "1 또는 2를 입력하세요."
+          ;;
+      esac
+    done
   else
     log_section "Phase 1: Full Infrastructure Install"
     bash "$SCRIPT_DIR/install.sh"

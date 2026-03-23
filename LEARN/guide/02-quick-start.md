@@ -472,21 +472,12 @@ shutdown 후에는 Mac을 꺼도 데이터가 보존된다.
 이 스크립트는 다음을 수행한다:
 
 1. 모든 VM을 시작하고 IP 할당을 대기한다
-2. 각 클러스터의 API server가 응답할 때까지 대기한다
-3. 주요 서비스(모니터링, CI/CD 등)의 상태를 확인한다
+2. DHCP로 IP가 변경된 경우, TLS 인증서 재생성 + 매니페스트/kubeconfig IP 갱신을 자동 수행한다
+3. 각 클러스터의 API 서버 `/readyz`가 응답할 때까지 대기한다
+4. `SchedulingDisabled` 상태의 노드를 자동 uncordon한다
+5. 주요 서비스(모니터링, CI/CD 등)의 상태를 확인한다
 
-예상 출력:
-```
-========== Tart Multi-Cluster Boot ==========
-
-[INFO] Starting all VMs and verifying cluster health...
-...
-========== Boot Complete! ==========
-```
-
-부팅 후 VM의 IP가 변경될 수 있다. kubeconfig 파일에는 이전 IP가 기록되어 있으므로, API server에 접근이 안 되면 kubeconfig의 server 주소를 갱신해야 한다.
-
-> **참고**: kubeconfig의 server 주소 갱신이 필요한 경우, 수동으로 `kubeconfig/<cluster>.yaml` 파일의 `server:` 필드를 새 IP로 변경한다. 또는 destroy 후 재설치하면 자동으로 올바른 IP가 설정된다.
+> **참고**: DHCP 환경에서 VM 재부팅 시 IP가 바뀌면 API 서버/etcd 인증서의 SAN이 맞지 않아 클러스터가 기동되지 않는다. `boot.sh`가 이를 자동으로 감지하고 인증서를 재생성하므로 수동 개입이 필요 없다.
 
 ### 기존 인프라 부팅 + 대시보드
 

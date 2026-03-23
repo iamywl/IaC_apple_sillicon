@@ -194,7 +194,7 @@ tart run "$vm_name" --no-graphics --net-softnet-allow=0.0.0.0/0 &
 `--net-softnet-allow=0.0.0.0/0` 옵션을 사용하면:
 - 모든 VM이 같은 소프트웨어 네트워크에 연결됨
 - VM 간 직접 IP 통신 가능
-- DHCP로 IP 자동 할당 (재부팅 시 IP 변경됨 → boot 스크립트에서 kubeconfig 업데이트)
+- DHCP로 IP 자동 할당 (재부팅 시 IP 변경됨 → boot 스크립트에서 TLS 인증서 재생성 + 매니페스트/kubeconfig IP 갱신)
 
 ### 대안
 

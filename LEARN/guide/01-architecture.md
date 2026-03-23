@@ -194,7 +194,7 @@ platform 클러스터가 모니터링과 CI/CD를 전담하므로, dev/staging/p
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-> **참고**: 실제 IP 주소는 DHCP 할당이므로 부팅할 때마다 달라질 수 있다. `tart ip <vm-name>`으로 현재 IP를 확인해야 한다.
+> **참고**: 실제 IP 주소는 DHCP 할당이므로 부팅할 때마다 달라질 수 있다. IP가 변경되면 API 서버/etcd의 TLS 인증서 SAN이 맞지 않아 클러스터가 기동되지 않는다. `boot.sh`(`02-wait-clusters.sh`)가 이를 자동으로 감지하여 인증서 재생성, static pod 매니페스트 IP 갱신, kubeconfig 재생성을 수행한다.
 
 ### Pod CIDR / Service CIDR 매핑 테이블
 

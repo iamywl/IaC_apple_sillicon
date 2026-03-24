@@ -13,9 +13,9 @@ output "cluster_kubeconfigs" {
 output "access_urls" {
   description = "Service access URLs"
   value = {
-    grafana     = "http://${lookup(module.vms.vm_ips, "platform-worker1", "unknown")}:30300"
-    argocd      = "http://${lookup(module.vms.vm_ips, "platform-worker1", "unknown")}:30800"
-    jenkins     = "http://${lookup(module.vms.vm_ips, "platform-worker1", "unknown")}:30900"
+    grafana      = "http://${lookup(module.vms.vm_ips, "platform-worker1", "unknown")}:30300"
+    argocd       = "http://${lookup(module.vms.vm_ips, "platform-worker1", "unknown")}:30800"
+    jenkins      = "http://${lookup(module.vms.vm_ips, "platform-worker1", "unknown")}:30900"
     alertmanager = "http://${lookup(module.vms.vm_ips, "platform-worker1", "unknown")}:30903"
   }
 }

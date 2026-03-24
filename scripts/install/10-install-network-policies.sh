@@ -19,6 +19,7 @@ kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/network-policies/allow-
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/network-policies/allow-httpbin-to-rabbitmq.yaml"
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/network-policies/allow-httpbin-to-keycloak.yaml"
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/network-policies/allow-keycloak-to-postgres.yaml"
+kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/network-policies/allow-keycloak-egress.yaml"
 kubectl_cmd "$CLUSTER" apply -f "$PROJECT_ROOT/manifests/network-policies/allow-external-to-keycloak.yaml"
 
 log_info "Current CiliumNetworkPolicies:"

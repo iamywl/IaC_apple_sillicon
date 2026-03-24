@@ -192,7 +192,7 @@ export function ScalingPage({ clusters }: Props) {
               <Tooltip
                 contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
                 labelStyle={{ color: '#94a3b8' }} itemStyle={{ fontSize: 12 }}
-                formatter={(value: number | null | undefined) => [value != null ? `${value}%` : 'N/A']}
+                formatter={(value: unknown) => [typeof value === 'number' ? `${value}%` : 'N/A']}
               />
               <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 8 }} />
               {deploymentNames.map((name, i) => (

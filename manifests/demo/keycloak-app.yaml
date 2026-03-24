@@ -14,10 +14,12 @@ spec:
     metadata:
       labels:
         app: keycloak
+      annotations:
+        sidecar.istio.io/inject: "false"
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:latest
+          image: quay.io/keycloak/keycloak:26.1
           args: ["start-dev"]
           ports:
             - containerPort: 8080
@@ -46,13 +48,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: 8080
+              port: 9000
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/live
-              port: 8080
+              port: 9000
             initialDelaySeconds: 120
             periodSeconds: 30
 ---

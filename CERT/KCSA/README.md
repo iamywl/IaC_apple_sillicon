@@ -52,6 +52,7 @@ KCSA 시험은 아래 6개 도메인으로 구성되어 있다. 각 도메인의
 | [01-concepts.md](./01-concepts.md) | 6개 도메인별 핵심 개념 정리 |
 | [02-examples.md](./02-examples.md) | YAML 설정 및 실습 예제 |
 | [03-exam-questions.md](./03-exam-questions.md) | 모의 시험 문제 (40문항 이상) |
+| [04-tart-infra-practice.md](./04-tart-infra-practice.md) | tart-infra 환경 활용 실습 가이드 |
 
 ## 학습 전략
 

@@ -7,7 +7,7 @@ log_section "Phase 9: Enabling AlertManager + Alert Rules on '$CLUSTER'"
 
 # Upgrade kube-prometheus-stack to enable AlertManager
 log_info "Upgrading kube-prometheus-stack with AlertManager enabled..."
-helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --kubeconfig "$(kubeconfig_for_cluster "$CLUSTER")" \
   --namespace monitoring \
   --values "$PROJECT_ROOT/manifests/monitoring-values.yaml" \

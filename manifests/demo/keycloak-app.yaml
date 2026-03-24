@@ -42,7 +42,7 @@ spec:
               memory: 256Mi
             limits:
               cpu: 500m
-              memory: 768Mi
+              memory: 1Gi
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -53,7 +53,7 @@ spec:
             httpGet:
               path: /health/live
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 120
             periodSeconds: 30
 ---
 apiVersion: v1

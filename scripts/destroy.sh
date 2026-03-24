@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/lib/vm.sh"
 log_section "Destroying All Infrastructure"
 log_warn "This will delete ALL VMs and kubeconfigs!"
 echo ""
-read -p "Are you sure? (yes/no): " confirm
+read -rp "Are you sure? (yes/no): " confirm
 if [[ "$confirm" != "yes" ]]; then
   log_info "Aborted."
   exit 0

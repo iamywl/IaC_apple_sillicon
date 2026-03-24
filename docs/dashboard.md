@@ -7,7 +7,7 @@
 
 ```bash
 cd dashboard && npm install && npm run dev
-# Frontend: http://localhost:3000  |  Backend: http://localhost:3001
+# Frontend: http://localhost:5173  |  Backend: http://localhost:3000
 ```
 
 ---
@@ -33,7 +33,7 @@ cd dashboard && npm install && npm run dev
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Browser (localhost:3000)                                       │
+│  Browser (localhost:5173)                                       │
 │                                                                 │
 │  ┌──── Sidebar ────┐  ┌──── Content Area ─────────────────────┐│
 │  │ Overview         │  │  <Routes>                             ││

@@ -11,7 +11,7 @@
 | 항목 | 내용 |
 |------|------|
 | 진입점 | `demo.sh` 또는 `install.sh` |
-| 실행 구조 | 12개 Phase 스크립트를 순차 실행 |
+| 실행 구조 | 17개 Phase 스크립트를 순차 실행 |
 | 상태 관리 | 없음. 매번 현재 상태를 확인하고 멱등성을 코드로 구현한다 |
 | 에러 처리 | `set -euo pipefail`로 즉시 중단한다 |
 | 장점 | 단순하다. 디버깅이 쉽다. 의존성이 적다 |
@@ -228,7 +228,7 @@ VM 생명주기를 관리한다. Tart는 Terraform Provider가 없으므로 `nul
 | dev | dev-worker1 | worker | 2 | 8192 |
 | staging | staging-master | master | 2 | 4096 |
 | staging | staging-worker1 | worker | 2 | 8192 |
-| prod | prod-master | master | 2 | 3072 |
+| prod | prod-master | master | 2 | 4096 |
 | prod | prod-worker1 | worker | 2 | 8192 |
 | prod | prod-worker2 | worker | 2 | 8192 |
 

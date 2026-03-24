@@ -208,7 +208,7 @@ macOS (Apple Silicon)
 |  |  +------------------------+  |  worker2 (2C/8G)           |      |  |
 |  |                              +----------------------------+      |  |
 |  |                                                                  |  |
-|  |  Total: 10 VMs / 21 vCPU / ~66 GB RAM                          |  |
+|  |  Total: 10 VMs / 21 vCPU / ~68 GB RAM                          |  |
 |  +------------------------------------------------------------------+  |
 +------------------------------------------------------------------------+
 ```
@@ -609,7 +609,7 @@ kubectl --kubeconfig kubeconfig/staging.yaml top pods -A
 
 | 노드 | CPU | 메모리 | 역할 |
 |------|-----|--------|------|
-| prod-master | 2 | 3 GB | K8s Control Plane |
+| prod-master | 2 | 4 GB | K8s Control Plane |
 | prod-worker1 | 2 | 8 GB | 워크로드 노드 |
 | prod-worker2 | 2 | 8 GB | 워크로드 노드 (고가용성을 위한 2대 구성) |
 

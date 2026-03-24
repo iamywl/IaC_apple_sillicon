@@ -195,7 +195,7 @@
 | platform | master(2C/4G) + worker1(3C/12G) + worker2(2C/8G) | 7 | 24 GB |
 | dev | master(2C/4G) + worker1(2C/8G) | 4 | 12 GB |
 | staging | master(2C/4G) + worker1(2C/8G) | 4 | 12 GB |
-| prod | master(2C/3G) + worker1(2C/8G) + worker2(2C/8G) | 6 | 19 GB |
+| prod | master(2C/4G) + worker1(2C/8G) + worker2(2C/8G) | 6 | 20 GB |
 
 ---
 
@@ -465,8 +465,8 @@ Helm Chart Repository: `https://istio-release.storage.googleapis.com/charts`
 | nginx demo | 30080 | dev | `http://<dev-worker-ip>:30080` |
 | Keycloak | 30880 | dev | `http://<dev-worker-ip>:30880` |
 | Hubble UI | 31235 | 각 클러스터 | `http://<worker-ip>:31235` |
-| SRE Dashboard (Frontend) | 3000 | localhost | `http://localhost:3000` |
-| SRE Dashboard (Backend) | 3001 | localhost | `http://localhost:3001` |
+| SRE Dashboard (Frontend) | 5173 | localhost | `http://localhost:5173` |
+| SRE Dashboard (Backend) | 3000 | localhost | `http://localhost:3000` |
 
 ---
 

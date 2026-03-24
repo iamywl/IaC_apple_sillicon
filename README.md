@@ -108,12 +108,12 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 │  │  │  worker2  (2C/8G)             │  └────────────────────────┘   │   │
 │  │  └───────────────────────────────┘                               │   │
 │  │  ┌──────── staging ─────────┐  ┌──────────── prod ────────────┐  │   │
-│  │  │  master  (2C/4G)         │  │  master  (2C/3G)             │  │   │
+│  │  │  master  (2C/4G)         │  │  master  (2C/4G)             │  │   │
 │  │  │  worker1 (2C/8G)         │  │  worker1 (2C/8G)             │  │   │
 │  │  └──────────────────────────┘  │  worker2 (2C/8G)             │  │   │
 │  │                                └──────────────────────────────┘  │   │
 │  │                                                                  │   │
-│  │  Total: 10 VMs / 21 vCPU / ~66 GB RAM                          │   │
+│  │  Total: 10 VMs / 21 vCPU / ~68 GB RAM                          │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                                                        │
 │  ┌──────────── K8s Layer ───────────────────────────────────────────┐   │
@@ -209,7 +209,7 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 
 | 노드(Node) | 스펙(Spec) | 역할(Role) |
 |------|------|------|
-| prod-master | 2 vCPU / 3 GB | 컨트롤 플레인(Control Plane) |
+| prod-master | 2 vCPU / 4 GB | 컨트롤 플레인(Control Plane) |
 | prod-worker1 | 2 vCPU / 8 GB | 프로덕션 워크로드(Production Workload) |
 | prod-worker2 | 2 vCPU / 8 GB | 프로덕션 워크로드(Production Workload) — 이중화(Redundancy) |
 
@@ -224,7 +224,7 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 | | platform | dev | staging | prod |
 |---|---|---|---|---|
 | **역할(Role)** | 관제·모니터링·CI/CD(Continuous Integration/Continuous Delivery) | 개발·실험·테스트 | 사전 검증(Pre-prod) | 프로덕션(Production) |
-| **노드 수(Nodes)** | 3 (7C / 24G) | 2 (4C / 12G) | 2 (4C / 12G) | 3 (6C / 19G) |
+| **노드 수(Nodes)** | 3 (7C / 24G) | 2 (4C / 12G) | 2 (4C / 12G) | 3 (6C / 20G) |
 | **Cilium + Hubble** | O | O | O | O |
 | **Istio 서비스 메시(Service Mesh)** | — | O | — | — |
 | **네트워크 정책(NetworkPolicy) L7** | — | O | — | — |
@@ -363,7 +363,7 @@ clusters.json (설정 파일 하나 — Single Source of Truth)
 
 ```bash
 cd dashboard && npm install && npm run dev
-# → http://localhost:3000
+# → http://localhost:5173 (프론트엔드) / http://localhost:3000 (백엔드 API)
 ```
 
 ### 페이지 구성(Pages) — 6개
@@ -654,7 +654,7 @@ tart ip platform-worker1
 # ArgoCD 비밀번호 확인(Get ArgoCD Password)
 kubectl --kubeconfig kubeconfig/platform.yaml \
   -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath="{.data.password}" | base64 -d && echo
+  -o jsonpath="{.data.password}" | base64 --decode && echo
 ```
 
 ### Dev 클러스터 서비스(Dev Cluster Services)
@@ -669,7 +669,7 @@ kubectl --kubeconfig kubeconfig/platform.yaml \
 
 ```bash
 cd dashboard && npm install && npm run dev
-# → http://localhost:3000
+# → http://localhost:5173 (프론트엔드) / http://localhost:3000 (백엔드 API)
 ```
 
 ### kubectl 접속(kubectl Access)

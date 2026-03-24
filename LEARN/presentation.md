@@ -173,7 +173,7 @@ Phase 17  ResourceQuota + Harbor 레지스트리
 
 | 항목 | kube-proxy (iptables) | Cilium (eBPF) |
 |------|----------------------|---------------|
-| 동작 위치 | 유저스페이스 ↔ 커널 | **커널 내부** |
+| 동작 위치 | 커널 (iptables 규칙 순회) | **커널 내부 (eBPF)** |
 | 성능 | O(n) 규칙 순회 | O(1) 해시 테이블 |
 | 가시성 | 없음 | **Hubble로 실시간 관찰** |
 | L7 필터링 | 불가 | HTTP/gRPC/DNS 필터링 |
@@ -200,10 +200,16 @@ metadata:
   namespace: demo
 spec:
   endpointSelector: {}    # 모든 Pod에 적용
-  ingress:
-    - {}                   # 아무것도 허용하지 않음
+  ingress: []              # 빈 배열 = 모든 인그레스 차단
   egress:
-    - {}
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
 ```
 
 > **원칙**: 명시적으로 허용하지 않은 모든 트래픽은 차단된다.
@@ -518,9 +524,9 @@ bash scripts/demo.sh
 
 ```bash
 open http://$(tart ip platform-worker1):30300    # Grafana
-open http://$(tart ip platform-worker1):30900    # Prometheus
+open http://$(tart ip platform-worker1):30900    # Jenkins
 open http://$(tart ip platform-worker1):30800    # ArgoCD
-open http://$(tart ip platform-worker1):30080    # Jenkins
+open http://$(tart ip dev-worker1):30080          # Nginx (dev)
 ```
 
 ---
@@ -530,7 +536,7 @@ open http://$(tart ip platform-worker1):30080    # Jenkins
 # 학습 자료
 
 ## LEARN/ — 프로젝트 학습 가이드 15개 문서
-## GUIDE/ — 실습 가이드 13개 문서
+## guide/ — 실습 가이드 13개 문서
 ## STUDY_PLAN.md — 5주(25일) 학습 로드맵
 
 ---

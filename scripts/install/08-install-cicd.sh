@@ -40,9 +40,9 @@ helm upgrade --install jenkins jenkins/jenkins \
 # Print access info
 WORKER_IP=$(vm_get_ip "platform-worker1")
 log_info "ArgoCD URL: http://${WORKER_IP}:30800"
-ARGOCD_PASSWORD=$(kubectl_cmd "$CLUSTER" -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "check-argocd-secret")
+ARGOCD_PASSWORD=$(kubectl_cmd "$CLUSTER" -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 --decode || echo "check-argocd-secret")
 log_info "ArgoCD credentials: admin / ${ARGOCD_PASSWORD}"
 
 log_info "Jenkins URL: http://${WORKER_IP}:30900"
-JENKINS_PASSWORD=$(kubectl_cmd "$CLUSTER" -n jenkins get secret jenkins -o jsonpath="{.data.jenkins-admin-password}" 2>/dev/null | base64 -d || echo "check-jenkins-secret")
+JENKINS_PASSWORD=$(kubectl_cmd "$CLUSTER" -n jenkins get secret jenkins -o jsonpath="{.data.jenkins-admin-password}" 2>/dev/null | base64 --decode || echo "check-jenkins-secret")
 log_info "Jenkins credentials: admin / ${JENKINS_PASSWORD}"

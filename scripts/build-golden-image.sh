@@ -43,7 +43,7 @@ cleanup() {
     tart delete "${GOLDEN_NAME}-build" 2>/dev/null || true
   fi
 }
-trap cleanup ERR
+trap cleanup ERR INT TERM
 
 # ── Main ──
 log_section "Golden Image Builder"

@@ -119,9 +119,11 @@ CKA 시험은 다음 5개 도메인으로 구성되며, 각 도메인의 출제 
 ## 파일 구성
 
 ```
-EDU/CKA/
-├── README.md              # 시험 개요 및 가이드 (본 문서)
-├── 01-concepts.md         # 도메인별 핵심 개념 정리
-├── 02-examples.md         # 실습 예제 모음
-└── 03-exam-questions.md   # 모의 시험 문제 및 풀이
+CERT/CKA/
+├── README.md                  # 시험 개요 및 가이드 (본 문서)
+├── 01-concepts.md             # 도메인별 핵심 개념 정리
+├── 02-examples.md             # 실습 예제 모음
+├── 03-exam-questions.md       # 모의 시험 문제 및 풀이
+├── 04-tart-infra-practice.md  # tart-infra 환경 활용 실습 가이드
+└── daily/                     # 일별 학습 기록 (day01~day20)
 ```

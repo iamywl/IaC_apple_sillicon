@@ -23,7 +23,7 @@
 | 게스트 OS | Ubuntu ARM64 (ghcr.io/cirruslabs/ubuntu:latest) |
 | VM 수 | 10개 (master 4 + worker 6) |
 | 총 vCPU | 21개 |
-| 총 메모리 | ~71.5GB |
+| 총 메모리 | ~68GB |
 
 ---
 
@@ -36,7 +36,7 @@ tart-infra/
 │   └── clusters.json          # 모든 클러스터/노드 정의
 │
 ├── scripts/                   # Bash 자동화 스크립트
-│   ├── install/               # 설치 (12단계 파이프라인)
+│   ├── install/               # 설치 (17단계 파이프라인)
 │   │   ├── install.sh         # 설치 오케스트레이터
 │   │   ├── 01-create-vms.sh   # VM 생성
 │   │   ├── 02-prepare-nodes.sh # 노드 준비 (swap off, 커널 모듈)

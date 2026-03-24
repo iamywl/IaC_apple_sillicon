@@ -364,10 +364,10 @@ startCollector() 호출 (t=0)
 ### 4.4 프론트엔드 부팅 시퀀스 (main.tsx → App.tsx → usePolling)
 
 ```
-Vite dev server 시작 (port 3000)
+Vite dev server 시작 (port 5173)
      │
      ▼
-브라우저에서 http://localhost:3000 접속
+브라우저에서 http://localhost:5173 접속
      │
      ▼
 ┌─ index.html ──→ main.tsx 로드 ─────────────────────────────────┐
@@ -461,7 +461,7 @@ t=3.5s  collectAllTraffic() 최초 실행
 t=5.5s  collectAllServices() 최초 실행
         └── kubectl get svc/endpoints
 
-t=?     사용자가 브라우저에서 localhost:3000 접속
+t=?     사용자가 브라우저에서 localhost:5173 접속
         ├── main.tsx → App.tsx 마운트
         ├── usePolling: fetch('/api/snapshot') 첫 호출
         ├── Vite 프록시 → Express → getSnapshot() 반환

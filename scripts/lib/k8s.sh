@@ -158,7 +158,7 @@ wait_nodes_ready() {
   log_info "Waiting for all nodes in '$cluster_name' to be Ready..."
   for ((i=1; i<=max_attempts; i++)); do
     local not_ready
-    not_ready=$(kubectl_cmd "$cluster_name" get nodes --no-headers 2>/dev/null | grep -cE "NotReady| [A-Za-z]*Not" || true)
+    not_ready=$(kubectl_cmd "$cluster_name" get nodes --no-headers 2>/dev/null | grep -cv " Ready " || true)
     if [[ "$not_ready" -eq 0 ]]; then
       log_info "All nodes in '$cluster_name' are Ready."
       kubectl_cmd "$cluster_name" get nodes

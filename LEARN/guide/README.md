@@ -47,7 +47,7 @@ Golden Image는 `build-golden-image.sh`로 생성한다. containerd, kubeadm, ku
 | 디스크 여유 | 100GB | 200GB 이상 |
 | macOS | 13.0 (Ventura) | 14.0 (Sonoma) 이상 |
 
-VM 10개가 총 약 66GB 메모리를 사용한다. 64GB RAM에서는 메모리가 부족하므로 128GB 이상을 권장하며, 64GB 환경에서는 사용하지 않는 클러스터의 VM을 정지하고 실행하는 것을 권장한다.
+VM 10개가 총 약 68GB 메모리를 사용한다. 64GB RAM에서는 메모리가 부족하므로 128GB 이상을 권장하며, 64GB 환경에서는 사용하지 않는 클러스터의 VM을 정지하고 실행하는 것을 권장한다.
 
 ---
 

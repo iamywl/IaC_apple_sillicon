@@ -1,1 +1,1 @@
-project_root = "/Users/ywlee/tart-infra"
+project_root = "/Users/ywlee/sideproejct/tart-infra"

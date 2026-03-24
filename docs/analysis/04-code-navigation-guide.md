@@ -27,7 +27,7 @@
 
 | 상황 | 시작 파일 | 역할 |
 |------|----------|------|
-| 설치 관련 | `scripts/install/install.sh` | 12단계 설치 오케스트레이터 |
+| 설치 관련 | `scripts/install/install.sh` | 17단계 설치 오케스트레이터 |
 | 부팅 관련 | `scripts/boot.sh` | 3단계 부팅 오케스트레이터 |
 | 종료 관련 | `scripts/shutdown.sh` | drain + VM 종료 |
 | VM 관련 | `scripts/lib/vm.sh` | VM 생성/시작/중지/삭제/IP 조회 |
@@ -78,7 +78,7 @@ grep -n "함수이름" scripts/lib/*.sh
 
 ---
 
-## 설치 파이프라인 흐름도 (12단계)
+## 설치 파이프라인 흐름도 (17단계)
 
 ```
 install.sh (오케스트레이터)

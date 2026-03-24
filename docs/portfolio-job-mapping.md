@@ -37,7 +37,7 @@
 | 프로젝트 구현 | 관련 파일 | 설명 |
 |-------------|----------|------|
 | VM 10대 자동 프로비저닝 | `scripts/install/01-create-vms.sh` | Tart VM을 코드로 생성 — 온프레미스 서버 프로비저닝 자동화와 동일 |
-| 12단계 설치 자동화 | `scripts/install.sh` | VM 생성 → OS 설정 → 런타임 → K8s → CNI → 모니터링 → CI/CD → 보안 → 서비스 메시 |
+| 17단계 설치 자동화 | `scripts/install.sh` | VM 생성 → OS 설정 → 런타임 → K8s → CNI → 모니터링 → CI/CD → 보안 → 서비스 메시 |
 | 골든 이미지 빌드 | `scripts/build-golden-image.sh` | 사전 설치된 VM 템플릿 — 클라우드 AMI/이미지 빌드와 동일한 패턴 |
 | 일상 운영 스크립트 | `scripts/boot.sh`, `scripts/shutdown.sh`, `scripts/status.sh` | 부팅/종료/상태 확인 자동화 — Day 2 운영 |
 | 안전한 종료 절차 | `scripts/shutdown.sh` | 워커 노드 드레인(Drain) → 안전 종료 — 데이터 무결성 보장 |
@@ -60,7 +60,7 @@
 
 | 프로젝트 구현 | 관련 파일 | 설명 |
 |-------------|----------|------|
-| 4개 K8s 클러스터 (10 노드) | `config/clusters.json` | 21 vCPU / 71.5 GB RAM 분배, CPU 오버커밋 전략 적용 |
+| 4개 K8s 클러스터 (10 노드) | `config/clusters.json` | 21 vCPU / 68 GB RAM 분배, CPU 오버커밋 전략 적용 |
 | 멀티클러스터 관리 | `kubeconfig/` | 4개 클러스터 독립 kubeconfig, 통합 KUBECONFIG 설정 |
 | HPA 오토스케일링 (6개 대상) | `manifests/hpa/` | nginx(3→10), httpbin(2→6), redis(1→4), postgres(1→4), rabbitmq(1→3) — CPU 기반 자동 확장 |
 | PDB 가용성 보장 (6개 대상) | `manifests/hpa/pdb-*.yaml` | 스케일다운/드레인 시 최소 Pod 수 보장 |
@@ -99,7 +99,7 @@
 |-------------|----------|------|
 | **Terraform IaC** | `terraform/` | VM 생성 → K8s 초기화 → Helm 배포 모듈 체인. `terraform plan/apply`로 인프라 프로비저닝 |
 | Terraform 모듈 설계 | `terraform/modules/` | tart-vm / k8s-cluster / helm-releases 3개 모듈 분리 |
-| Bash 명령형 자동화 | `scripts/` | 12단계 파이프라인, 공유 라이브러리(common/vm/ssh/k8s), 멱등성 보장 |
+| Bash 명령형 자동화 | `scripts/` | 17단계 파이프라인, 공유 라이브러리(common/vm/ssh/k8s), 멱등성 보장 |
 | Helm 선언적 배포 | `manifests/*-values.yaml` | values 파일 기반 재현 가능한 배포. 10개+ Helm 차트 관리 |
 | clusters.json 단일 진실 공급원 | `config/clusters.json` | 모든 스크립트가 하나의 설정 파일을 참조 — Single Source of Truth |
 
@@ -179,7 +179,7 @@
 |-------------|------|
 | **ArgoCD GitOps** | Git = Single Source of Truth, 자동 동기화 + 자가 복구 + 자동 정리 |
 | **Terraform IaC** | 3개 모듈 체인 (tart-vm → k8s-cluster → helm-releases) |
-| **Bash 12단계 자동화** | `install.sh` 한 줄로 전체 인프라 구축 |
+| **Bash 17단계 자동화** | `install.sh` 한 줄로 전체 인프라 구축 |
 | **Helm 선언적 배포** | 10개+ values.yaml 기반 재현 가능한 배포 |
 | **골든 이미지 패턴** | `build-golden-image.sh` — AMI/이미지 빌드 자동화 |
 | **Jenkins 7단계 파이프라인** | Validate → Security → Deploy → Verify — 완전 자동화된 배포 |
@@ -215,10 +215,10 @@
 | 항목 | 수치 |
 |------|------|
 | Kubernetes 클러스터 | 4개 (platform / dev / staging / prod) |
-| VM 노드 | 10대 (21 vCPU / 71.5 GB RAM) |
+| VM 노드 | 10대 (21 vCPU / 68 GB RAM) |
 | 오픈소스 프로젝트 | 30개+ |
 | CNCF 프로젝트 | 8개 (Graduated) |
-| 설치 자동화 단계 | 12단계 |
+| 설치 자동화 단계 | 17단계 |
 | CI/CD 파이프라인 단계 | 7단계 |
 | 데모 애플리케이션 | 6개 서비스 (3-Tier + Auth + MQ) |
 | HPA 오토스케일링 대상 | 5개 Deployment |
@@ -254,7 +254,7 @@
 │  └──────────────────────────────────────────────────────────────────────────┘  │
 │                                                                               │
 │  ┌─ Automation Layer ──────────────────────────────────────────────────────┐  │
-│  │  Bash 12-Phase │ Terraform 3-Module │ Helm 10+ Charts │ GitOps (ArgoCD) │  │
+│  │  Bash 17-Phase │ Terraform 3-Module │ Helm 10+ Charts │ GitOps (ArgoCD) │  │
 │  └──────────────────────────────────────────────────────────────────────────┘  │
 │                                                                               │
 │  ┌─ SRE Dashboard ─────────────────────────────────────────────────────────┐  │

@@ -45,7 +45,7 @@
 | **platform** | 3 | 7C/24G | 중앙 관리 | Prometheus, Grafana, Loki, Jenkins, ArgoCD, AlertManager |
 | **dev** | 2 | 4C/12G | 개발/실험 | Istio 서비스 메시, HPA, 데모 앱, L7 네트워크 정책 |
 | **staging** | 2 | 4C/12G | 스테이징 | Cilium, metrics-server, HPA 테스트 |
-| **prod** | 3 | 6C/19G | 프로덕션 | HA(워커 2개), Cilium + Hubble |
+| **prod** | 3 | 6C/20G | 프로덕션 | HA(워커 2개), Cilium + Hubble |
 
 ### 네트워크 CIDR 설계
 
@@ -89,7 +89,7 @@ prod:      Pod 10.40.0.0/16, Service 10.99.0.0/16
 
 ### 3.2 설치 파이프라인 (install.sh)
 
-`scripts/install.sh`가 전체 설치를 12단계로 오케스트레이션합니다:
+`scripts/install.sh`가 전체 설치를 17단계로 오케스트레이션합니다:
 
 ```
 Phase 1   VM 생성 (tart clone + 리소스 할당)
@@ -108,6 +108,12 @@ Phase 9   알림 규칙 (PrometheusRule, AlertManager)     ← platform 전용
 Phase 10  네트워크 정책 (CiliumNetworkPolicy L7)       ← dev 전용
 Phase 11  HPA + PDB (오토스케일링)                     ← dev/staging
 Phase 12  Istio 서비스 메시 (mTLS, 카나리)             ← dev 전용
+  ↓
+Phase 13  Sealed Secrets (시크릿 관리)                 ← platform/dev
+Phase 14  RBAC + OPA Gatekeeper (정책 강제)            ← 전체/dev
+Phase 15  etcd 백업 + Velero (재해 복구)               ← 전체/platform
+Phase 16  ResourceQuota + LimitRange (리소스 관리)     ← dev/staging/prod
+Phase 17  Harbor (프라이빗 레지스트리)                  ← platform
 ```
 
 **골든 이미지 최적화**: Phase 2~4는 모든 노드에 동일한 작업을 수행하므로, 미리 준비된 이미지(`k8s-golden`)를 사용하면 이 단계를 건너뛰어 설치 시간이 45~60분 → 15~20분으로 단축됩니다.
@@ -375,7 +381,7 @@ Phase 2~4(swap off, containerd, kubeadm)는 10개 노드에 동일 작업을 반
 | Jenkins | `http://<platform-worker1>:30900` | admin / (시크릿 확인) |
 | AlertManager | `http://<platform-worker1>:30903` | - |
 | 데모 nginx | `http://<dev-worker1>:30080` | - |
-| SRE 대시보드 | `http://localhost:3000` (프론트) / `:3001` (백엔드) | - |
+| SRE 대시보드 | `http://localhost:5173` (프론트) / `:3000` (백엔드) | - |
 
 ---
 

@@ -6,7 +6,7 @@ import {
 import { usePolling } from '../hooks/usePolling.js';
 import type {
   ClusterInfo, DashboardSnapshot, TestRun, ScalingDataPoint,
-  ScalingTestMeta, TrafficSummary, AggregatedEdge, HpaSnapshot,
+  ScalingTestMeta, TrafficSummary, AggregatedEdge,
 } from '../../shared/types.js';
 
 interface Props {
@@ -508,7 +508,7 @@ export function LoadAnalysisPage({ clusters, data }: Props) {
                       <YAxis stroke="#64748b" fontSize={10} domain={[0, 'auto']}
                         label={{ value: 'RPS / Pod', angle: -90, position: 'insideLeft', offset: 10, ...AXIS_LABEL }} />
                       <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} labelStyle={{ color: '#94a3b8' }} itemStyle={{ fontSize: 12 }}
-                        formatter={(v: number) => [`${v} req/s`, 'RPS/Pod']} />
+                        formatter={(v: number | undefined) => [`${v ?? 0} req/s`, 'RPS/Pod']} />
                       <Line type="monotone" dataKey="rpsPerPod" name="RPS/Pod" stroke="#a855f7" strokeWidth={2} dot={false} isAnimationActive={false} />
                       {meta?.avgRpsPerPod != null && (
                         <ReferenceLine y={meta.avgRpsPerPod} stroke="#a855f7" strokeDasharray="4 4" strokeOpacity={0.5}
@@ -692,7 +692,7 @@ export function LoadAnalysisPage({ clusters, data }: Props) {
                       <YAxis stroke="#64748b" fontSize={10} domain={[0, 100]} tickFormatter={v => `${v}%`}
                         label={{ value: 'CPU Utilization (%)', angle: -90, position: 'insideLeft', offset: 10, ...AXIS_LABEL }} />
                       <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} labelStyle={{ color: '#94a3b8' }} itemStyle={{ fontSize: 12 }}
-                        formatter={(value: number | null) => [value != null ? `${value}%` : 'N/A']} />
+                        formatter={(value: number | null | undefined) => [value != null ? `${value}%` : 'N/A']} />
                       <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 8 }} />
 
                       {/* Load phase */}

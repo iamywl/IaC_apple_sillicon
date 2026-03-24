@@ -74,7 +74,7 @@ platform 클러스터가 모니터링과 CI/CD를 전담하므로, dev/staging/p
       "pod_cidr": "10.40.0.0/16",
       "service_cidr": "10.99.0.0/16",
       "nodes": [
-        { "name": "prod-master", "role": "master", "cpu": 2, "memory": 3072, "disk": 20 },
+        { "name": "prod-master", "role": "master", "cpu": 2, "memory": 4096, "disk": 20 },
         { "name": "prod-worker1", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 },
         { "name": "prod-worker2", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
       ]
@@ -134,7 +134,7 @@ platform 클러스터가 모니터링과 CI/CD를 전담하므로, dev/staging/p
 | dev-worker1 | 2 | 8GB | 데모 앱 6개(nginx, httpbin, redis, postgres, rabbitmq, keycloak) + Istio 사이드카. Istio Envoy 프록시가 각 Pod마다 추가되므로 메모리 소비가 증가한다. |
 | staging-master | 2 | 4GB | 컨트롤 플레인 전용. |
 | staging-worker1 | 2 | 8GB | HPA 테스트용. 부하 테스트 시 Pod 수가 증가하므로 여유를 두었다. |
-| prod-master | 2 | 3GB | 컨트롤 플레인 전용. prod는 애플리케이션 배포가 적으므로 마스터 메모리를 1GB 줄였다. |
+| prod-master | 2 | 4GB | 컨트롤 플레인 전용. 모든 master 노드는 etcd 안정 운영을 위해 4GB를 할당한다. |
 | prod-worker1 | 2 | 8GB | HA 시뮬레이션을 위한 워커 노드 #1. |
 | prod-worker2 | 2 | 8GB | HA 시뮬레이션을 위한 워커 노드 #2. 워커가 2개이므로 한쪽이 장애 나도 서비스가 유지된다. |
 

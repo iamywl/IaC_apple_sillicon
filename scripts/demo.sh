@@ -142,7 +142,19 @@ bash "$SCRIPT_DIR/status.sh"
 # ─── Phase 3: Dashboard ───
 if [[ "$SKIP_DASHBOARD" == true ]]; then
   log_section "Demo Ready! (Dashboard skipped)"
-  print_access_info
+
+  PLATFORM_IP=$(vm_get_ip "platform-worker1" 2>/dev/null || echo "<platform-worker1-ip>")
+  log_info "=== Platform Services ==="
+  log_info "  Grafana:     http://${PLATFORM_IP}:30300  (admin/admin)"
+  log_info "  ArgoCD:      http://${PLATFORM_IP}:30800"
+  log_info "  Jenkins:     http://${PLATFORM_IP}:30900"
+  log_info "  AlertMgr:    http://${PLATFORM_IP}:30903"
+  echo ""
+  log_info "=== kubectl 사용법 ==="
+  for cluster_name in $(get_cluster_names); do
+    log_info "  $cluster_name: kubectl --kubeconfig kubeconfig/${cluster_name}.yaml get nodes"
+  done
+
   exit 0
 fi
 

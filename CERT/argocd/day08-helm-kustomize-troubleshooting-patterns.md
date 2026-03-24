@@ -792,7 +792,7 @@ tart-infra/
 ├── scripts/
 │   └── install/
 │       └── 08-install-cicd.sh  # ArgoCD + Jenkins 설치 스크립트
-└── EDU/
+└── CERT/
     └── argocd/
         └── README.md           # 이 문서
 ```

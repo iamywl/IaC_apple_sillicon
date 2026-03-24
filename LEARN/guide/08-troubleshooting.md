@@ -1140,7 +1140,7 @@ bash scripts/demo.sh
 ## 7. 자주 묻는 질문
 
 **Q: VM 10개를 동시에 실행하면 호스트가 느려진다.**
-A: 이 프로젝트의 전체 VM은 약 66GB 메모리를 사용한다. 64GB RAM에서는 메모리가 부족하므로, Activity Monitor에서 메모리 압력을 확인하고, 사용하지 않는 클러스터의 VM을 정지한다.
+A: 이 프로젝트의 전체 VM은 약 68GB 메모리를 사용한다. 64GB RAM에서는 메모리가 부족하므로, Activity Monitor에서 메모리 압력을 확인하고, 사용하지 않는 클러스터의 VM을 정지한다.
 
 **Q: demo.sh 실행 중 중간에 실패했다. 이어서 실행할 수 있는가?**
 A: install.sh는 각 Phase를 개별 스크립트(`01-create-vms.sh` ~ `17-install-harbor.sh`)로 분리하고 있다. 실패한 Phase의 스크립트부터 개별 실행하면 된다.

@@ -36,7 +36,7 @@
       "pod_cidr": "10.40.0.0/16",
       "service_cidr": "10.99.0.0/16",
       "nodes": [
-        { "name": "prod-master", "role": "master", "cpu": 2, "memory": 3072, "disk": 20 },
+        { "name": "prod-master", "role": "master", "cpu": 2, "memory": 4096, "disk": 20 },
         { "name": "prod-worker1", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 },
         { "name": "prod-worker2", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
       ]

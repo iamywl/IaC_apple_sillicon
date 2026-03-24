@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, ReferenceArea, ReferenceLine,
+  ResponsiveContainer, ReferenceArea,
 } from 'recharts';
 import { usePolling } from '../hooks/usePolling.js';
 import type {

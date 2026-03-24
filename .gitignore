@@ -12,3 +12,6 @@ terraform/.terraform.lock.hcl
 # Dashboard
 dashboard/node_modules/
 dashboard/dist/
+
+# IDE / Tools
+.claude/

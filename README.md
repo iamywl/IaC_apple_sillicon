@@ -866,8 +866,9 @@ tart-infra/
 │   ├── guide/                           ← 실습 가이드 13개 문서
 │   └── presentation.md                  ← 프로젝트 소개 PPT
 │
-├── CERT/                                  ← 자격증 공부
-│   ├── CKA,CKAD,CKS,KCNA,KCSA/        ← K8s 자격증 5개 트랙
+├── k8scert/                               ← K8s 자격증 (CKA, CKAD, CKS, KCNA, KCSA)
+│
+├── certification/                         ← 기술별 심화 학습
 │   └── {alertmanager,argocd,...}/       ← 20개 기술별 심화 학습
 │
 └── docs/                                  ← 참고 자료, 다이어그램
@@ -880,7 +881,8 @@ tart-infra/
 이 프로젝트가 **어떻게 동작하는지** 처음부터 끝까지 설명하는 학습 자료:
 
 - **[LEARN/](LEARN/)** — 프로젝트 학습 (이론 15개 + 실습 13개 + 학습 계획 + PPT)
-- **[CERT/](CERT/)** — K8s 자격증 공부 (CKA, CKAD, CKS, KCNA, KCSA + 기술별 심화)
+- **[k8scert/](k8scert/)** — K8s 자격증 (CKA, CKAD, CKS, KCNA, KCSA)
+- **[certification/](certification/)** — 기술별 심화 학습 (20개 모듈)
 
 ---
 

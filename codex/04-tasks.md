@@ -77,8 +77,8 @@ codex/FEEDBACK-INTEGRITY.md
 ## 검토 진행 방법
 
 1. `codex/` 의 01~05 문서와 `k8scert/CLAUDE.md`, `k8scert/.review-loop-state.json` 을 읽는다.
-2. 03 문서 §A 자동 무결성 점검을 실행한다(읽기 전용) → `FEEDBACK-INTEGRITY.md`.
-3. 자격증 5종을 순회하며 각 파일을 02·03 기준으로 평가한다. 분량이 많으므로 자격증 단위로 나눠 진행해도 된다.
+2. (선택, 읽기 전용) 03 문서 §A 정적 점검 스니펫으로 펜스·링크 등을 빠르게 훑어 `FEEDBACK-INTEGRITY.md` 에 정리한다. **이건 클러스터 실행이 아니라 `.md` 파일만 읽는 텍스트 분석**이며, 환경에서 안 되면 생략하고 사람처럼 직접 읽어도 된다.
+3. 자격증 5종을 순회하며 각 파일을 **직접 열어 읽고** 02·03 기준으로 평가한다(이것이 Codex 의 핵심 작업). 분량이 많으므로 자격증 단위로 나눠 진행해도 된다.
    - 우선순위: **실기 3종(CKA·CKAD·CKS) > 이론 2종(KCNA·KCSA)**. daily 파일이 분량·가치가 크다.
 4. 자격증별 `FEEDBACK-codex.md` 를 작성한다.
 5. 전부 끝나면 `FEEDBACK-SUMMARY.md` 로 종합한다.

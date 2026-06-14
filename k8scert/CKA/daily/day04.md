@@ -2,11 +2,47 @@
 
 > CKA 도메인: Cluster Architecture (25%) - Part 2 심화 | 예상 소요 시간: 2시간
 
+> Day 3에서 etcd 스냅샷 백업/복구(문제 1~4)를 다뤘다. Day 4는 그 후속으로 클러스터 관리 심화(cordon/업그레이드/etcd 상태 확인)를 다룬다.
+
+---
+
+## 오늘의 학습 목표
+
+- [ ] cordon과 uncordon의 동작 차이를 설명할 수 있다(taint 추가 메커니즘 포함)
+- [ ] Control Plane 업그레이드 순서 7단계를 apt 저장소 전환 포함하여 재현할 수 있다
+- [ ] `etcdctl member list` 명령에 필요한 인증서 옵션 4개(`--endpoints`, `--cacert`, `--cert`, `--key`)를 암기한다
+- [ ] drain 실패 원인 4가지(단독 Pod, emptyDir, DaemonSet, PDB)를 설명하고 각 해결 플래그를 쓸 수 있다
+
+---
+
+## 실습 환경 설정 (먼저 읽는다)
+
+이 Day 의 문제들은 자리표(`<staging-master-ip>` 등)로 노드를 가리킨다. 실제 환경에서 이 값을 어떻게 얻는지부터 정리한다. 이 저장소의 tart 멀티클러스터를 실습장으로 쓴다.
+
+```bash
+# 1) 대상 클러스터에 접속 (kubeconfig 경로는 가동 시 자동 생성됨)
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml
+kubectl get nodes              # 노드 이름 확인 (staging-master, staging-worker1 ...)
+
+# 2) 실제 내부 IP 가 필요할 때 — INTERNAL-IP 컬럼에서 읽는다
+kubectl get nodes -o wide      # <staging-master-ip> 자리에 INTERNAL-IP 값을 넣는다
+# 또는 호스트(macOS)에서 직접:  tart ip staging-master
+
+# 3) SSH 접속 — 전용 키가 전 노드에 배포돼 VM 이름 별칭으로 바로 들어간다
+ssh staging-master             # 문서의 'ssh admin@<...-ip>' 대신 별칭으로 접속 가능
+```
+
+문제 본문은 `ssh admin@<ip>` 형태로 쓰지만, 이 저장소에서는 `ssh staging-master` 처럼 VM 이름만으로 접속된다(`~/.ssh/config` 관리 블록 + `tart ip` 기반 `ProxyCommand`). IP 자리표가 나오면 위 2)번으로 실제 값을 채우면 된다. 파괴 실습은 `dev`/`staging` 에서만 한다(platform/prod 금지).
+
 ---
 
 ### 문제 5. cordon과 uncordon [4%]
 
 **컨텍스트:** `kubectl config use-context staging`
+
+(사실 확인) 이 저장소의 `staging` 클러스터는 master 1 + worker 1 로 구성된다(`config/clusters.json` 기준). 즉 워크로드를 받을 수 있는 워커가 `staging-worker1` 하나뿐이다. 이 문제는 그 유일한 워커를 cordon 했을 때 새 Pod 가 갈 곳이 없어지는 상황을 다룬다. 워커가 2개 이상인 클러스터라면 cordon 후에도 다른 워커로 배치되므로, 아래 "Pending" 결과는 워커가 1개일 때의 이야기다.
+
+(cordon 의 메커니즘) `kubectl cordon` 은 Node 오브젝트에 `node.kubernetes.io/unschedulable` 이라는 taint 를 추가하고 `.spec.unschedulable=true` 필드를 set 한다. taint(오염)는 "이 노드는 특정 조건을 만족하는 Pod 만 받는다"는 표식이고, 이를 견디겠다는 Pod 쪽 표식이 toleration(허용)이다. cordon 이 붙인 taint 에는 대응 toleration 이 없으므로 kube-scheduler 가 신규 Pod 의 후보 노드에서 이 노드를 제외한다. 이미 떠 있는 Pod 는 건드리지 않는다(퇴거는 drain 의 몫). 결과적으로 `kubectl get node -o wide` 의 STATUS 컬럼이 `Ready` 에서 `Ready,SchedulingDisabled` 로 바뀐다 — 노드는 살아 있지만(Ready) 신규 스케줄만 막힌(SchedulingDisabled) 상태다.
 
 1. `staging-worker1` 노드를 스케줄링 불가로 설정하라 (기존 Pod는 유지)
 2. 새 Pod `test-pod`(이미지: nginx)를 생성하고 어느 노드에 배치되는지 확인하라
@@ -24,11 +60,7 @@ kubectl get nodes
 ```
 
 **검증 - 기대 출력 (cordon 후):**
-```text
-NAME              STATUS                     ROLES           AGE   VERSION
-staging-master    Ready                      control-plane   10d   v1.31.0
-staging-worker1   Ready,SchedulingDisabled   <none>          10d   v1.31.0
-```
+![cordon 후 staging-worker1 이 Ready,SchedulingDisabled(신규 스케줄 차단, 기존 Pod 유지)](images/day04-01-cordon.png)
 
 ```bash
 # 2. 새 Pod 생성
@@ -37,12 +69,9 @@ kubectl get pod test-pod -o wide
 ```
 
 **검증 - 기대 출력:**
-```text
-NAME       READY   STATUS    RESTARTS   AGE   IP            NODE
-test-pod   1/1     Running   0          10s   10.20.0.15    staging-master
-```
+![유일한 워커를 cordon 하니 새 Pod 가 NODE 미배정 Pending 상태](images/day04-02-pending.png)
 
-staging-worker1에는 배치되지 않는다. SchedulingDisabled 상태이므로 kube-scheduler가 해당 노드를 후보에서 제외한다.
+worker1을 cordon 한 상태에서는 test-pod가 Pending 으로 남는다. SchedulingDisabled 상태이므로 kube-scheduler가 해당 노드를 후보에서 제외하고, control-plane 노드는 `node-role.kubernetes.io/control-plane:NoSchedule` taint 때문에 스케줄 대상이 아니다(worker가 하나뿐이면 배치할 노드가 없다). uncordon 하면 worker1로 배치된다.
 
 ```bash
 # 3. uncordon (스케줄링 재개)
@@ -52,6 +81,8 @@ kubectl get nodes
 # 정리
 kubectl delete pod test-pod
 ```
+
+> platform 클러스터에서의 cordon/uncordon 실측 캡처는 아래 [tart-infra 실습 → 실습 4: drain/cordon 동작 확인](#실습-4-draincordon-동작-확인-문제-5의-platform-클러스터-재현)을 참조한다(day04-10-cordon.png).
 
 </details>
 
@@ -63,6 +94,12 @@ kubectl delete pod test-pod
 
 `staging-master` 노드의 쿠버네티스를 v1.30.x에서 v1.31.0으로 업그레이드하라. kubeadm, kubelet, kubectl을 모두 업그레이드하라.
 
+**(업그레이드가 필요한 배경)** K8s 마이너 버전은 출시 후 약 14개월간 패치 지원을 받는다. 지원 기간이 끝난 버전에는 새로운 CVE(Common Vulnerabilities and Exposures, 공개 취약점 데이터베이스 항목) 보안 패치가 제공되지 않으므로, 운영 클러스터는 현재 지원 범위 안의 마이너 버전으로 유지해야 한다. 트레이드오프로는 업그레이드 중 kubelet 재시작 구간에 해당 노드의 워크로드가 일시 불가용 상태가 되는 점을 감안해야 하고, 롤링 업그레이드 방식으로 한 노드씩 올려 전체 서비스 중단을 최소화한다.
+
+**(왜 이 순서로 올리는가)** K8s 는 컴포넌트 버전이 제멋대로 섞이는 것을 막기 위해 버전 스큐(version skew) 정책을 둔다. 핵심 규칙은 두 가지다. ① 한 번에 마이너 버전 1개씩만 올린다(v1.30 → v1.32 같은 건너뛰기 금지, v1.30 → v1.31 → v1.32). ② kubelet 은 kube-apiserver 보다 높을 수 없고, 최대 2 마이너 버전까지 뒤처져도 된다(apiserver 가 v1.31 이면 kubelet 은 v1.31/1.30/1.29 허용). 이 규칙 때문에 Control Plane(특히 apiserver)을 먼저 올려야, 아직 옛 버전인 워커 노드의 kubelet 이 새 apiserver 와 계속 호환된다. 워커를 먼저 올리면 kubelet 이 apiserver 보다 앞서가 정책 위반이 된다.
+
+이 제약이 그대로 작업 순서가 된다. ⓐ `kubeadm` 패키지(업그레이드를 수행하는 도구 자체)를 먼저 설치한다 — 새 버전으로 올리는 로직은 새 kubeadm 에 들어 있다. ⓑ `kubeadm upgrade plan` 으로 현재 버전에서 올릴 수 있는 대상 버전을 확인한다. ⓒ `kubeadm upgrade apply v1.31.0` 가 Control Plane 컴포넌트(kube-apiserver, kube-controller-manager, kube-scheduler, etcd)의 정적 파드(static pod) 매니페스트 이미지 태그를 새 버전으로 교체한다 — 이들은 한 노드에 함께 떠 있는 컨트롤 플레인 묶음이라 같이 올라간다. ⓓ 그 노드에서 도는 워크로드를 다른 노드로 옮기려고 `drain` 한다(서비스 중단 최소화). ⓔ 마지막으로 그 노드의 에이전트인 `kubelet`/`kubectl` 패키지를 올리고 재시작한다. 이 ⓐ→ⓔ 순서를 어기면 호환성이 깨지거나 업그레이드가 중단된다.
+
 <details>
 <summary>풀이 과정</summary>
 
@@ -71,12 +108,18 @@ kubectl delete pod test-pod
 kubectl config use-context staging
 kubectl get nodes
 
-# SSH 접속
-ssh admin@<staging-master-ip>
+# SSH 접속 (이 저장소에서는 VM 이름 별칭으로 접속한다 — ~/.ssh/config 관리 블록)
+ssh staging-master
+
+# 0. kubernetes apt 저장소를 v1.31 용으로 전환한다
+#    pkgs.k8s.io 는 마이너 버전별로 저장소가 분리돼 있어,
+#    기존 v1.30 저장소에는 kubeadm=1.31.0-1.1 패키지가 존재하지 않는다.
+#    저장소를 먼저 바꾸지 않으면 apt-get install 이 즉시 실패한다.
+sudo sed -i 's/v1\.30/v1.31/' /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
 
 # 1. kubeadm 업그레이드
 sudo apt-mark unhold kubeadm
-sudo apt-get update
 sudo apt-get install -y kubeadm=1.31.0-1.1
 sudo apt-mark hold kubeadm
 
@@ -91,7 +134,7 @@ exit
 kubectl drain staging-master --ignore-daemonsets --delete-emptydir-data
 
 # 5. kubelet, kubectl 업그레이드
-ssh admin@<staging-master-ip>
+ssh staging-master
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get install -y kubelet=1.31.0-1.1 kubectl=1.31.0-1.1
 sudo apt-mark hold kubelet kubectl
@@ -109,13 +152,10 @@ kubectl get nodes
 ```
 
 **검증 - 기대 출력:**
-```text
-NAME              STATUS   ROLES           AGE   VERSION
-staging-master    Ready    control-plane   10d   v1.31.0
-staging-worker1   Ready    <none>          10d   v1.30.x
-```
+![업그레이드 완료 후 staging 노드(실측은 master/worker 모두 v1.31.14 균일 — 스큐는 업그레이드 중간 단계의 예시)](images/day04-03-versions.png)
+# (예시 — 환경에 따라 다름. 파괴적 업그레이드라 실측하지 않음)
 
-staging-master의 VERSION이 v1.31.0으로 변경된 것을 확인한다. Worker Node는 아직 이전 버전이다.
+staging-master의 VERSION이 새 버전으로 변경된 것을 확인한다. Worker Node는 아직 이전 버전이다.
 
 </details>
 
@@ -136,32 +176,38 @@ kubectl config use-context staging
 # 1. drain
 kubectl drain staging-worker1 --ignore-daemonsets --delete-emptydir-data
 
-# 2. SSH 접속
-ssh admin@<staging-worker1-ip>
+# 2. SSH 접속 (이 저장소에서는 VM 이름 별칭으로 접속한다 — ~/.ssh/config 관리 블록)
+ssh staging-worker1
 
-# 3. kubeadm 업그레이드
-sudo apt-mark unhold kubeadm
+# 3. 저장소 전환 (Control Plane 업그레이드와 동일하게 먼저 수행)
+#    pkgs.k8s.io 는 마이너 버전별 저장소가 분리돼 있어,
+#    기존 v1.30 저장소에는 kubeadm=1.31.0-1.1 패키지가 존재하지 않는다.
+#    이 단계를 생략하면 다음 apt-get install 이 즉시 실패한다.
+sudo sed -i 's/v1\.30/v1.31/' /etc/apt/sources.list.d/kubernetes.list
 sudo apt-get update
+
+# 4. kubeadm 업그레이드
+sudo apt-mark unhold kubeadm
 sudo apt-get install -y kubeadm=1.31.0-1.1
 sudo apt-mark hold kubeadm
 
-# 4. 노드 설정 업그레이드 (apply가 아닌 node!)
+# 5. 노드 설정 업그레이드 (apply가 아닌 node!)
 sudo kubeadm upgrade node
 
-# 5. kubelet, kubectl 업그레이드
+# 6. kubelet, kubectl 업그레이드
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get install -y kubelet=1.31.0-1.1 kubectl=1.31.0-1.1
 sudo apt-mark hold kubelet kubectl
 
-# 6. 재시작
+# 7. 재시작
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
-# 7. uncordon
+# 8. uncordon
 exit
 kubectl uncordon staging-worker1
 
-# 8. 확인
+# 9. 확인
 kubectl get nodes
 ```
 
@@ -175,13 +221,18 @@ kubectl get nodes
 
 **컨텍스트:** `kubectl config use-context platform`
 
+(배경) etcd 는 K8s 클러스터의 모든 상태(Pod·Service·Secret·ConfigMap 등 모든 오브젝트)를 담는 분산 key-value 저장소다. apiserver 만 etcd 에 직접 쓰며, etcd 가 멈추면 클러스터의 어떤 변경도 저장되지 않는다. etcd 는 여러 노드로 복제되는데, 데이터 일관성을 위해 Raft(노드들이 다수결로 하나의 값에 합의하는 알고리즘) 합의를 쓴다. 쓰기는 과반(quorum, 과반수)이 동의해야 커밋된다 — 3 노드면 2개, 5 노드면 3개가 살아 있어야 쓰기가 가능하다. 그래서 업그레이드나 백업처럼 위험한 작업 전에는 멤버가 모두 살아 있고 quorum 이 깨지지 않았는지부터 확인한다. 멤버 하나가 죽은 줄 모르고 작업하면 그 사이 또 하나가 죽어 quorum 을 잃고 클러스터 전체가 읽기 전용으로 멈출 수 있다.
+
+(명령의 의미) `etcdctl` 은 etcd 클러스터를 다루는 CLI 다. `ETCDCTL_API=3` 은 etcd v3 API(현재 표준, v2 는 deprecated)를 쓰라는 환경변수다. `--endpoints=https://127.0.0.1:2379` 는 접속할 etcd 서버 주소로, master 노드 안에서 자기 자신의 클라이언트 포트(2379)를 가리킨다. etcd 는 mTLS(양쪽이 서로 인증서로 신원을 증명하는 TLS)로만 통신을 받으므로 인증서 3개가 필요하다 — `--cacert`(이 인증서를 발급한 CA 를 신뢰), `--cert`/`--key`(클라이언트인 나 자신을 증명하는 인증서와 개인키). 이 경로들은 etcd 정적 파드가 마운트하는 `/etc/kubernetes/pki/etcd` 아래에 있다.
+
 etcd 클러스터의 멤버 상태와 엔드포인트 건강 상태를 확인하여 `/tmp/etcd-health.txt`에 저장하라.
 
 <details>
 <summary>풀이 과정</summary>
 
 ```bash
-ssh admin@<platform-master-ip>
+# 이 저장소에서는 VM 이름 별칭으로 접속한다 — ~/.ssh/config 관리 블록
+ssh platform-master
 
 # 멤버 목록
 sudo ETCDCTL_API=3 etcdctl member list \
@@ -201,6 +252,8 @@ sudo ETCDCTL_API=3 etcdctl endpoint health \
 cat /tmp/etcd-health.txt
 exit
 ```
+
+> platform 클러스터의 실측 출력은 아래 [tart-infra 실습 → 실습 2: etcd 스냅샷 백업 시뮬레이션](#실습-2-etcd-스냅샷-백업-시뮬레이션)의 `endpoint health` 캡처(day04-11-etcd-health.png)를 참조한다.
 
 </details>
 
@@ -224,14 +277,18 @@ kubectl config use-context staging
 # 1. 노드 버전 확인
 kubectl get nodes -o wide
 
-# 2. 업그레이드 계획
-ssh admin@<staging-master-ip>
+# 2. 업그레이드 계획 (이 저장소에서는 VM 이름 별칭으로 접속)
+ssh staging-master
 sudo kubeadm upgrade plan > /tmp/upgrade-plan.txt 2>&1
 cat /tmp/upgrade-plan.txt
 
 # 3. drain 시뮬레이션
 exit
 kubectl drain staging-master --ignore-daemonsets --delete-emptydir-data --dry-run=client
+# 주의: --dry-run=client 는 대상 Pod 목록을 나열할 뿐,
+# 실제 eviction API 를 호출하지 않고 클라이언트에서만 평가한다.
+# PDB(PodDisruptionBudget) 위반 여부는 dry-run 으로 확인되지 않는다.
+# 실제 drain 전에 kubectl get pdb -A 로 PDB 가 있는지 별도로 확인해야 한다.
 ```
 
 </details>
@@ -241,6 +298,8 @@ kubectl drain staging-master --ignore-daemonsets --delete-emptydir-data --dry-ru
 ### 문제 10. etcd 데이터 디렉터리 확인 [4%]
 
 **컨텍스트:** `kubectl config use-context platform`
+
+(앞 단계와의 연결) 문제 8~9 에서 etcd 멤버·엔드포인트가 건강한지 확인했다. 다음으로 점검할 것은 저장 용량이다. etcd 데이터베이스는 시간이 갈수록 커진다 — Pod·Event 등 오브젝트가 누적되고, 기본적으로 과거 리비전(이력)도 일정량 보관하기 때문이다. 데이터 디렉터리가 있는 디스크가 가득 차면 etcd 는 쓰기를 거부하고(`mvcc: database space exceeded` 등) 클러스터 전체가 변경 불가 상태로 떨어진다. 업그레이드는 컨트롤 플레인 파드를 재기동하는 위험 작업이므로, 그 전에 데이터 디렉터리 경로와 현재 사용량을 확인해 여유가 있는지 본다. 이 점검이 끝나면 문제 11 의 인증서 만료 확인으로 넘어간다.
 
 etcd의 데이터 디렉터리 경로와 사용 중인 디스크 공간을 확인하여 `/tmp/etcd-storage.txt`에 저장하라.
 
@@ -252,8 +311,8 @@ etcd의 데이터 디렉터리 경로와 사용 중인 디스크 공간을 확�
 kubectl -n kube-system get pod etcd-platform-master -o yaml | \
   grep "\-\-data-dir" > /tmp/etcd-storage.txt
 
-# SSH 접속하여 디스크 사용량 확인
-ssh admin@<platform-master-ip>
+# SSH 접속하여 디스크 사용량 확인 (이 저장소에서는 VM 이름 별칭으로 접속)
+ssh platform-master
 sudo du -sh /var/lib/etcd >> /tmp/etcd-storage.txt
 cat /tmp/etcd-storage.txt
 exit
@@ -269,19 +328,34 @@ exit
 
 모든 쿠버네티스 인증서의 만료일을 확인하고, 만료까지 30일 이내인 인증서가 있는지 확인하라.
 
+(왜 중요한가) K8s 의 컴포넌트 간 통신은 모두 TLS 인증서로 암호화·인증된다(apiserver↔etcd, kubelet↔apiserver, controller-manager↔apiserver 등). kubeadm 으로 만든 클러스터의 이 인증서들은 기본 유효기간이 1년이라, 갱신하지 않으면 만료된 순간 해당 통신이 끊겨 클러스터가 동작 불능이 된다. `kubeadm certs check-expiration` 은 kubeadm 이 관리하는 모든 인증서의 만료일을 한 표로 보여준다. 개별 확인은 `openssl x509 -enddate` 로 인증서 파일의 만료일(notAfter)을 읽는다. 만료가 임박한 인증서가 있으면 `kubeadm certs renew all` 로 갱신한다. kubeadm 은 `kubeadm upgrade apply` 를 실행할 때 컨트롤 플레인 인증서를 자동 갱신하므로, 업그레이드 작업이 곧 인증서 갱신의 기회가 된다 — 그래서 업그레이드 전후에 만료일을 함께 점검한다.
+
 <details>
 <summary>풀이 과정</summary>
 
 ```bash
-ssh admin@<platform-master-ip>
+# 이 저장소에서는 VM 이름 별칭으로 접속한다 — ~/.ssh/config 관리 블록
+ssh platform-master
 
 # 모든 인증서 만료일 확인
+# 출력의 EXPIRES 컬럼이 각 인증서 만료일이다.
+# 현재 날짜와 비교해 30일 이내인 행을 육안으로 찾거나 아래 openssl 명령으로 자동 필터링한다.
 sudo kubeadm certs check-expiration
 
-# 개별 인증서 확인
+# 개별 인증서 확인 — 만료일(notAfter) 출력
 for cert in /etc/kubernetes/pki/*.crt; do
   echo "=== $cert ==="
   sudo openssl x509 -in $cert -noout -enddate
+done
+
+# 30일(= 2592000초) 이내 만료 인증서 자동 필터링
+# -checkend N: 지금부터 N초 안에 만료되면 exit code 1 → 해당 인증서 경로를 출력한다
+for cert in /etc/kubernetes/pki/*.crt; do
+  if sudo openssl x509 -in "$cert" -noout -checkend 2592000 2>/dev/null; then
+    :  # 30일 이상 남음 — 정상
+  else
+    echo "만료 임박(30일 이내): $cert"
+  fi
 done
 
 exit
@@ -297,13 +371,34 @@ exit
 
 `dev-worker1` 노드를 drain하려고 했으나 실패한다. 원인을 파악하고 해결하라.
 
+(왜 drain 이 쉽게 실패하는가) `drain` 은 노드의 Pod 를 퇴거(eviction)시켜 노드를 비우는 작업이다. 그런데 K8s 는 데이터 손상이나 가용성 붕괴를 막기 위해 일부러 퇴거를 거부하는 안전장치를 여럿 둔다. ① 컨트롤러(ReplicaSet/Deployment/StatefulSet 등) 없이 사람이 직접 만든 단독 Pod 는 노드에서 사라지면 다시 살아날 곳이 없다 → 기본적으로 거부, `--force` 로만 강제(이 Pod 는 그냥 삭제되고 복구되지 않는다). ② `emptyDir` 등 노드 로컬 스토리지를 쓰는 Pod 는 퇴거 시 그 안의 데이터가 사라지므로 거부 → `--delete-emptydir-data` 로 데이터 손실을 명시적으로 승인해야 진행된다. ③ DaemonSet 이 만든 Pod 는 모든 노드에 하나씩 떠 있어야 하므로 퇴거 대상이 아니다 → `--ignore-daemonsets` 로 무시한다. ④ PodDisruptionBudget(PDB, 동시에 죽어도 되는 Pod 수의 하한선) 이 걸려 있으면, 퇴거가 그 한도를 깰 경우 차단된다 → PDB 를 확인·조정해야 한다. 따라서 drain 이 실패하면 에러 메시지가 위 네 원인 중 어느 것인지 알려주므로, 그에 맞는 플래그를 더하거나 PDB 를 손봐 해결한다.
+
 <details>
 <summary>풀이 과정</summary>
 
 ```bash
 kubectl config use-context dev
 
-# drain 시도
+# ── 사전 준비: 실패 상황 재현 ──────────────────────────────────────────────
+# 아무것도 없는 dev-worker1 을 drain 하면 성공해버려 문제 상황을 볼 수 없다.
+# drain 이 거부되는 세 가지 케이스를 직접 만든다.
+
+# 케이스 ①: 컨트롤러(ReplicaSet/Deployment 등) 없이 직접 만든 단독 Pod
+#   → drain 시 "cannot delete Pods not managed by ..." 오류를 유발한다
+kubectl run solo --image=nginx --overrides='{"spec":{"nodeName":"dev-worker1"}}'
+
+# 케이스 ②: emptyDir 볼륨을 쓰는 Pod
+#   emptyDir(노드 로컬 임시 디렉터리) — 컨테이너가 재시작돼도 같은 Pod 내에서는 유지되나,
+#   Pod 자체가 삭제되면 안의 데이터가 사라진다.
+#   → drain 시 "cannot delete Pods with local storage" 오류를 유발한다
+kubectl run emp --image=nginx \
+  --overrides='{"spec":{"nodeName":"dev-worker1","volumes":[{"name":"tmp","emptyDir":{}}],"containers":[{"name":"emp","image":"nginx","volumeMounts":[{"name":"tmp","mountPath":"/tmp/data"}]}]}}'
+
+# Pod 가 Running 이 될 때까지 대기
+kubectl wait pod/solo pod/emp --for=condition=Ready --timeout=60s
+# ──────────────────────────────────────────────────────────────────────────
+
+# drain 시도 — 위 Pod 들이 있으면 아래처럼 오류 메시지가 출력된다
 kubectl drain dev-worker1 --ignore-daemonsets
 # 오류 발생 가능:
 # "cannot delete Pods with local storage" → --delete-emptydir-data 추가
@@ -332,9 +427,11 @@ kubectl uncordon dev-worker1
 
 ---
 
-## 8. 추가 YAML 예제
+## 추가 YAML 예제
 
 ### 8.1 etcd 백업 CronJob
+
+(수동 백업과의 차이) 앞 문제들의 `etcdctl snapshot save` 는 사람이 그때그때 한 번 실행하는 임시 백업이다 — 업그레이드 직전처럼 특정 시점을 보존할 때 쓴다. 반면 운영 클러스터는 장애가 언제 날지 모르므로 일정 주기로 자동 백업을 남겨야 한다. 아래 CronJob 은 같은 `snapshot save` 명령을 정해진 스케줄(`schedule`)에 따라 클러스터 스스로 반복 실행하게 만든 것이다. 일회성이면 수동, 상시 운영이면 CronJob 으로 자동화한다.
 
 ```yaml
 # 자동 etcd 백업을 위한 CronJob
@@ -461,16 +558,20 @@ spec:
 
 ---
 
-## 9. 복습 체크리스트
+## 복습 체크리스트
 
-### 개념 확인
+### 개념 확인 (Day 4 학습 목표 1:1 대응)
 
-- [ ] etcdctl snapshot save에 필요한 4개 옵션을 암기했는가?
+- [ ] cordon 이 붙이는 taint 이름(`node.kubernetes.io/unschedulable`)과 그 효과(신규 스케줄 차단, 기존 Pod 유지)를 설명할 수 있는가?
+- [ ] Control Plane 업그레이드 순서 7단계(저장소 전환 → kubeadm 설치 → upgrade plan → upgrade apply → drain → kubelet/kubectl 설치·재시작 → uncordon)를 순서대로 쓸 수 있는가?
+- [ ] `etcdctl member list` 에 필요한 인증서 옵션 4개(`--endpoints`, `--cacert`, `--cert`, `--key`)를 외웠는가? (환경변수 `ETCDCTL_API=3` 은 옵션이 아니라 명령 앞에 붙는 별개 항목이다)
+- [ ] drain 실패 원인 4가지(단독 Pod·emptyDir·DaemonSet·PDB)와 각 해결 플래그(`--force`·`--delete-emptydir-data`·`--ignore-daemonsets`·PDB 조정)를 짝지을 수 있는가?
+
+### 이전 내용 재확인 (Day 3)
+
+- [ ] etcdctl snapshot save에 필요한 4개 옵션과 환경변수를 구분해 암기했는가?
 - [ ] snapshot save는 인증서 필요, restore는 불필요한 이유를 설명할 수 있는가?
-- [ ] etcd 복구 후 매니페스트에서 수정해야 할 부분을 정확히 알고 있는가?
-- [ ] drain과 cordon의 차이를 설명할 수 있는가?
-- [ ] Control Plane과 Worker Node 업그레이드의 차이(apply vs node)를 알고 있는가?
-- [ ] 업그레이드 순서(kubeadm → upgrade plan/apply → drain → kubelet → restart → uncordon)를 외웠는가?
+- [ ] etcd 복구 후 매니페스트에서 수정해야 할 부분(hostPath.path)을 정확히 알고 있는가?
 
 ### 시험 팁
 
@@ -496,17 +597,12 @@ spec:
 
 ```bash
 # platform 클러스터에 접속 (etcd가 실행 중인 클러스터)
-export KUBECONFIG=~/sideproejct/tart-infra/kubeconfig/platform.yaml
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
 kubectl get nodes
 ```
 
-**예상 출력:**
-```
-NAME               STATUS   ROLES           AGE   VERSION
-platform-master    Ready    control-plane   30d   v1.31.0
-platform-worker1   Ready    <none>          30d   v1.31.0
-platform-worker2   Ready    <none>          30d   v1.31.0
-```
+**검증 - 기대 출력:** platform 클러스터의 3개 노드(master 1 + worker 2)가 모두 Ready 다. AGE 는 환경에 따라 다르다(platform 실측).
+![platform 노드 3개 Ready 확인](images/day04-08-platform-nodes.png)
 
 ### 실습 1: etcd Pod 상태 및 인증서 경로 확인
 
@@ -515,14 +611,10 @@ platform-worker2   Ready    <none>          30d   v1.31.0
 kubectl get pod etcd-platform-master -n kube-system -o yaml | grep -A5 "command:"
 ```
 
-**예상 출력 (주요 부분):**
-```yaml
-    - --cert-file=/etc/kubernetes/pki/etcd/server.crt
-    - --key-file=/etc/kubernetes/pki/etcd/server.key
-    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
-    - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
-    - --data-dir=/var/lib/etcd
-```
+**검증 - 기대 출력 (주요 부분):** etcd 컨테이너의 `command` 인자 목록이 보인다. `--advertise-client-urls` 의 노드 IP 는 환경별로 다르다(tart 재부팅마다 변경, platform 실측).
+![etcd Pod command 인자 — advertise-client-urls·cert-file·data-dir 등](images/day04-12-etcd-command.png)
+
+전체 인증서 경로는 같은 yaml 에서 `grep -E "cert-file|key-file|trusted-ca|peer"` 로 확인한다: `--cert-file`/`--key-file`(server.crt/key), `--trusted-ca-file`(ca.crt), `--peer-cert-file`/`--peer-key-file`(peer.crt/key).
 
 **동작 원리:** etcd 인증서 경로를 확인하는 이유:
 1. `etcdctl snapshot save` 명령에는 `--cacert`, `--cert`, `--key` 3개 인증서 옵션이 필요하다
@@ -541,10 +633,8 @@ kubectl get pod etcd-platform-master -n kube-system -o yaml | grep -A5 "command:
 #   --key=/etc/kubernetes/pki/etcd/server.key
 ```
 
-**예상 출력:**
-```
-https://127.0.0.1:2379 is healthy: successfully committed proposal: took = 12.345ms
-```
+**검증 - 기대 출력:** `is healthy` 가 나오면 etcd 가 정상이다. `took` 값은 측정마다 다르다(platform-master SSH 실측).
+![etcd endpoint health — is healthy 확인](images/day04-11-etcd-health.png)
 
 **동작 원리:** etcd snapshot 백업 과정:
 1. `etcdctl`이 TLS 인증서로 etcd에 gRPC 연결을 맺는다
@@ -559,11 +649,8 @@ https://127.0.0.1:2379 is healthy: successfully committed proposal: took = 12.34
 kubectl version --short 2>/dev/null || kubectl version
 ```
 
-**예상 출력:**
-```
-Client Version: v1.31.0
-Server Version: v1.31.0
-```
+**검증 - 기대 출력:** Client/Server 버전을 확인한다. `--short` 는 1.28+ 에서 제거돼 일반 `version` 출력이 나온다(platform 실측).
+![kubectl version — Client·Server 버전](images/day04-09-version.png)
 
 ```bash
 # kubeadm 업그레이드 가능 버전 확인 (SSH로 master 노드 접속 후)
@@ -578,7 +665,7 @@ Server Version: v1.31.0
 4. kubelet/kubectl 패키지 업그레이드 → `systemctl restart kubelet`
 5. `kubectl uncordon <node>`: 노드를 다시 스케줄 가능 상태로 전환한다
 
-### 실습 4: drain/cordon 동작 확인
+### 실습 4: drain/cordon 동작 확인 (문제 5의 platform 클러스터 재현)
 
 ```bash
 # 노드 상태 확인 (SchedulingDisabled 여부)
@@ -589,13 +676,8 @@ kubectl cordon platform-worker2
 kubectl get nodes
 ```
 
-**예상 출력:**
-```
-NAME               STATUS                     ROLES           AGE   VERSION
-platform-master    Ready                      control-plane   30d   v1.31.0
-platform-worker1   Ready                      <none>          30d   v1.31.0
-platform-worker2   Ready,SchedulingDisabled   <none>          30d   v1.31.0
-```
+**검증 - 기대 출력:** `cordon` 후 `platform-worker2` 의 STATUS 가 `Ready,SchedulingDisabled` 로 바뀐다(아래 캡처는 cordon→조회→uncordon 한 화면, platform 실측).
+![platform-worker2 cordon 후 SchedulingDisabled 확인 + uncordon 복구](images/day04-10-cordon.png)
 
 **동작 원리:** `kubectl cordon`은 노드에 `node.kubernetes.io/unschedulable` taint를 추가한다:
 1. 새로운 Pod가 이 노드에 스케줄되지 않는다
@@ -610,70 +692,46 @@ kubectl uncordon platform-worker2
 
 ---
 
-## 추가 심화 학습: etcd 내부 구조와 Raft 합의 알고리즘
+## (선택·발전) 추가 심화 학습: etcd 내부 구조와 Raft 합의 알고리즘
+
+> 이 절은 시험 합격에 필수는 아닌 **발전 학습**이다. 문제 5~12 는 cordon/drain/업그레이드/etcd 상태 확인 같은 손에 익히는 기초 조작이고, 아래는 그 etcd 가 내부적으로 어떻게 데이터를 저장하고 합의하는지를 다룬다. 기초 실습이 손에 익은 뒤 읽어도 된다(처음 보는 용어가 부담되면 문제 8 의 etcd 배경 설명까지만 이해해도 시험 풀이에는 충분하다). Raft 합의의 더 깊은 내용은 Day 5 에서 이어진다.
 
 ### etcd의 데이터 저장 구조 (Key-Value 계층)
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  root[("/registry/\netcd 루트")]
+  root --> pods["pods/"]
+  pods --> pd["default/\nnginx-pod, web-app\n(Pod 전체 JSON)"]
+  pods --> pk["kube-system/\ncoredns-xxxx, kube-proxy-xxxx"]
+  root --> svc["services/\ndefault/kubernetes\nkube-system/kube-dns"]
+  root --> dep["deployments/\ndefault/nginx-deployment"]
+  root --> sec["secrets/\ndefault/my-secret\n(Base64 인코딩)"]
+  root --> cm["configmaps/\ndefault/my-config"]
+  root --> ev["events/\n기본 1시간 유지"]
+  access["kubectl"] -.->|직접 접근 불가| apisvr["API Server"]
+  apisvr -->|유일한 직접 접근 주체| root
 ```
-etcd 내부 구조 (계층적 키-값 네임스페이스)
-══════════════════════════════════════════
-
-/registry/                          ← etcd의 루트 디렉터리
-├── pods/
-│   ├── default/                    ← 네임스페이스
-│   │   ├── nginx-pod               ← Pod 오브젝트의 전체 JSON
-│   │   └── web-app
-│   └── kube-system/
-│       ├── coredns-xxxx
-│       └── kube-proxy-xxxx
-├── services/
-│   ├── default/
-│   │   └── kubernetes              ← default/kubernetes 서비스
-│   └── kube-system/
-│       └── kube-dns
-├── deployments/
-│   └── default/
-│       └── nginx-deployment
-├── secrets/
-│   └── default/
-│       └── my-secret               ← Secret 데이터 (Base64 인코딩)
-├── configmaps/
-│   └── default/
-│       └── my-config
-└── events/                         ← 이벤트 (기본 1시간 유지)
-    └── default/
-        └── nginx-pod.xxxxx
-
-핵심: API Server만 etcd에 직접 접근한다!
-       kubectl → API Server → etcd (직접 접근 불가)
-```
+_그림 1. etcd 내부 구조 (계층적 키-값 네임스페이스). API Server만 etcd에 직접 접근한다._
 
 ### Raft 합의 알고리즘 상세 설명
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+sequenceDiagram
+  participant A as Node A (Leader)
+  participant B as Node B (Follower)
+  participant C as Node C (Follower)
+  A->>B: "Pod 생성" 복제
+  A->>C: "Pod 생성" 복제
+  B-->>A: 동의
+  C-->>A: 동의
+  Note over A: 2/3 동의 → 커밋
+  A->>B: 커밋 확정
+  A->>C: 커밋 확정
 ```
-Raft 합의 과정 (Leader-Follower 복제 프로토콜)
-═══════════════════════════════════
-
-3노드 etcd 클러스터:
-  Node A (Leader)     Node B (Follower)     Node C (Follower)
-      │                    │                      │
-      │── "Pod 생성" ────►│                      │
-      │── "Pod 생성" ────────────────────────────►│
-      │                    │                      │
-      │◄── "동의" ────────│                      │
-      │◄── "동의" ────────────────────────────────│
-      │                    │                      │
-      │   2/3 동의 → 커밋!                        │
-      │── "커밋 확정" ───►│                      │
-      │── "커밋 확정" ──────────────────────────►│
-
-핵심 규칙:
-  - Leader가 모든 쓰기 요청을 처리한다
-  - 과반수(Quorum)의 동의가 있어야 데이터를 커밋한다
-  - 3노드: 1노드 장애까지 허용 (2/3 = 과반수)
-  - 5노드: 2노드 장애까지 허용 (3/5 = 과반수)
-  - 짝수 노드는 비추천 (4노드 = 3노드와 동일한 내결함성)
-```
+_그림 2. Raft 합의 과정 (Leader-Follower 복제 프로토콜). Leader가 모든 쓰기를 처리하고 과반수(Quorum) 동의로 커밋한다. 3노드는 1노드, 5노드는 2노드 장애까지 허용하며 짝수 노드는 비추천이다._
 
 ### etcdctl 고급 명령어 YAML 예제
 

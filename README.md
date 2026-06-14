@@ -580,6 +580,27 @@ terraform apply    # 인프라 프로비저닝(Provision Infrastructure)
 
 `demo.sh --skip-install`은 VM 10개 시작 → 클러스터 헬스체크(Health Check) → 서비스 검증(Service Verification) → 대시보드 기동 → 브라우저 오픈까지 자동 수행.
 
+> **IP 드리프트 자동 복구.** tart는 재부팅마다 VM IP를 바꾸고 kubeadm 클러스터는 최초 IP에 묶여 깨진다. `boot.sh`는 기동 후 `fix-cluster-ip-drift.sh`(Phase 2.5)로 apiserver 인증서 SAN·control-plane 정적 파드·worker `kubelet.conf`·Cilium `KUBERNETES_SERVICE_HOST`를 멱등 복구한다.
+
+### 클러스터 복구 / 재생성(Recover / Recreate)
+
+```bash
+# 데이터 보존하며 IP 드리프트만 복구
+./scripts/fix-cluster-ip-drift.sh            # 전체
+./scripts/fix-cluster-ip-drift.sh dev        # 특정 클러스터
+
+# 완전 삭제 후 새로 생성(현재 IP로 fresh init → 드리프트 원천 차단, K8s+Cilium만 설치해 빠름)
+./scripts/reset-cluster.sh dev               # 특정 클러스터(확인 프롬프트)
+./scripts/reset-cluster.sh --yes dev         # 확인 없이
+./scripts/reset-cluster.sh all               # 전체
+```
+
+| 명령 | 데이터 | 소요 | 용도 |
+|------|--------|------|------|
+| `boot.sh` | 보존 | 수 분 | 재부팅 후 기동 + 자동 복구 |
+| `fix-cluster-ip-drift.sh [c]` | 보존 | 1~2분/클러스터 | 떠 있는 클러스터 드리프트 복구 |
+| `reset-cluster.sh [c\|all]` | **삭제** | 5~8분/노드 | 깨끗이 재생성(가장 단순·확실) |
+
 ### SRE 대시보드만 실행(Start Dashboard Only)
 
 ```bash

@@ -43,18 +43,14 @@ Kubernetes 보안 메커니즘은 API 요청의 라이프사이클에 따라 다
 kubectl auth whoami 2>/dev/null || kubectl config view --minify -o jsonpath='{.contexts[0].context.user}'
 ```
 
-```text
-kubernetes-admin
-```
+> **예시(참조) — kubernetes-admin:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 인가 단계 확인 — 권한 테스트
 kubectl auth can-i create pods -n default
 ```
 
-```text
-yes
-```
+> **예시(참조) — yes:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # Admission 단계 확인 — 등록된 webhook 목록
@@ -62,10 +58,7 @@ kubectl get validatingwebhookconfiguration --no-headers 2>/dev/null | wc -l
 kubectl get mutatingwebhookconfiguration --no-headers 2>/dev/null | wc -l
 ```
 
-```text
-3
-2
-```
+> **예시(참조) — 3:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ---
 
@@ -114,7 +107,12 @@ Gatekeeper의 동작 메커니즘은 다음과 같다. API Server가 리소스 �
 
 #### Rego 언어 기초
 
-Rego는 OPA의 정책 언어로, 선언적(declarative) 스타일로 작성한다.
+Rego는 OPA의 정책 언어로, 선언적(declarative) 스타일로 작성한다. Datalog에 기반한 언어이므로, Python·Java 같은 명령형 언어에 익숙한 개발자에게 처음에는 낯설다. 핵심 문법 규칙은 다음과 같다.
+
+- `violation[{"msg": msg}] { ... }`: 중괄호 내부의 모든 조건이 참(true)이면 이 규칙이 "발화(fire)"된다. 명령형 언어의 `if (조건) { 위반 처리 }`와 개념적으로 유사하지만, Rego에서는 조건이 하나라도 거짓이면 전체 블록이 평가되지 않는다.
+- `:=`는 변수 할당 연산자다. `provided := {label | ...}` 형태는 집합(set)을 생성한다.
+- `-`(집합 차, set difference): `required - provided`는 required 집합에는 있지만 provided 집합에는 없는 원소들의 집합이다. `{A, B, C} - {A, C}` = `{B}`.
+- `input.review.object`는 API Server가 Webhook으로 전달한 요청 리소스 오브젝트이다. `input.parameters`는 Constraint에서 넘어온 파라미터이다.
 
 ```rego
 # 위반 조건을 정의하는 기본 구조
@@ -160,22 +158,14 @@ Constraint의 `spec.enforcementAction` 필드로 설정한다.
 kubectl get pods -n gatekeeper-system
 ```
 
-```text
-NAME                                            READY   STATUS    RESTARTS   AGE
-gatekeeper-audit-xxxxx                          1/1     Running   0          10d
-gatekeeper-controller-manager-xxxxx             1/1     Running   0          10d
-gatekeeper-controller-manager-yyyyy             1/1     Running   0          10d
-gatekeeper-controller-manager-zzzzz             1/1     Running   0          10d
-```
+> **참조 — audit 로깅(설정 의존):** NAME                                           ...
 
 ```bash
 # Webhook 설정에서 failurePolicy 확인
 kubectl get validatingwebhookconfiguration gatekeeper-validating-webhook-configuration -o jsonpath='{.webhooks[0].failurePolicy}'
 ```
 
-```text
-Fail
-```
+> **예시(참조) — Fail:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `failurePolicy: Fail`이면 Gatekeeper가 응답하지 않을 때 모든 API 요청이 거부된다. 프로덕션에서는 `Ignore`로 설정하여 Gatekeeper 장애가 클러스터 운영에 영향을 주지 않도록 할 수 있다. 단, `Ignore`는 정책 우회를 허용하므로 보안 수준이 저하된다.
 
@@ -186,9 +176,7 @@ Fail
 kubectl get constrainttemplate k8srequiredlabels -o jsonpath='{.status.created}' 2>/dev/null
 ```
 
-```text
-true
-```
+> **예시(참조) — true:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `created: true`가 아니면 ConstraintTemplate의 Rego 코드에 문법 오류가 있는 것이다.
 
@@ -197,13 +185,7 @@ true
 kubectl describe constrainttemplate k8srequiredlabels | grep -A5 "Status:"
 ```
 
-```text
-Status:
-  Created:  true
-  By Pod:
-    Id:                  gatekeeper-controller-manager-xxxxx
-    Observed Generation: 1
-```
+> **예시(참조) — Status::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 #### Gatekeeper 성능 최적화
 
@@ -317,7 +299,7 @@ kubectl get policyreport -A
 **OPA Gatekeeper의 아키텍처:**
 - OPA 엔진을 Kubernetes에 통합한 것이다. OPA는 범용 정책 엔진으로, Kubernetes 외에도 Terraform, Envoy, CI/CD 파이프라인 등 다양한 환경에서 사용할 수 있다.
 - Rego 언어는 Datalog에 기반한 선언적 쿼리 언어이다. 복잡한 조건(집합 연산, 중첩 순회, 외부 데이터 참조)을 표현하는 데 강점이 있다.
-- ConstraintTemplate + Constraint 2단계 구조는 정책 라이브러리(Gatekeeper Library)를 조직 전체에서 공유할 수 있도록 설계되었다.
+- ConstraintTemplate + Constraint 2단계 구조는 "왜 2단계인가?"라는 의문이 생길 수 있다. ConstraintTemplate은 정책 로직(Rego 코드)을 담고, Constraint는 "이 로직을 어느 범위에 어떤 파라미터로 적용할까"를 담는다. 분리하는 이유는 재사용이다. 예를 들어 "필수 레이블 검증" 로직(ConstraintTemplate)을 한 번 작성하고, Namespace에 적용하는 Constraint와 Deployment에 적용하는 Constraint를 별도로 만들 수 있다. Gatekeeper Library는 수백 개의 공개 ConstraintTemplate을 제공하여 조직이 처음부터 Rego를 작성하지 않아도 된다.
 - OPA/Rego 기술을 이미 보유한 조직에 적합하다.
 
 **Kyverno의 아키텍처:**
@@ -340,11 +322,17 @@ kubectl get policyreport -A
 | **범용성** | Kubernetes 외 환경에도 적용 가능 | Kubernetes 전용 |
 | **CLI 도구** | `gator` CLI | `kyverno` CLI (정책 테스트, 적용 미리보기) |
 
+**실무 선택 기준 요약**: 조직이 이미 OPA/Rego를 Terraform이나 Envoy 정책에 사용한다면 Gatekeeper가 기존 투자를 활용한다. 반면 Kubernetes만 다루는 팀이 빠르게 정책을 적용하고 이미지 서명 검증까지 원한다면 Kyverno가 진입 장벽이 낮다. Rego의 높은 학습 곡선은 복잡한 집합 연산이나 외부 데이터 조인이 필요한 고급 정책을 만들 때 비로소 강점이 되므로, 단순한 레이블 강제·레지스트리 제한 수준의 정책이라면 두 도구 모두 충분하다.
+
 ---
 
 ### 1.3 Falco 규칙 구문과 배포 상세
 
 #### 등장 배경과 기존 한계점
+
+Falco 이전에 컨테이너 런타임 위협에 대응하는 주요 수단은 OS 레벨 감사 도구인 **auditd**(리눅스 커널 감사 데몬)였다. auditd는 시스템 콜을 기록하지만 컨테이너 맥락(네임스페이스, Pod 이름, 이미지 등)을 이해하지 못한다. 운영자는 raw 커널 이벤트 로그를 직접 파싱하고, 수백 줄의 감사 규칙을 수동으로 작성해야 했다. 컨테이너 내부에서 `/etc/shadow`가 읽혔는지, 패키지 관리자가 실행되었는지 같은 의미 있는 이벤트를 필터링하는 데 몇 시간이 소요되었고, 실시간 경보는 별도 스크립트가 필요했다. 이 접근의 한계는 세 가지였다: 컨테이너 맥락 부재, 수동 분석 지연(공격 탐지에 시간이 오래 걸림), 방대한 유지보수 부담.
+
+Falco는 이 문제를 해결하기 위해 설계되었다. 컨테이너 런타임 맥락을 이해하는 드라이버(eBPF 또는 커널 모듈)가 이벤트를 수집하고, YAML 기반 규칙 엔진이 실시간으로 위협 패턴을 매칭하여 경보를 발생시킨다. 운영자는 복잡한 스크립트 없이 YAML 규칙만 작성하면 되고, Pod 이름·이미지·네임스페이스 등 K8s 메타데이터가 경보에 자동 포함된다. 트레이드오프는 "탐지만 하고 차단하지 않는다"는 점이다. Falco 경보를 받은 뒤 실제 대응(프로세스 종료 등)은 별도 자동화가 필요하며, 이를 원하면 Tetragon을 검토해야 한다.
 
 컨테이너 런타임 보안의 발전 과정:
 
@@ -405,6 +393,8 @@ Falco 엔진 (규칙 매칭)
 | **eBPF 프로브** | eBPF를 통해 시스템 콜을 캡처한다. | 커널 모듈보다 안전하고 커널 호환성이 좋다. |
 | **modern eBPF** | CO-RE(Compile Once, Run Everywhere) 기반 eBPF이다. | 커널 5.8+ 필요하나 별도 빌드 불필요이다. |
 | **플러그인** | Kubernetes audit log, AWS CloudTrail 등 외부 소스를 입력으로 사용한다. | 시스템 콜 외 다양한 이벤트 소스를 지원한다. |
+
+> **CO-RE 보충**: CO-RE(Compile Once, Run Everywhere)는 BPF Type Format(BTF)이라는 커널 타입 정보를 활용하여, 단일 eBPF 바이너리가 여러 커널 버전에서 동작하도록 컴파일하는 기술이다. 기존 eBPF 프로그램은 커널 구조체의 메모리 오프셋이 버전마다 달라 커널별로 재빌드가 필요했다. CO-RE는 런타임에 BTF 정보를 읽어 구조체 오프셋을 자동으로 보정하므로, 별도 커널 헤더나 드라이버 빌드 단계가 불필요하다. Falco modern eBPF 드라이버가 배포 복잡도를 줄일 수 있는 이유이다.
 
 #### Falco 규칙 구문
 
@@ -535,6 +525,8 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco | grep "driver"
 2. 동일한 키로 대량의 데이터를 암호화하면 통계적 분석에 의한 키 추정 가능성이 증가한다.
 3. 컴플라이언스 프레임워크(PCI DSS, SOC 2 등)는 정기적인 키 로테이션을 의무화한다.
 
+**실무 시나리오**: 운영자 A가 클러스터를 2년간 관리하며 EncryptionConfiguration 파일을 다뤘다. A가 퇴사하면 A가 알고 있던 암호화 키는 여전히 유효하다. A가 이전 백업 파일이나 본인 로컬 메모에서 키를 복원하면 etcd에 저장된 모든 Secret을 복호화할 수 있다. 키를 로테이션하면 이전 키로는 새로 암호화된 Secret을 복호화할 수 없으므로, A 퇴사 이후 생성된 Secret은 안전하게 보호된다. 정기 로테이션(90~180일 주기), 직원 퇴사, 키 파일 노출 의심 시 즉시 로테이션하는 것이 운영 기준이다.
+
 Kubernetes에서 키 로테이션이 특히 중요한 이유: EncryptionConfiguration의 키가 API Server 매니페스트 파일에 평문으로 저장되기 때문이다. 이 파일에 접근할 수 있는 운영자가 퇴사하거나, 파일이 백업/로그에 포함되어 유출될 수 있다. 키 로테이션을 통해 이전 키를 무효화하면 피해 범위를 제한할 수 있다.
 
 KMS v2를 사용하면 키 로테이션이 자동화되고, API Server 설정 파일에 평문 키를 두지 않아도 된다. 이것이 프로덕션 환경에서 KMS 사용이 권장되는 주요 이유이다.
@@ -644,9 +636,13 @@ ETCDCTL_API=3 etcdctl \
 kubectl delete secret rotation-test
 ```
 
+> **출력 해석**: `hexdump -C` 결과에서 `k8s:enc:aescbc:v1:key-2024-new` 문자열이 보이면 로테이션 성공이다. `key-2024-old`가 보이는 Secret이 있다면 해당 Secret은 4단계(`kubectl get secrets ... | kubectl replace -f -`)에서 재암호화가 누락된 것이므로 해당 네임스페이스의 Secret을 다시 replace해야 한다.
+
 #### KMS(Key Management Service) 사용 시
 
 프로덕션 환경에서는 로컬 키 대신 KMS를 사용하는 것이 권장된다.
+
+**봉투 암호화(Envelope Encryption) 개념**: KMS v2는 봉투 암호화 구조를 사용한다. DEK(Data Encryption Key)로 실제 데이터(etcd의 Secret 값)를 암호화하고, KEK(Key Encryption Key)로 DEK 자체를 암호화한다. EncryptionConfig 파일이 유출되어도 KEK는 외부 KMS(AWS KMS, GCP KMS, HashiCorp Vault 등)에 보관되므로 KEK에 대한 접근 권한이 없으면 DEK를 복호화할 수 없고, 결과적으로 데이터도 읽을 수 없다. DEK와 KEK를 분리하는 이유는 키 유출 피해 범위를 제한하기 위해서이다. DEK가 유출되어도 KEK가 안전하면 공격자는 다른 DEK로 암호화된 다른 데이터에는 접근할 수 없다.
 
 | 항목 | 로컬 키 (aescbc/secretbox) | KMS v2 |
 |------|---------------------------|--------|
@@ -680,6 +676,8 @@ Kubernetes Secret 관리 도구의 발전 과정:
 | etcd에 Secret 미저장 필요 | CSI Secret Store Driver | Volume 마운트만 사용 |
 | 프로덕션 + 자동 로테이션 | ESO + Vault | Vault에서 동적 Secret 발급 |
 
+**Sealed Secrets vs ESO 실무 비교**: Sealed Secrets는 단일 클러스터의 개인키로 Secret을 암호화하므로, 클러스터 A의 SealedSecret은 클러스터 B에서 복호화할 수 없다. 멀티 클러스터 환경에서 데이터베이스 비밀번호를 dev·staging·prod 세 클러스터에 공유하려면 각 클러스터마다 별도로 SealedSecret을 생성해야 한다. 반면 ESO는 HashiCorp Vault 같은 중앙 저장소 하나에 Secret을 저장하고, 세 클러스터의 ESO 컨트롤러가 각자 해당 저장소에서 동일한 값을 읽어 Kubernetes Secret을 생성한다. Secret 변경 시 Vault에서 한 번만 수정하면 세 클러스터가 `refreshInterval`에 따라 자동 동기화된다. 이것이 멀티 클러스터 환경에서 ESO가 Sealed Secrets보다 운영 효율이 높은 이유이다. 단, ESO는 Vault·AWS Secrets Manager 같은 외부 인프라 의존성이 생기고, Sealed Secrets는 추가 인프라 없이 Git 리포지토리만으로 운영 가능하다는 트레이드오프가 있다.
+
 #### 기존 방식의 한계
 
 Kubernetes 기본 Secret은 etcd에 저장된다. `EncryptionConfiguration`으로 etcd 암호화를 설정할 수 있지만, Secret 값 자체는 클러스터 내부에 존재한다. 멀티 클러스터 환경이나 Kubernetes 외 시스템과 Secret을 공유해야 하는 경우, 운영 팀이 HashiCorp Vault, AWS Secrets Manager 등 외부 저장소에서 수동으로 값을 가져와 Kubernetes Secret을 생성/업데이트해야 했다. 이 수동 프로세스는 다음 문제를 발생시킨다:
@@ -695,16 +693,21 @@ External Secrets Operator(ESO)는 이 수동 동기화를 자동화한다. Exter
 
 #### 아키텍처와 동작 메커니즘
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  subgraph EXT["외부 비밀 저장소"]
+    store["AWS Secrets Mgr\nHashiCorp Vault\nAzure Key Vault\nGCP Secret Mgr\n1Password"]
+  end
+  subgraph K8S["Kubernetes 클러스터"]
+    es["ExternalSecret (CR)"]
+    ctrl["ESO Controller"]
+    sec[("Kubernetes Secret\n(자동 생성)")]
+    es --> ctrl --> sec
+  end
+  store <-->|동기화| ctrl
 ```
-외부 비밀 저장소                  Kubernetes 클러스터
-┌──────────────────┐          ┌───────────────────────────────┐
-│ AWS Secrets Mgr  │          │  ExternalSecret (CR)          │
-│ HashiCorp Vault  │◄────────►│       ↓                       │
-│ Azure Key Vault  │   동기화  │  ESO Controller               │
-│ GCP Secret Mgr   │          │       ↓                       │
-│ 1Password        │          │  Kubernetes Secret (자동 생성) │
-└──────────────────┘          └───────────────────────────────┘
-```
+_그림 1. External Secrets Operator의 외부 저장소 동기화 구조._
 
 ESO의 동작 흐름은 다음과 같다:
 1. 운영자가 SecretStore(외부 저장소 연결 정보)와 ExternalSecret(동기화 대상)을 생성한다.
@@ -722,6 +725,8 @@ ESO의 동작 흐름은 다음과 같다:
 | **ClusterExternalSecret** | 클러스터 전체 | 여러 네임스페이스에 동일한 ExternalSecret을 생성한다. |
 
 #### SecretStore 예시 (AWS Secrets Manager)
+
+아래 YAML에서 `auth.jwt.serviceAccountRef`는 IRSA(IAM Roles for Service Accounts) 방식으로 인증을 수행한다. IRSA는 AWS EKS 환경에서 Kubernetes ServiceAccount에 IAM Role ARN을 annotation으로 연결하면, Pod가 AWS STS(Security Token Service)를 통해 임시 자격증명(STS 토큰)을 자동 발급받아 AWS API를 호출할 수 있는 방식이다. 액세스 키나 비밀번호를 Kubernetes Secret에 평문으로 저장하지 않아도 되므로, 정적 자격증명 노출 위험이 없다. STS 토큰은 만료 시간이 있어 유출 피해가 제한된다.
 
 ```yaml
 apiVersion: external-secrets.io/v1beta1
@@ -972,6 +977,16 @@ chmod +x audit-rbac.sh && ./audit-rbac.sh
 
 ## Part 2: 추가 실전 예제
 
+> **실습 전제 조건**
+> - 클러스터 가동: `./scripts/boot.sh && ./scripts/fix-cluster-ip-drift.sh dev`
+> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` (또는 `staging.yaml`)
+> - 환경 변수 설정: `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> - 노드 SSH 접근: `ssh dev-master`, `ssh staging-master` (전용 키 배포 완료 전제)
+> - OPA Gatekeeper 실습은 `kubectl apply -f manifests/gatekeeper/` 로 사전 배포
+> - Kyverno 실습은 `helm install kyverno kyverno/kyverno -n kyverno --create-namespace` 로 사전 배포
+> - Falco 실습은 `helm install falco falcosecurity/falco -n falco --create-namespace --set driver.kind=ebpf` 로 사전 배포
+> - **CKS 파괴 실습(Falco, NetworkPolicy, seccomp 변조 테스트)은 dev 또는 staging 클러스터에서만 수행한다. platform/prod 클러스터 사용 금지.**
+
 ### 보안 도구 체인의 계층별 배치
 
 실전 예제를 학습하기 전에, 각 보안 도구가 워크로드 라이프사이클의 어느 단계에서 동작하는지 이해해야 한다. 도구를 잘못된 단계에 배치하면 보안 공백이 발생한다.
@@ -995,21 +1010,14 @@ chmod +x audit-rbac.sh && ./audit-rbac.sh
 kubectl get validatingwebhookconfiguration -o custom-columns='NAME:.metadata.name,WEBHOOKS:.webhooks[*].name'
 ```
 
-```text
-NAME                                              WEBHOOKS
-gatekeeper-validating-webhook-configuration        validation.gatekeeper.sh
-kyverno-resource-validating-webhook-cfg            validate.kyverno.svc
-```
+> **예시(참조) — NAME                                          :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # PSA 적용 네임스페이스 확인
 kubectl get ns -o jsonpath='{range .items[*]}{.metadata.name}{" enforce="}{.metadata.labels.pod-security\.kubernetes\.io/enforce}{"\n"}{end}' | grep -v "enforce=$"
 ```
 
-```text
-production enforce=restricted
-kube-system enforce=privileged
-```
+> **예시(참조) — production enforce=restricted:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ### 예제 1: OPA Gatekeeper ConstraintTemplate - 필수 레이블 강제
 
@@ -1109,6 +1117,8 @@ kubectl get k8srequiredlabels ns-must-have-labels -o jsonpath='{.status.violatio
 # 기대 출력: 기존 Namespace 중 레이블이 누락된 것들의 목록이 표시된다
 ```
 
+> **출력 해석**: `TOTAL-VIOLATIONS` 열이 0이면 기존 모든 Namespace가 정책을 준수한다는 뜻이다. 값이 0보다 크면 `kubectl get k8srequiredlabels ns-must-have-labels -o jsonpath='{.status.violations}'`으로 위반 항목을 확인한다. `enforcementAction: deny`이므로 신규 생성은 차단되지만, 이미 존재하는 위반 Namespace는 audit 결과에만 기록될 뿐 자동 삭제되지 않는다.
+
 ---
 
 ### 예제 2: Kyverno ClusterPolicy - 이미지 레지스트리 제한
@@ -1175,6 +1185,8 @@ kubectl run allowed-test --image=ghcr.io/myorg/app:v1.0 --dry-run=server
 kubectl get policyreport -A -o wide
 # 기대 출력: 기존 Pod 중 정책을 위반하는 것들이 FAIL로 표시된다
 ```
+
+> **출력 해석**: `kubectl get clusterpolicy restrict-image-registries` 결과에서 `READY=True`는 ClusterPolicy가 성공적으로 로드되고 모든 규칙이 유효하다는 의미이다. `READY=False`이면 정책 YAML의 문법 오류나 CEL 표현식 오류가 있으므로 `kubectl describe clusterpolicy restrict-image-registries`의 `status.conditions` 항목을 확인해야 한다. `ADMISSION=true`이면 신규 Admission 요청에 정책이 적용되고 있음을 나타낸다.
 
 ---
 
@@ -1262,6 +1274,8 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco -f | grep "토큰 접근"
 # 기대 출력:
 # WARNING ServiceAccount 토큰 접근 탐지 (command=cat ... file=/var/run/secrets/...)
 ```
+
+> **출력 해석**: Falco 로그에서 `CRITICAL` 또는 `WARNING`으로 시작하는 줄이 규칙이 발화(fire)된 것이다. 로그가 전혀 나타나지 않는다면 두 가지 원인을 점검한다. 첫째, `kubectl logs -n falco ...`에서 "Rules loaded" 메시지와 커스텀 규칙 파일 경로가 표시되는지 확인한다. 없으면 Helm values의 `customRules` 설정이 적용되지 않은 것이다. 둘째, test-pod가 `privileged` securityContext 없이 실행 중인지 확인한다. privileged 컨테이너 내부의 일부 시스템 콜은 Falco 드라이버가 캡처하지 못할 수 있다.
 
 ---
 
@@ -1351,7 +1365,11 @@ kubectl get secret encryption-test -n default -o jsonpath='{.data.mykey}' | base
 kubectl delete secret encryption-test -n default
 ```
 
-Audit Level 정리:
+> **출력 해석**: `hexdump -C` 출력에서 `k8s:enc:aescbc:v1:key-2024-03` 문자열이 앞부분에 보이면 암호화가 적용된 것이다. 이 프리픽스 이후의 데이터는 바이너리(암호문)로 보여 직접 읽을 수 없어야 한다. 만약 `mydata` 같은 평문이 그대로 보인다면 EncryptionConfiguration이 API Server에 적용되지 않은 것이므로, API Server의 `--encryption-provider-config` 플래그와 파일 경로를 확인한다. `identity: {}` 프리픽스가 보이면 폴백 프로바이더로 저장된 것으로, 해당 Secret은 아직 암호화되지 않은 상태이다.
+
+#### 다음 예제(예제 5 Audit Policy) 선행 개념 — Audit Level 정리
+
+예제 5에서 Audit Policy를 작성할 때 각 규칙에 `level` 필드를 지정해야 한다. 아래 표는 예제 5를 이해하기 위한 선행 개념으로, EncryptionConfiguration과는 별개의 내용이다.
 
 | 수준 | 기록 내용 |
 |------|----------|
@@ -1582,6 +1600,8 @@ kubectl auth can-i --list \
 # 기대 출력: pods [get list watch], configmaps [get] 등 최소 권한만 표시된다
 ```
 
+> **출력 해석**: `kubectl auth can-i get secrets ...` 결과가 `no`이면 최소 권한 원칙이 올바르게 적용된 것이다. `yes`가 나오면 RoleBinding 또는 ClusterRoleBinding을 확인하여 의도하지 않은 Secret 접근 권한이 부여된 경로를 찾아야 한다. `kubectl auth can-i --list` 출력에서 `secrets` 관련 행이 없거나 `[]`(빈 verbs)이어야 한다. `resourceNames`에 의한 제한은 `--list` 출력에서 verbs가 있어 보여도 실제로는 해당 리소스 이름에만 적용되므로, 실제 접근 가능 여부를 확인하려면 `--subresource`와 특정 리소스 이름을 함께 사용해야 한다.
+
 ---
 
 ### 예제 7: NetworkPolicy - namespaceSelector AND/OR 패턴
@@ -1607,15 +1627,7 @@ YAML에서 `-`는 배열의 새 항목을 나타낸다. NetworkPolicy의 `from` 
 kubectl describe networkpolicy allow-prod-backend-and -n database
 ```
 
-```text
-Spec:
-  PodSelector:     app=postgres
-  Allowing ingress traffic:
-    To Port: 5432/TCP
-    From:
-      NamespaceSelector: environment=production
-      PodSelector: role=backend
-```
+> **예시(참조) — Spec::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `From:` 아래에 `NamespaceSelector`와 `PodSelector`가 같은 수준에 표시되면 AND 조건이다.
 
@@ -1623,16 +1635,7 @@ Spec:
 kubectl describe networkpolicy allow-prod-or-monitoring -n database
 ```
 
-```text
-Spec:
-  PodSelector:     app=postgres
-  Allowing ingress traffic:
-    To Port: 5432/TCP
-    From:
-      NamespaceSelector: environment=production
-    From:
-      PodSelector: role=monitoring
-```
+> **예시(참조) — Spec::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `From:`이 두 번 표시되면 OR 조건이다.
 
@@ -1901,12 +1904,7 @@ RuntimeDefault 프로파일은 containerd 또는 CRI-O가 제공하는 기본 �
 kubectl describe pod <pod-name> -n <namespace> | grep -A5 "Events:"
 ```
 
-```text
-Events:
-  Type     Reason     Age   From     Message
-  ----     ------     ----  ----     -------
-  Warning  Failed     10s   kubelet  Error: container has runAsNonRoot and image will run as root
-```
+> **예시(참조) — Events::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 seccomp과 무관한 다른 securityContext 오류일 수 있다. 정확한 원인을 확인한다.
 
@@ -1915,9 +1913,7 @@ seccomp과 무관한 다른 securityContext 오류일 수 있다. 정확한 원�
 ssh admin@<node-ip> 'sudo dmesg | grep "seccomp" | tail -5'
 ```
 
-```text
-[12345.678] audit: type=1326 audit(...): auid=4294967295 uid=1000 gid=1000 ses=4294967295 pid=12345 comm="app" exe="/usr/bin/app" sig=31 arch=aarch64 syscall=165 compat=0 ip=0x7f... code=0x80000000
-```
+> **참조 — audit 로깅(설정 의존):** [12345.678] audit: type=1326 audit(...): auid= ...
 
 `syscall=165`는 `mount` 시스템 콜이다. 앱이 파일시스템을 마운트하려 하여 차단된 것이다. 앱이 실제로 mount를 필요로 하는지 확인하고, 필요한 경우 커스텀 seccomp 프로파일을 작성한다.
 
@@ -1995,6 +1991,8 @@ kubectl get pod secure-app -n production -o jsonpath='{.spec.containers[0].secur
 #   "capabilities": { "drop": ["ALL"], "add": ["NET_BIND_SERVICE"] }
 # }
 ```
+
+> **출력 해석**: `kubectl get pod secure-app ... -o jsonpath='{.spec.securityContext.seccompProfile}'` 결과가 `{"type":"RuntimeDefault"}`이면 Pod 수준 seccomp이 적용된 것이다. `unshare --mount /bin/sh` 명령에서 `Operation not permitted`가 나오면 RuntimeDefault가 `unshare` 시스템 콜을 정상적으로 차단한 것이다. 만약 `crictl inspect`에서 seccomp이 `unconfined`로 표시된다면 노드의 kubelet이 seccomp 기능을 지원하지 않거나 `--feature-gates=SeccompDefault=true`가 설정되지 않은 것이다(Kubernetes 1.25+에서는 기본 활성화).
 
 ---
 
@@ -2130,7 +2128,7 @@ kubectl exec -n kube-system -l k8s-app=cilium -- \
 
 ---
 
-## Part 3: 개념별 확인 문제 (40문항)
+## Part 3: 개념별 확인 문제 (문항 Q3-1~Q3-40)
 
 ### Overview of Cloud Native Security (6문항)
 
@@ -2796,7 +2794,7 @@ PCI DSS는 카드 데이터 환경(CDE)의 보호를 위해 네트워크 격리,
 
 ---
 
-## Part 4: 기출 유형 덤프 문제 (30문항)
+## Part 4: 기출 유형 덤프 문제 (문항 Q4-1~Q4-30)
 
 ### 문제 1.
 4C 보안 모델에서 Kubernetes NetworkPolicy는 어느 계층에 해당하는가?
@@ -2992,7 +2990,7 @@ D) Level 4 - SBOM 생성만 필요하다
 
 **정답: B) Level 2 - 빌드 서비스에서 provenance(빌드 증명)를 생성해야 한다 ✅**
 
-SLSA 레벨: Level 1은 빌드 프로세스의 문서화(provenance 존재), Level 2는 호스팅된 빌드 서비스에서의 provenance 생성, Level 3은 보안 강화된 빌드 플랫폼에서의 변조 불가 provenance, Level 4(현재는 Level 3으로 통합됨)은 모든 변경에 대한 이중 리뷰를 요구한다.
+SLSA v1.0(2023년) 기준 레벨 체계: Level 1은 빌드 프로세스의 문서화(provenance 존재), Level 2는 호스팅된 빌드 서비스에서의 provenance 생성, Level 3은 보안 강화된 빌드 플랫폼에서의 변조 불가 provenance를 요구한다. SLSA v1.0에서는 Level 0~3만 존재하며, 이전 SLSA v0.1에 있던 Level 4는 별도 레벨로 존재하지 않는다. 문제 3의 정답 해설과 동일하게 Level 4는 현재 SLSA 표준에 없음을 기준으로 한다.
 
 </details>
 
@@ -3347,11 +3345,7 @@ Admission Webhook(OPA Gatekeeper, Kyverno)의 장애는 클러스터 전체의 �
 kubectl create namespace test-ns
 ```
 
-```text
-Error from server (InternalError): Internal error occurred: failed calling webhook "validation.gatekeeper.sh":
-failed to call webhook: Post "https://gatekeeper-webhook-service.gatekeeper-system.svc:443/v1/admit":
-dial tcp 10.96.x.x:443: connect: connection refused
-```
+> **예시(참조) — Error from server (InternalError): Internal er:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 #### 대응 절차
 
@@ -3360,37 +3354,28 @@ dial tcp 10.96.x.x:443: connect: connection refused
 kubectl get pods -n gatekeeper-system
 ```
 
-```text
-NAME                                            READY   STATUS             RESTARTS   AGE
-gatekeeper-controller-manager-xxxxx             0/1     CrashLoopBackOff   5          10m
-```
+> **예시(참조) — NAME                                          :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 2) failurePolicy 확인 (Fail이면 webhook 장애 = API 전체 차단)
 kubectl get validatingwebhookconfiguration gatekeeper-validating-webhook-configuration -o jsonpath='{.webhooks[0].failurePolicy}'
 ```
 
-```text
-Fail
-```
+> **예시(참조) — Fail:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 3) 긴급 대응: webhook 비활성화 (클러스터 운영 복구 우선)
 kubectl delete validatingwebhookconfiguration gatekeeper-validating-webhook-configuration
 ```
 
-```text
-validatingwebhookconfiguration.admissionregistration.k8s.io "gatekeeper-validating-webhook-configuration" deleted
-```
+> **예시(참조) — validatingwebhookconfiguration.admissionregist:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 4) Gatekeeper Pod 문제 해결 후 재배포
 kubectl rollout restart deployment gatekeeper-controller-manager -n gatekeeper-system
 ```
 
-```text
-deployment.apps/gatekeeper-controller-manager restarted
-```
+> **예시(참조) — deployment.apps/gatekeeper-controller-manager :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 > **주의**: webhook을 삭제하면 정책 검증 없이 모든 리소스가 생성 가능해진다. 이는 보안 공백이므로 가능한 빨리 webhook을 복구해야 한다.
 
@@ -3406,20 +3391,14 @@ kubectl get networkpolicy -n demo
 kubectl get cnp -n demo
 ```
 
-```text
-NAME                           AGE
-default-deny-all               10d
-allow-external-to-nginx        10d
-```
+> **예시(참조) — NAME                           AGE:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 2) 정책의 podSelector가 대상 Pod와 매칭되는지 확인
 kubectl get cnp default-deny-all -n demo -o jsonpath='{.spec.endpointSelector}'
 ```
 
-```text
-{}
-```
+> **예시(참조) — {}:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `{}`는 모든 Pod에 적용된다. 특정 레이블이 지정된 경우 대상 Pod의 레이블과 일치하는지 확인한다.
 
@@ -3428,10 +3407,7 @@ kubectl get cnp default-deny-all -n demo -o jsonpath='{.spec.endpointSelector}'
 kubectl get pods -n kube-system -l k8s-app=cilium
 ```
 
-```text
-NAME           READY   STATUS    RESTARTS   AGE
-cilium-xxxxx   1/1     Running   0          10d
-```
+> **예시(참조) — NAME           READY   STATUS    RESTARTS   AG:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 Cilium Pod가 Running이 아니면 정책이 적용되지 않는다.
 
@@ -3451,13 +3427,7 @@ kubectl get cnp -n demo -o yaml | grep -A20 "allow-nginx-to-httpbin"
 kubectl exec -n demo <pod-name> -- nslookup httpbin.demo.svc.cluster.local
 ```
 
-```text
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      httpbin.demo.svc.cluster.local
-Address 1: 10.96.x.x
-```
+> **예시(참조) — Server:    10.96.0.10:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 DNS 해석이 실패하면 egress 정책에서 kube-dns(53/UDP)가 허용되어 있는지 확인한다.
 
@@ -3490,10 +3460,7 @@ for pod in data['items']:
 " 2>/dev/null
 ```
 
-```text
-production/app-xxx: DB_PASSWORD -> secret/db-credentials.password
-production/worker-yyy: API_KEY -> secret/api-keys.key
-```
+> **예시(참조) — production/app-xxx: DB_PASSWORD -> secret/db-c:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ### 5.4 인증서 만료 사전 탐지
 
@@ -3509,11 +3476,7 @@ ssh admin@<dev-master-ip> 'for cert in /etc/kubernetes/pki/*.crt /etc/kubernetes
 done' 2>/dev/null
 ```
 
-```text
-[OK] /etc/kubernetes/pki/apiserver.crt: 340 days remaining (Jan 15 10:00:00 2025 GMT)
-[OK] /etc/kubernetes/pki/ca.crt: 3640 days remaining (Jan 15 10:00:00 2034 GMT)
-[WARNING] /etc/kubernetes/pki/front-proxy-client.crt: 45 days remaining (Mar 01 10:00:00 2024 GMT)
-```
+> **예시(참조) — [OK] /etc/kubernetes/pki/apiserver.crt: 340 da:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `[WARNING]`이 표시되면 인증서 갱신을 계획해야 한다. 일반적으로 90일 이내 만료되는 인증서는 갱신 대상이다.
 
@@ -3522,24 +3485,7 @@ done' 2>/dev/null
 ssh admin@<dev-master-ip> 'sudo kubeadm certs check-expiration'
 ```
 
-```text
-CERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY   EXTERNALLY MANAGED
-admin.conf                 Jan 15, 2025 10:00 UTC   340d            ca                      no
-apiserver                  Jan 15, 2025 10:00 UTC   340d            ca                      no
-apiserver-etcd-client      Jan 15, 2025 10:00 UTC   340d            etcd-ca                 no
-apiserver-kubelet-client   Jan 15, 2025 10:00 UTC   340d            ca                      no
-controller-manager.conf    Jan 15, 2025 10:00 UTC   340d            ca                      no
-etcd-healthcheck-client    Jan 15, 2025 10:00 UTC   340d            etcd-ca                 no
-etcd-peer                  Jan 15, 2025 10:00 UTC   340d            etcd-ca                 no
-etcd-server                Jan 15, 2025 10:00 UTC   340d            etcd-ca                 no
-front-proxy-client         Jan 15, 2025 10:00 UTC   340d            front-proxy-ca          no
-scheduler.conf             Jan 15, 2025 10:00 UTC   340d            ca                      no
-
-CERTIFICATE AUTHORITY   EXPIRES                  RESIDUAL TIME   EXTERNALLY MANAGED
-ca                      Jan 13, 2034 10:00 UTC   3640d           no
-etcd-ca                 Jan 13, 2034 10:00 UTC   3640d           no
-front-proxy-ca          Jan 13, 2034 10:00 UTC   3640d           no
-```
+> **예시(참조) — CERTIFICATE                EXPIRES            :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ---
 

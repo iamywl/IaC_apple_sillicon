@@ -4,6 +4,45 @@
 
 ---
 
+## 목차
+
+- [1. Pod](#1-pod)
+- [2. Deployment](#2-deployment)
+- [3. Service](#3-service)
+- [4. ConfigMap](#4-configmap)
+- [5. Secret](#5-secret)
+- [6. PersistentVolume & PersistentVolumeClaim](#6-persistentvolume--persistentvolumeclaim)
+- [7. StatefulSet](#7-statefulset)
+- [8. DaemonSet](#8-daemonset)
+- [9. Job & CronJob](#9-job--cronjob)
+- [10. HPA (Horizontal Pod Autoscaler)](#10-hpa-horizontal-pod-autoscaler)
+- [11. Ingress](#11-ingress)
+- [12. NetworkPolicy](#12-networkpolicy)
+- [13. RBAC](#13-rbac)
+- [14. ResourceQuota & LimitRange](#14-resourcequota--limitrange)
+- [15. Helm](#15-helm)
+- [16. Kustomize](#16-kustomize)
+- [17. GitOps 도구 (ArgoCD / Flux)](#17-gitops-도구-argocd--flux)
+- [18. 모니터링 (Prometheus / Grafana)](#18-모니터링-prometheus--grafana)
+- [19. kubectl 명령어 종합 정리](#19-kubectl-명령어-종합-정리)
+- [부록: YAML 작성 팁](#부록-yaml-작성-팁)
+
+---
+
+## 실습 전 환경 설정
+
+이 문서의 모든 kubectl 명령은 dev 클러스터를 기준으로 한다. 실습 시작 전 아래 설정을 터미널에 적용한다.
+
+```bash
+alias k=kubectl
+export do='--dry-run=client -o yaml'
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+```
+
+`alias k=kubectl`과 `export do`는 시험형 명령 단축 습관을 기르기 위한 설정이다. `KUBECONFIG`를 명시하지 않으면 기본 `~/.kube/config`를 참조하므로 의도와 다른 클러스터에 명령이 실행될 수 있다. 노드 SSH 접속은 `ssh dev-master` 별칭을 사용한다(`~/.ssh/config`에 등록, `tart ip`로 IP를 실시간 조회하는 ProxyCommand 방식).
+
+---
+
 ## 1. Pod
 
 ### 1.1 등장 배경
@@ -61,6 +100,8 @@ spec:
 
 **필드별 설명 및 기본값:**
 
+> **QoS 클래스(Quality of Service Class)**: Pod의 리소스 부족 상황에서 우선순위를 결정하는 분류 기준이다. `requests`와 `limits` 설정 여부에 따라 Guaranteed(최우선 보호) / Burstable / BestEffort(가장 먼저 퇴거)로 나뉜다. 자세한 내용은 부록 §6을 참고한다.
+
 | 필드 | 설명 | 생략 시 기본값 |
 |------|------|----------------|
 | `apiVersion` | API 그룹과 버전. Pod는 core 그룹이므로 `v1`이다 | 필수 |
@@ -75,48 +116,20 @@ spec:
 
 **검증:**
 
+> **실습 전제**: 클러스터가 가동 중이어야 한다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`, SSH 접속은 `ssh dev-master` 별칭을 사용한다. 아래 예제는 `default` 네임스페이스를 기준으로 한다. IP 주소(예: `10.244.1.15`)는 클러스터·노드 환경마다 달라지므로 참고용 예시이다.
+
 ```bash
 kubectl apply -f nginx-pod.yaml
-kubectl get pod nginx-pod -o wide
+kubectl get pod nginx-pod -n default -o wide
 ```
 
-```text
-NAME        READY   STATUS    RESTARTS   AGE   IP            NODE
-nginx-pod   1/1     Running   0          30s   10.244.1.15   worker-1
-```
+> **예시(참조) — NAME        READY   STATUS    RESTARTS   AGE  :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl describe pod nginx-pod
 ```
 
-```text
-Name:         nginx-pod
-Namespace:    default
-Labels:       app=nginx
-              env=dev
-Annotations:  description: 기본 Nginx Pod 예제
-Status:       Running
-IP:           10.244.1.15
-Containers:
-  nginx:
-    Image:          nginx:1.25
-    Port:           80/TCP
-    Limits:
-      cpu:     250m
-      memory:  256Mi
-    Requests:
-      cpu:     100m
-      memory:  128Mi
-    Liveness:   http-get http://:80/ delay=10s timeout=1s period=5s #success=1 #failure=3
-    Readiness:  http-get http://:80/ delay=5s timeout=1s period=3s #success=1 #failure=3
-Events:
-  Type    Reason     Age   From               Message
-  ----    ------     ----  ----               -------
-  Normal  Scheduled  30s   default-scheduler  Successfully assigned default/nginx-pod to worker-1
-  Normal  Pulled     28s   kubelet            Container image "nginx:1.25" already present on machine
-  Normal  Created    28s   kubelet            Created container nginx
-  Normal  Started    27s   kubelet            Started container nginx
-```
+> **예시(참조) — Name:         nginx-pod:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **트러블슈팅 팁:**
 - `STATUS`가 `ImagePullBackOff`이면 이미지 이름/태그 오류 또는 레지스트리 인증 문제이다. `kubectl describe pod`의 Events 섹션을 확인한다.
@@ -172,10 +185,7 @@ kubectl apply -f multi-container-pod.yaml
 kubectl get pod multi-container-pod
 ```
 
-```text
-NAME                  READY   STATUS    RESTARTS   AGE
-multi-container-pod   2/2     Running   0          15s
-```
+> **예시(참조) — NAME                  READY   STATUS    RESTAR:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 `READY` 컬럼의 `2/2`는 Pod 내 2개 컨테이너가 모두 Ready 상태임을 의미한다.
 
@@ -187,10 +197,7 @@ kubectl logs multi-container-pod -c log-collector
 kubectl exec multi-container-pod -c app -- ls /var/log/nginx
 ```
 
-```text
-access.log
-error.log
-```
+> **예시(참조) — access.log:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 1.5 Init Container가 포함된 Pod
 
@@ -236,10 +243,7 @@ kubectl get pod init-container-pod
 
 Init Container 실행 중일 때의 출력:
 
-```text
-NAME                 READY   STATUS     RESTARTS   AGE
-init-container-pod   0/1     Init:0/2   0          5s
-```
+> **예시(참조) — NAME                 READY   STATUS     RESTAR:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 `Init:0/2`는 2개의 Init Container 중 0개가 완료되었음을 의미한다. 모든 Init Container가 완료되면 `STATUS`가 `Running`으로 변경된다.
 
@@ -258,15 +262,20 @@ kubectl logs init-container-pod -c init-db-check
 
 ### 2.1 등장 배경
 
-초기 Kubernetes에서 Pod를 직접 관리하면 Pod가 삭제되거나 노드 장애가 발생했을 때 자동 복구가 되지 않았다. ReplicationController가 도입되었으나 라벨 셀렉터가 등호 기반만 지원하는 등 제한이 있었다. ReplicaSet이 이를 개선했으나 롤링 업데이트를 직접 관리해야 했다. Deployment는 ReplicaSet 위에 선언적 업데이트, 롤백, 롤아웃 이력 관리를 추가한 상위 추상화이다.
+초기 Kubernetes에서 Pod를 직접 관리하면 Pod가 삭제되거나 노드 장애가 발생했을 때 자동 복구가 되지 않았다. ReplicationController가 도입되었으나 라벨 셀렉터가 등호 기반만 지원하는 등 제한이 있었다. ReplicaSet이 이를 개선했으나 Pod 템플릿이 변경(예: 이미지 업데이트)되면 운영자가 수동으로 새 ReplicaSet을 생성하고 replica 수를 조절해야 했다. 이 과정에서 신구 버전의 동시 실행 구간을 제어하거나 업데이트 실패 시 이전 ReplicaSet으로 되돌리는 작업이 복잡했다.
+
+Deployment는 ReplicaSet 위에 선언적 업데이트, 롤백, 롤아웃 이력 관리를 추가한 상위 추상화이다. 이미지 변경 등 업데이트 시 새 ReplicaSet을 자동으로 생성하고 구 ReplicaSet의 replica 수를 점진적으로 0으로 줄여 신구 교체를 자동화한다. `revisionHistoryLimit`(기본값 10)으로 이전 ReplicaSet을 보존해 언제든 특정 리비전으로 롤백할 수 있다. 트레이드오프로는 Deployment가 ReplicaSet을 추가로 관리하므로, 특정 시점에는 구버전 ReplicaSet이 클러스터에 replica 0인 상태로 잔류한다.
 
 ### 2.2 Deployment → ReplicaSet → Pod 관계
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+graph TD
+  A[Deployment\n선언적 업데이트 관리] --> B[ReplicaSet\n특정 버전의 Pod 복제본 유지]
+  B --> C[Pod\n실제 컨테이너 실행 단위]
 ```
-Deployment (선언적 업데이트 관리)
-  └── ReplicaSet (특정 버전의 Pod 복제본 유지)
-       └── Pod (실제 컨테이너 실행 단위)
-```
+
+_그림 1. Deployment, ReplicaSet, Pod 계층 관계._
 
 - Deployment가 생성되면 내부적으로 ReplicaSet이 생성된다.
 - 이미지 변경 등 업데이트 시 새 ReplicaSet이 생성되고, 기존 ReplicaSet의 replica 수는 점차 0으로 줄어든다.
@@ -335,41 +344,28 @@ kubectl apply -f nginx-deployment.yaml
 kubectl get deployment nginx-deployment
 ```
 
-```text
-NAME               READY   UP-TO-DATE   AVAILABLE   AGE
-nginx-deployment   3/3     3            3           45s
-```
+> **예시(참조) — NAME               READY   UP-TO-DATE   AVAILA:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # ReplicaSet 확인 — Deployment가 내부적으로 생성한 ReplicaSet을 확인한다
 kubectl get replicaset -l app=nginx
 ```
 
-```text
-NAME                          DESIRED   CURRENT   READY   AGE
-nginx-deployment-7fb96c846b   3         3         3       50s
-```
+> **예시(참조) — NAME                          DESIRED   CURREN:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # Pod 확인 — ReplicaSet이 생성한 Pod들을 확인한다
 kubectl get pods -l app=nginx -o wide
 ```
 
-```text
-NAME                                READY   STATUS    RESTARTS   AGE   IP            NODE
-nginx-deployment-7fb96c846b-abc12   1/1     Running   0          55s   10.244.1.20   worker-1
-nginx-deployment-7fb96c846b-def34   1/1     Running   0          55s   10.244.2.30   worker-2
-nginx-deployment-7fb96c846b-ghi56   1/1     Running   0          55s   10.244.1.21   worker-1
-```
+> **예시(참조) — NAME                                READY   ST:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 롤아웃 상태 확인
 kubectl rollout status deployment nginx-deployment
 ```
 
-```text
-deployment "nginx-deployment" successfully rolled out
-```
+> **예시(참조) — deployment "nginx-deployment" successfully rol:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 2.4 Recreate 전략 Deployment
 
@@ -406,10 +402,7 @@ kubectl apply -f app-recreate.yaml
 kubectl rollout status deployment app-recreate
 ```
 
-```text
-Waiting for deployment "app-recreate" rollout to finish: 0 of 3 updated replicas are available...
-deployment "app-recreate" successfully rolled out
-```
+> **예시(참조) — Waiting for deployment "app-recreate" rollout :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **트러블슈팅 팁:**
 - `kubectl rollout status`가 오래 걸리면 `kubectl describe deployment`에서 Conditions를 확인한다. `Progressing` 조건이 `False`이면 `progressDeadlineSeconds`를 초과한 것이다.
@@ -421,7 +414,9 @@ deployment "app-recreate" successfully rolled out
 
 ### 3.1 등장 배경
 
-Pod는 생성/삭제될 때마다 IP가 변경된다. Deployment가 롤링 업데이트를 수행하면 Pod IP가 계속 바뀌므로, 클라이언트가 Pod IP를 직접 참조하면 연결이 끊어진다. Service는 라벨 셀렉터로 Pod 집합을 추상화하고, 고정 ClusterIP와 DNS 이름을 제공하여 이 문제를 해결한다. Service는 내부적으로 Endpoints(또는 EndpointSlice) 리소스를 유지하며, Ready 상태인 Pod의 IP 목록을 동적으로 관리한다.
+Pod는 생성/삭제될 때마다 IP가 변경된다. Deployment가 롤링 업데이트를 수행하면 Pod IP가 계속 바뀌므로, 클라이언트가 Pod IP를 직접 참조하면 연결이 끊어진다. 이를 해결하기 위해 kube-proxy를 통한 iptables 규칙이 사용되었으나, Pod 목록이 바뀔 때마다 iptables를 수동 갱신해야 하는 문제가 있었다.
+
+Service는 라벨 셀렉터로 Pod 집합을 추상화하고, 고정 ClusterIP와 DNS 이름(예: `nginx-clusterip.default.svc.cluster.local`)을 제공하여 이 문제를 해결한다. 핵심 개선점은 **동적 Endpoints 갱신**이다. Service는 내부적으로 Endpoints(또는 EndpointSlice) 리소스를 유지하며, Pod가 추가되거나 삭제될 때 Ready 상태인 Pod의 IP 목록을 자동으로 갱신한다. 클라이언트는 Service의 ClusterIP나 DNS 이름만 참조하면 되므로 Pod IP 변화를 신경 쓸 필요가 없다. 트레이드오프로는 ClusterIP는 클러스터 내부에서만 유효하며, 외부 노출을 위해서는 NodePort/LoadBalancer/Ingress를 추가로 구성해야 한다.
 
 ### 3.2 ClusterIP Service
 
@@ -460,20 +455,14 @@ kubectl apply -f nginx-clusterip.yaml
 kubectl get svc nginx-clusterip
 ```
 
-```text
-NAME              TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
-nginx-clusterip   ClusterIP   10.96.150.100   <none>        80/TCP    10s
-```
+> **예시(참조) — NAME              TYPE        CLUSTER-IP      :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # Endpoints 확인 — selector와 일치하는 Ready Pod의 IP 목록이다
 kubectl get endpoints nginx-clusterip
 ```
 
-```text
-NAME              ENDPOINTS                                      AGE
-nginx-clusterip   10.244.1.20:80,10.244.1.21:80,10.244.2.30:80   15s
-```
+> **예시(참조) — NAME              ENDPOINTS                   :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 클러스터 내부에서 서비스 접근 테스트
@@ -507,10 +496,7 @@ kubectl apply -f nginx-nodeport.yaml
 kubectl get svc nginx-nodeport
 ```
 
-```text
-NAME             TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-nginx-nodeport   NodePort   10.96.50.200   <none>        80:30080/TCP   10s
-```
+> **예시(참조) — NAME             TYPE       CLUSTER-IP     EXT:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 3.4 LoadBalancer Service
 
@@ -541,10 +527,7 @@ kubectl apply -f nginx-loadbalancer.yaml
 kubectl get svc nginx-loadbalancer
 ```
 
-```text
-NAME                 TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
-nginx-loadbalancer   LoadBalancer   10.96.80.100   203.0.113.50    80:31234/TCP   30s
-```
+> **예시(참조) — NAME                 TYPE           CLUSTER-IP:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 온프레미스 환경에서는 `EXTERNAL-IP`가 `<pending>` 상태로 유지된다. MetalLB 같은 로드밸런서 구현체를 설치해야 한다.
 
@@ -560,7 +543,7 @@ spec:
   externalName: database.example.com    # 외부 DNS 이름
 ```
 
-클러스터 내부에서 `external-db`로 접근하면 `database.example.com`으로 CNAME 리다이렉션된다. selector가 없으므로 Endpoints도 생성되지 않는다. 외부 서비스의 실제 주소를 추상화할 때 사용한다.
+클러스터 내부에서 `external-db`를 쿼리하면 coreDNS가 `database.example.com`을 응답으로 돌려줘, 클라이언트의 실제 DNS 쿼리가 외부 DNS 서버로 전달된다. 이는 DNS 레벨 CNAME과 유사한 효과를 제공하지만, ExternalName Service 자체는 실제 DNS 리소스 레코드(예: CNAME RR)를 생성하지 않는다. selector가 없으므로 Endpoints도 생성되지 않는다. 외부 서비스의 실제 주소를 클러스터 내부 DNS 별칭으로 추상화할 때 사용한다.
 
 ### 3.6 Headless Service (StatefulSet용)
 
@@ -588,12 +571,7 @@ kubectl apply -f nginx-headless.yaml
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup nginx-headless
 ```
 
-```text
-Name:      nginx-headless.default.svc.cluster.local
-Address 1: 10.244.1.20
-Address 2: 10.244.1.21
-Address 3: 10.244.2.30
-```
+> **예시(참조) — Name:      nginx-headless.default.svc.cluster.:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ---
 
@@ -631,17 +609,7 @@ kubectl describe configmap app-config
 kubectl get configmap app-config -o yaml
 ```
 
-```text
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: default
-data:
-  DB_HOST: mysql-service
-  DB_PORT: "3306"
-  LOG_LEVEL: info
-```
+> **예시(참조) — apiVersion: v1:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 4.3 YAML로 ConfigMap 정의
 
@@ -698,13 +666,7 @@ kubectl apply -f app-with-config-env.yaml
 kubectl exec app-with-config-env -- env | grep -E "DATABASE_HOST|DATABASE_PORT|DB_HOST|LOG_LEVEL"
 ```
 
-```text
-DATABASE_HOST=mysql-service
-DATABASE_PORT=3306
-DB_HOST=mysql-service
-DB_PORT=3306
-LOG_LEVEL=info
-```
+> **예시(참조) — DATABASE_HOST=mysql-service:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 환경 변수로 주입된 ConfigMap은 Pod 재시작 없이는 갱신되지 않는다.
 
@@ -732,7 +694,9 @@ spec:
         path: application.properties   # 파일명 지정
 ```
 
-볼륨으로 마운트된 ConfigMap은 kubelet이 주기적으로(기본 약 60초) 갱신한다. 단, `subPath`로 마운트된 경우에는 자동 갱신이 되지 않는다.
+볼륨으로 마운트된 ConfigMap은 kubelet이 주기적으로(기본 약 60초) 갱신한다.
+
+> ⚠️ **자동 갱신 주의사항**: ConfigMap/Secret을 볼륨으로 마운트한 경우, kubelet이 약 60초(`--sync-frequency` 설정 가능) 간격으로 변경을 감지해 자동으로 파일을 업데이트한다. 단, `subPath`를 사용한 마운트(예: 특정 키 하나만 선택해 특정 경로에 직접 마운트)는 자동 갱신이 되지 않으므로 ConfigMap 변경 후 Pod를 재시작해야 반영된다. 환경 변수로 주입된 ConfigMap 역시 Pod 재시작 없이는 갱신되지 않는다.
 
 **검증:**
 
@@ -741,11 +705,7 @@ kubectl apply -f app-with-config-volume.yaml
 kubectl exec app-with-config-volume -- cat /etc/config/application.properties
 ```
 
-```text
-server.port=8080
-spring.datasource.url=jdbc:mysql://mysql-service:3306/mydb
-logging.level.root=INFO
-```
+> **예시(참조) — server.port=8080:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ---
 
@@ -787,18 +747,13 @@ kubectl get secret db-credentials -o jsonpath='{.data.password}' | base64 -d
 kubectl get secret db-credentials
 ```
 
-```text
-NAME             TYPE     DATA   AGE
-db-credentials   Opaque   2      10s
-```
+> **예시(참조) — NAME             TYPE     DATA   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl get secret db-credentials -o jsonpath='{.data.username}' | base64 -d
 ```
 
-```text
-admin
-```
+> **예시(참조) — admin:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 5.3 YAML로 Secret 정의
 
@@ -881,20 +836,13 @@ kubectl apply -f app-with-secret.yaml
 kubectl exec app-with-secret -- env | grep DB_
 ```
 
-```text
-DB_USERNAME=admin
-DB_PASSWORD=S3cur3P@ss!
-```
+> **예시(참조) — DB_USERNAME=admin:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl exec app-with-secret -- ls -la /etc/secrets/
 ```
 
-```text
-total 0
-lrwxrwxrwx 1 root root 15 ... password -> ..data/password
-lrwxrwxrwx 1 root root 15 ... username -> ..data/username
-```
+> **예시(참조) — total 0:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 Secret 볼륨의 파일은 심볼릭 링크로 관리되며, 업데이트 시 원자적으로 교체된다.
 
@@ -904,16 +852,21 @@ Secret 볼륨의 파일은 심볼릭 링크로 관리되며, 업데이트 시 �
 
 ### 6.1 등장 배경
 
-Pod는 기본적으로 임시(ephemeral) 스토리지를 사용한다. Pod가 삭제되면 데이터가 함께 사라진다. 초기에는 Pod spec에 직접 NFS, iSCSI 등 스토리지 상세를 기술했으나, 이는 개발자가 인프라 세부사항을 알아야 하는 문제가 있었다. PersistentVolume(PV)과 PersistentVolumeClaim(PVC) 모델은 스토리지 프로비저닝(관리자)과 소비(개발자)를 분리한다. StorageClass의 도입으로 동적 프로비저닝이 가능해져 PV를 미리 생성할 필요도 없어졌다.
+Pod는 기본적으로 임시(ephemeral) 스토리지를 사용한다. Pod가 삭제되면 데이터가 함께 사라진다. 초기에는 Pod spec에 직접 NFS 서버 주소, iSCSI 타겟 IQN 등 스토리지 인프라 상세를 기술했다. 이 방식은 개발자가 스토리지 인프라 세부사항을 직접 알아야 하고, 스토리지 서버가 변경되면 모든 Pod YAML을 수정해야 하는 관리 부담이 있었다.
+
+PersistentVolume(PV)과 PersistentVolumeClaim(PVC) 모델은 스토리지 프로비저닝(관리자 역할)과 소비(개발자 역할)를 분리하여 이 문제를 해결한다. 관리자는 NFS·iSCSI·클라우드 디스크 등 인프라 상세를 PV에 캡슐화하고, 개발자는 PVC로 필요한 용량과 접근 모드만 요청하면 된다. StorageClass의 도입으로 동적 프로비저닝이 가능해져 PVC 생성 시 PV가 자동으로 만들어지므로 관리자가 PV를 미리 생성할 필요도 없어졌다. 트레이드오프로는 PV/PVC/StorageClass 세 레이어가 추가되어 초기 설정 복잡도가 증가한다.
 
 ### 6.2 PV → PVC → Pod 관계
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+graph TD
+  A[StorageClass\n동적 프로비저닝 정책 정의] --> B[PersistentVolume\n실제 스토리지 자원]
+  B --> C[PersistentVolumeClaim\n개발자의 스토리지 요청]
+  C --> D[Pod\nPVC를 볼륨으로 마운트]
 ```
-StorageClass (동적 프로비저닝 정책 정의)
-  └── PersistentVolume (실제 스토리지 자원)
-       └── PersistentVolumeClaim (개발자의 스토리지 요청)
-            └── Pod (PVC를 볼륨으로 마운트)
-```
+
+_그림 2. StorageClass, PV, PVC, Pod 계층 관계._
 
 PVC가 생성되면 컨트롤러가 조건(용량, accessModes, storageClassName)에 맞는 PV를 찾아 바인딩한다. 적합한 PV가 없고 StorageClass가 지정되어 있으면 동적으로 PV를 생성한다.
 
@@ -994,19 +947,13 @@ kubectl apply -f my-pvc.yaml
 kubectl get pv
 ```
 
-```text
-NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM             STORAGECLASS   AGE
-my-pv   10Gi       RWO            Retain           Bound    default/my-pvc    manual         30s
-```
+> **예시(참조) — NAME    CAPACITY   ACCESS MODES   RECLAIM POLI:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl get pvc
 ```
 
-```text
-NAME     STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-my-pvc   Bound    my-pv    10Gi       RWO            manual         25s
-```
+> **예시(참조) — NAME     STATUS   VOLUME   CAPACITY   ACCESS M:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 STATUS가 `Bound`이면 PV와 PVC가 정상 바인딩된 것이다. `Pending`이면 조건에 맞는 PV가 없거나 StorageClass 프로비저너가 동작하지 않는 것이다.
 
@@ -1037,10 +984,7 @@ kubectl apply -f app-with-pvc.yaml
 kubectl exec app-with-pvc -- df -h /app/data
 ```
 
-```text
-Filesystem      Size  Used Avail Use% Mounted on
-/dev/sda1       10G   24K   10G   1% /app/data
-```
+> **예시(참조) — Filesystem      Size  Used Avail Use% Mounted :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 6.6 StorageClass (동적 프로비저닝)
 
@@ -1072,8 +1016,8 @@ spec:
 ```
 
 **volumeBindingMode:**
-- `Immediate`: PVC 생성 즉시 PV를 프로비저닝하고 바인딩한다. Pod가 배정될 노드의 토폴로지와 무관하게 볼륨이 생성되어 스케줄링 실패가 발생할 수 있다.
-- `WaitForFirstConsumer`: Pod가 스케줄링될 때까지 바인딩을 지연한다. 노드의 가용 영역(AZ)에 맞는 볼륨이 생성된다.
+- `Immediate` (기본값): PVC 생성 즉시 PV를 프로비저닝하고 바인딩한다. Pod 스케줄링 전에 볼륨이 생성되므로, 볼륨이 생성된 가용 영역(AZ, Availability Zone)과 Pod가 배정될 노드의 AZ가 달라 스케줄링 실패가 발생할 수 있다. 단일 존(AZ) 환경이나 로컬 스토리지가 아닌 경우에는 문제가 없다.
+- `WaitForFirstConsumer`: Pod가 먼저 스케줄링될 노드가 결정된 후, 그 노드와 동일한 AZ에 볼륨을 프로비저닝한다. 멀티 AZ 클러스터에서 스토리지 네트워크 지연을 최소화하고 스케줄링 실패를 방지한다. AWS EBS, GCE PD 같은 존 한정 스토리지를 사용할 때 권장된다.
 
 **검증:**
 
@@ -1083,10 +1027,7 @@ kubectl apply -f dynamic-pvc.yaml
 kubectl get sc
 ```
 
-```text
-NAME       PROVISIONER              RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-fast-ssd   kubernetes.io/aws-ebs    Delete          WaitForFirstConsumer   true                   10s
-```
+> **예시(참조) — NAME       PROVISIONER              RECLAIMPOL:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ---
 
@@ -1094,7 +1035,7 @@ fast-ssd   kubernetes.io/aws-ebs    Delete          WaitForFirstConsumer   true 
 
 ### 7.1 등장 배경
 
-Deployment는 Pod에 고유 ID를 부여하지 않는다. Pod 이름은 랜덤 해시이며, 순서가 보장되지 않는다. MySQL, PostgreSQL, Kafka 같은 상태 유지(stateful) 애플리케이션은 고유한 네트워크 식별자, 안정적인 스토리지, 순서 보장이 필요하다. StatefulSet은 이러한 요구사항을 충족한다.
+Deployment는 Pod에 고유 ID를 부여하지 않는다. Pod 이름은 랜덤 해시이며, 순서가 보장되지 않는다. MySQL, PostgreSQL, Kafka 같은 상태 유지(stateful) 애플리케이션은 고유한 네트워크 식별자, 안정적인 스토리지, 순서 보장이 필요하다. StatefulSet은 이러한 요구사항을 충족한다. 트레이드오프로는 롤링 업데이트 시 Pod를 0번부터 순서대로 교체하므로 Deployment의 롤링 업데이트보다 속도가 느리고, `volumeClaimTemplates`로 생성된 PVC는 StatefulSet을 삭제해도 자동으로 삭제되지 않아 수동 정리가 필요하다(`kubectl delete pvc -l app=<이름>`).
 
 ### 7.2 StatefulSet의 특성
 
@@ -1152,21 +1093,13 @@ kubectl apply -f mysql-statefulset.yaml
 kubectl get statefulset mysql
 ```
 
-```text
-NAME    READY   AGE
-mysql   3/3     60s
-```
+> **예시(참조) — NAME    READY   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl get pods -l app=mysql
 ```
 
-```text
-NAME      READY   STATUS    RESTARTS   AGE
-mysql-0   1/1     Running   0          65s
-mysql-1   1/1     Running   0          50s
-mysql-2   1/1     Running   0          35s
-```
+> **예시(참조) — NAME      READY   STATUS    RESTARTS   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 Pod가 순서대로 생성되었음을 AGE로 확인할 수 있다.
 
@@ -1174,12 +1107,7 @@ Pod가 순서대로 생성되었음을 AGE로 확인할 수 있다.
 kubectl get pvc -l app=mysql
 ```
 
-```text
-NAME           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-data-mysql-0   Bound    pvc-abc12345-0000-0000-0000-000000000001   10Gi       RWO            fast-ssd       70s
-data-mysql-1   Bound    pvc-abc12345-0000-0000-0000-000000000002   10Gi       RWO            fast-ssd       55s
-data-mysql-2   Bound    pvc-abc12345-0000-0000-0000-000000000003   10Gi       RWO            fast-ssd       40s
-```
+> **예시(참조) — NAME           STATUS   VOLUME                :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 DNS 접근: `mysql-0.mysql-headless.default.svc.cluster.local`로 개별 Pod에 접근 가능하다.
 
@@ -1193,7 +1121,7 @@ DNS 접근: `mysql-0.mysql-headless.default.svc.cluster.local`로 개별 Pod에 
 
 ### 8.1 등장 배경
 
-로그 수집(Fluentd), 모니터링 에이전트(node-exporter), 네트워크 플러그인(Calico, Cilium) 등은 모든 노드에 정확히 하나의 Pod가 실행되어야 한다. Deployment로는 특정 노드에 Pod가 배치되지 않을 수 있고, replica 수를 노드 수에 맞춰 수동 관리해야 한다. DaemonSet은 노드가 추가되면 자동으로 Pod를 배포하고, 노드가 제거되면 Pod를 정리한다.
+로그 수집(Fluentd), 모니터링 에이전트(node-exporter), 네트워크 플러그인(Calico, Cilium) 등은 모든 노드에 정확히 하나의 Pod가 실행되어야 한다. Deployment로는 특정 노드에 Pod가 배치되지 않을 수 있고, replica 수를 노드 수에 맞춰 수동 관리해야 한다. DaemonSet은 노드가 추가되면 자동으로 Pod를 배포하고, 노드가 제거되면 Pod를 정리한다. 트레이드오프로는 모든 노드에 강제 배포하므로 `resources.requests`를 설정하지 않으면 노드 전체에 BestEffort Pod가 산포되어 노드 과부하 위험이 있다. 반드시 적절한 requests/limits를 설정해야 한다.
 
 ```yaml
 apiVersion: apps/v1
@@ -1229,7 +1157,7 @@ spec:
         - name: varlog
           mountPath: /var/log
         - name: containers
-          mountPath: /var/lib/docker/containers
+          mountPath: /var/log/pods    # containerd 런타임은 /var/log/pods에 로그를 기록한다. docker 런타임은 /var/lib/docker/containers를 사용한다.
           readOnly: true
       volumes:
       - name: varlog
@@ -1237,7 +1165,7 @@ spec:
           path: /var/log
       - name: containers
         hostPath:
-          path: /var/lib/docker/containers
+          path: /var/log/pods    # containerd 환경 기준. docker 런타임은 /var/lib/docker/containers로 변경한다.
 ```
 
 `tolerations` 필드가 없으면 control-plane 노드의 taint(`node-role.kubernetes.io/control-plane:NoSchedule`)로 인해 해당 노드에는 Pod가 배포되지 않는다.
@@ -1248,10 +1176,7 @@ spec:
 kubectl get daemonset -n kube-system fluentd
 ```
 
-```text
-NAME      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-fluentd   3         3         3       3            3            <none>          30s
-```
+> **예시(참조) — NAME      DESIRED   CURRENT   READY   UP-TO-DA:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 `DESIRED`는 클러스터 내 노드 수와 일치해야 한다. `READY`가 `DESIRED`보다 작으면 일부 노드에서 Pod가 정상 실행되지 않는 것이다.
 
@@ -1259,12 +1184,7 @@ fluentd   3         3         3       3            3            <none>          
 kubectl get pods -n kube-system -l app=fluentd -o wide
 ```
 
-```text
-NAME            READY   STATUS    RESTARTS   AGE   IP            NODE
-fluentd-abc12   1/1     Running   0          35s   10.244.0.5    control-plane
-fluentd-def34   1/1     Running   0          35s   10.244.1.10   worker-1
-fluentd-ghi56   1/1     Running   0          35s   10.244.2.10   worker-2
-```
+> **예시(참조) — NAME            READY   STATUS    RESTARTS   A:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ---
 
@@ -1272,7 +1192,7 @@ fluentd-ghi56   1/1     Running   0          35s   10.244.2.10   worker-2
 
 ### 9.1 등장 배경
 
-Deployment/DaemonSet은 항상 실행 상태를 유지하는 장기 실행(long-running) 워크로드를 위한 것이다. 데이터 마이그레이션, 배치 처리, 일회성 작업은 완료되면 종료되어야 한다. Job은 지정된 횟수의 성공적 완료를 보장하며, CronJob은 Job을 정해진 스케줄에 따라 반복 생성한다.
+Deployment/DaemonSet은 항상 실행 상태를 유지하는 장기 실행(long-running) 워크로드를 위한 것이다. 데이터 마이그레이션, 배치 처리, 일회성 작업은 완료되면 종료되어야 한다. Job은 지정된 횟수의 성공적 완료를 보장하며, CronJob은 Job을 정해진 스케줄에 따라 반복 생성한다. 트레이드오프로는 완료된 Job과 Pod가 자동으로 삭제되지 않아 클러스터에 잔류하므로 `ttlSecondsAfterFinished`를 설정하거나 수동 정리가 필요하다. CronJob의 경우 클러스터가 스케줄 시각에 다운되어 있으면 `startingDeadlineSeconds`를 초과한 실행이 누락(skipped)된다는 점도 주의가 필요하다.
 
 ### 9.2 Job
 
@@ -1317,23 +1237,13 @@ kubectl apply -f data-migration.yaml
 kubectl get job data-migration
 ```
 
-```text
-NAME             COMPLETIONS   DURATION   AGE
-data-migration   3/5           45s        45s
-```
+> **예시(참조) — NAME             COMPLETIONS   DURATION   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl get pods -l job-name=data-migration
 ```
 
-```text
-NAME                     READY   STATUS      RESTARTS   AGE
-data-migration-abc12     0/1     Completed   0          50s
-data-migration-def34     0/1     Completed   0          50s
-data-migration-ghi56     1/1     Running     0          20s
-data-migration-jkl78     1/1     Running     0          20s
-data-migration-mno90     0/1     Completed   0          35s
-```
+> **예시(참조) — NAME                     READY   STATUS      R:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 9.3 CronJob
 
@@ -1380,10 +1290,7 @@ spec:
 kubectl get cronjob daily-backup
 ```
 
-```text
-NAME           SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
-daily-backup   0 2 * * *   False     0        <none>          10s
-```
+> **예시(참조) — NAME           SCHEDULE    SUSPEND   ACTIVE   :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 수동 트리거로 테스트
@@ -1397,7 +1304,15 @@ kubectl get jobs -l job-name=daily-backup-manual
 
 ### 10.1 등장 배경
 
-고정된 replica 수로 운영하면 트래픽 급증 시 성능 저하, 트래픽 감소 시 리소스 낭비가 발생한다. 수동 스케일링은 운영자의 개입이 필요하며 대응 속도가 느리다. HPA는 메트릭(CPU, 메모리, 커스텀 메트릭)을 기준으로 Pod 수를 자동 조절한다. HPA 컨트롤러는 기본 15초 간격으로 메트릭을 수집하고 `desiredReplicas = ceil(currentReplicas * (currentMetricValue / desiredMetricValue))` 공식으로 목표 replica 수를 계산한다.
+고정된 replica 수로 운영하면 트래픽 급증 시 성능 저하, 트래픽 감소 시 리소스 낭비가 발생한다. 수동 스케일링은 운영자의 개입이 필요하며 대응 속도가 느리다. HPA는 메트릭(CPU, 메모리, 커스텀 메트릭)을 기준으로 Pod 수를 자동 조절한다. HPA 컨트롤러는 기본 15초 간격으로 메트릭을 수집하고 `desiredReplicas = ceil(currentReplicas * (currentMetricValue / desiredMetricValue))` 공식으로 목표 replica 수를 계산한다. 트레이드오프로는 HPA는 Pod 수만 조절하므로, 개별 Pod의 CPU/메모리 할당량 자체를 늘리는 VPA(Vertical Pod Autoscaler)나 노드 수를 조절하는 Cluster Autoscaler(CA)와는 역할이 다르다.
+
+> **HPA vs VPA vs Cluster Autoscaler 비교**: 세 스케일링 전략은 서로 다른 계층을 다루며 KCNA 시험에서 구분 문제가 출제된다.
+>
+> | 전략 | 대상 | 조절 단위 | 언제 사용하나 |
+> |------|------|-----------|--------------|
+> | HPA (Horizontal Pod Autoscaler) | Deployment/StatefulSet 등 | Pod 수(replica) | 트래픽 급증에 대응하여 인스턴스를 늘릴 때 |
+> | VPA (Vertical Pod Autoscaler) | 개별 Pod | Pod의 CPU/메모리 requests/limits | 단일 Pod가 처리하는 작업량이 늘어 더 많은 자원이 필요할 때. Pod 재시작이 필요하므로 장기 실행 워크로드에 주의 |
+> | CA (Cluster Autoscaler) | 클러스터 노드 | 노드 수 | Pending Pod가 발생해 노드를 추가해야 할 때. HPA와 연계하여 HPA가 늘린 Pod를 수용할 노드를 CA가 확보하는 형태로 조합된다 |
 
 ### 10.2 전제 조건
 
@@ -1410,12 +1325,11 @@ HPA가 동작하려면:
 kubectl get deployment metrics-server -n kube-system
 ```
 
-```text
-NAME             READY   UP-TO-DATE   AVAILABLE   AGE
-metrics-server   1/1     1            1           30d
-```
+> **예시(참조) — NAME             READY   UP-TO-DATE   AVAILABL:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 10.3 kubectl로 HPA 생성
+
+> **CPU Utilization % 의미**: HPA의 CPU 사용률은 Pod에 설정된 `resources.requests.cpu` 대비 현재 실제 사용량의 백분율이다. 예를 들어 `requests.cpu: 100m`이고 실제 사용량이 70m이면 70%이다. `requests.cpu`가 설정되지 않으면 HPA가 메트릭을 계산할 수 없어 `<unknown>` 상태가 된다.
 
 ```bash
 # CPU 사용률 70%를 기준으로 자동 스케일링 (최소 2, 최대 10)
@@ -1435,10 +1349,7 @@ kubectl describe hpa nginx-deployment
 kubectl get hpa
 ```
 
-```text
-NAME               REFERENCE                     TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-nginx-deployment   Deployment/nginx-deployment   25%/70%   2         10        3          60s
-```
+> **예시(참조) — NAME               REFERENCE                  :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 `TARGETS`의 `25%/70%`는 현재 CPU 사용률 25%, 목표 70%를 의미한다.
 
@@ -1495,22 +1406,7 @@ kubectl apply -f nginx-hpa.yaml
 kubectl describe hpa nginx-hpa
 ```
 
-```text
-Name:                          nginx-hpa
-Reference:                     Deployment/nginx-deployment
-Metrics:                       ( current / target )
-  resource cpu on pods:        25% / 70%
-  resource memory on pods:     40% / 80%
-Min replicas:                  2
-Max replicas:                  10
-Deployment pods:               3 current / 3 desired
-Conditions:
-  Type            Status  Reason            Message
-  ----            ------  ------            -------
-  AbleToScale     True    ReadyForNewScale  recommended size matches current size
-  ScalingActive   True    ValidMetricFound  the HPA was able to successfully calculate a replica count
-  ScalingLimited  False   DesiredWithinRange  the desired count is within the acceptable range
-```
+![노드 Conditions](images/kcna-conditions.png)
 
 **트러블슈팅 팁:**
 - `TARGETS`에 `<unknown>/70%`가 표시되면 metrics-server가 미설치이거나 Pod에 `resources.requests`가 미설정된 것이다.
@@ -1522,7 +1418,11 @@ Conditions:
 
 ### 11.1 등장 배경
 
-Service의 NodePort는 포트 번호 관리가 번거롭고, LoadBalancer는 서비스마다 외부 IP가 할당되어 비용이 증가한다. Ingress는 하나의 진입점(로드밸런서)에서 HTTP/HTTPS 라우팅 규칙을 정의하여 여러 Service로 트래픽을 분배한다. Ingress 리소스 자체는 규칙 정의일 뿐이며, 실제 동작은 Ingress Controller(nginx-ingress, traefik, AWS ALB 등)가 수행한다.
+Service의 NodePort는 포트 번호 관리가 번거롭고, LoadBalancer는 서비스마다 외부 IP와 L4(TCP/UDP) 로드밸런서가 각각 할당되어 비용과 관리 복잡도가 증가한다. 예를 들어 10개의 서비스를 외부에 노출하면 10개의 외부 IP와 로드밸런서 과금이 발생한다.
+
+Ingress는 이 문제를 L7(HTTP/HTTPS) 레이어에서 해결한다. 하나의 외부 IP와 로드밸런서를 공유하면서, HTTP 호스트 이름(`app.example.com`, `api.example.com`)이나 URL 경로(`/api`, `/web`)를 기준으로 요청을 적절한 Service로 라우팅한다. 이는 L4 LoadBalancer가 TCP 포트 기반으로만 구별하는 것과 달리, HTTP 헤더와 경로 정보를 활용한다는 점에서 기술적으로 다르다.
+
+Ingress 리소스 자체는 라우팅 규칙 선언일 뿐이며, 실제 동작은 Ingress Controller(nginx-ingress, traefik, AWS ALB Ingress Controller 등)가 수행한다. 트레이드오프로는 HTTP/HTTPS 이외의 프로토콜(gRPC, TCP 등)은 Ingress로 처리하기 어렵고 별도 설정이 필요하다.
 
 ### 11.2 Ingress YAML
 
@@ -1575,29 +1475,13 @@ kubectl apply -f app-ingress.yaml
 kubectl get ingress app-ingress
 ```
 
-```text
-NAME          CLASS   HOSTS             ADDRESS        PORTS     AGE
-app-ingress   nginx   app.example.com   203.0.113.50   80, 443   30s
-```
+> **예시(참조) — NAME          CLASS   HOSTS             ADDRES:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl describe ingress app-ingress
 ```
 
-```text
-Name:             app-ingress
-Namespace:        default
-Address:          203.0.113.50
-Ingress Class:    nginx
-TLS:
-  tls-secret terminates app.example.com
-Rules:
-  Host             Path  Backends
-  ----             ----  --------
-  app.example.com
-                   /api    api-service:8080 (10.244.1.20:8080,10.244.2.30:8080)
-                   /       frontend-service:80 (10.244.1.21:80)
-```
+> **예시(참조) — Name:             app-ingress:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **트러블슈팅 팁:**
 - `ADDRESS`가 비어 있으면 Ingress Controller가 설치되지 않았거나 정상 동작하지 않는 것이다.
@@ -1610,7 +1494,7 @@ Rules:
 
 ### 12.1 등장 배경
 
-기본적으로 Kubernetes 클러스터 내 모든 Pod는 서로 통신할 수 있다. 이는 마이크로서비스 환경에서 보안 위험이다. 예를 들어 frontend Pod가 침해되면 database Pod에 직접 접근이 가능하다. NetworkPolicy는 Pod 간 네트워크 트래픽을 제한하여 최소 권한 원칙을 적용한다. NetworkPolicy가 동작하려면 CNI 플러그인(Calico, Cilium 등)이 NetworkPolicy를 지원해야 한다. Flannel은 지원하지 않는다.
+기본적으로 Kubernetes 클러스터 내 모든 Pod는 서로 통신할 수 있다. 이는 마이크로서비스 환경에서 보안 위험이다. 예를 들어 frontend Pod가 침해되면 database Pod에 직접 접근이 가능하다. NetworkPolicy는 Pod 간 네트워크 트래픽을 제한하여 최소 권한 원칙을 적용한다. NetworkPolicy가 동작하려면 CNI 플러그인(Calico, Cilium 등)이 NetworkPolicy를 지원해야 한다. Flannel은 지원하지 않는다. 트레이드오프로는 NetworkPolicy는 L3/L4 계층만 제어하며 HTTP 경로·헤더 같은 L7 제어가 필요하면 Istio 같은 서비스 메시가 필요하다. 또한 NetworkPolicy가 실제로 적용되는지 여부는 `kubectl describe`만으로는 확인할 수 없으며, 아래 검증 단계처럼 실제 트래픽 테스트로 확인해야 한다.
 
 ### 12.2 NetworkPolicy YAML
 
@@ -1647,9 +1531,10 @@ spec:
 
 **동작 원리:**
 - `podSelector`에 매칭되는 Pod에 정책이 적용된다. `podSelector: {}`이면 네임스페이스의 모든 Pod가 대상이다.
-- `policyTypes`에 `Ingress`가 포함되면, `ingress` 규칙에 명시된 트래픽만 허용되고 나머지 인바운드 트래픽은 차단된다.
+- `policyTypes`에 `Ingress`가 포함되면, `ingress` 규칙에 명시된 트래픽만 허용되고 나머지 인바운드 트래픽은 차단된다. 이것이 **implicit deny(묵시적 거부)** 원칙이다. 즉 NetworkPolicy가 적용된 Pod에서는 "명시적으로 허용되지 않은 모든 트래픽은 기본적으로 거부"된다.
 - `policyTypes`에 `Egress`가 포함되면, `egress` 규칙에 명시된 트래픽만 허용되고 나머지 아웃바운드 트래픽은 차단된다.
-- NetworkPolicy가 하나도 없는 Pod는 모든 트래픽이 허용된다.
+- NetworkPolicy가 하나도 없는 Pod는 모든 트래픽이 허용된다. 첫 번째 NetworkPolicy가 적용되는 순간부터 implicit deny가 발효된다.
+- NetworkPolicy는 L3(IP)/L4(포트·프로토콜) 계층에서 동작한다. HTTP 경로나 메서드 같은 L7 정보는 제어할 수 없으며, 이를 위해서는 서비스 메시(Istio 등)를 사용해야 한다.
 
 **검증:**
 
@@ -1658,29 +1543,38 @@ kubectl apply -f allow-frontend-to-backend.yaml
 kubectl get networkpolicy
 ```
 
-```text
-NAME                         POD-SELECTOR   AGE
-allow-frontend-to-backend    app=backend    10s
-```
+> **예시(참조) — NAME                         POD-SELECTOR   AG:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl describe networkpolicy allow-frontend-to-backend
 ```
 
-```text
-Name:         allow-frontend-to-backend
-Namespace:    default
-PodSelector:  app=backend
-Allowing ingress traffic:
-  To Port: 8080/TCP
-  From:
-    PodSelector: app=frontend
-Allowing egress traffic:
-  To Port: 3306/TCP
-  To:
-    PodSelector: app=database
-Policy Types: Ingress, Egress
+> **예시(참조) — Name:         allow-frontend-to-backend:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
+
+**트래픽 차단 동작 검증:** NetworkPolicy는 `kubectl describe`로 정책 선언을 확인할 수 있지만, CNI가 실제로 정책을 집행하는지는 트래픽 테스트로 검증해야 한다. 아래 두 테스트 Pod를 생성하여 backend Pod에 대한 허용/거부를 직접 확인한다.
+
+```bash
+# 허용 테스트: app=frontend 라벨을 가진 Pod에서 backend로 접근 (허용 예상)
+kubectl run frontend-test --image=busybox --labels=app=frontend --rm -it --restart=Never \
+  -- wget -qO- http://backend:8080
+
+# 거부 테스트: 라벨이 없는 Pod에서 backend로 접근 (Connection refused/timeout 예상)
+kubectl run stranger-test --image=busybox --rm -it --restart=Never \
+  -- wget -qO- http://backend:8080
 ```
+
+`frontend-test`에서는 응답이 오고, `stranger-test`에서는 연결이 거부되거나 타임아웃이 발생하면 NetworkPolicy가 정상 적용된 것이다. 연결이 모두 허용된다면 CNI가 NetworkPolicy를 지원하지 않는 것이다.
+
+### 12.3 NetworkPolicy vs RBAC 비교
+
+NetworkPolicy와 RBAC은 둘 다 "최소 권한 원칙"을 구현하지만 제어하는 대상이 다르다.
+
+| 기술 | 제어 계층 | 역할 | 예시 |
+|------|-----------|------|------|
+| NetworkPolicy | Pod 간 네트워크 통신 (L3/L4) | 파드 A에서 파드 B로의 패킷 흐름을 제어 | frontend Pod에서 database Pod로의 TCP 3306 허용/거부 |
+| RBAC | Kubernetes API 리소스 조작 (인가) | 사용자 또는 ServiceAccount가 리소스를 get/create/delete 할 수 있는가 결정 | developer1 사용자가 dev 네임스페이스의 Pod를 list할 수 있는가 |
+
+두 기술은 상호 보완적이다. NetworkPolicy로 컨테이너 간 네트워크를 격리하고, RBAC으로 사람과 자동화 계정의 API 접근을 통제한다.
 
 ---
 
@@ -1688,17 +1582,22 @@ Policy Types: Ingress, Egress
 
 ### 13.1 등장 배경
 
-초기 Kubernetes는 ABAC(Attribute-Based Access Control)을 사용했으나, 정책 변경 시 API 서버 재시작이 필요했다. RBAC(Role-Based Access Control)은 동적으로 권한을 관리할 수 있으며, Kubernetes 1.8부터 기본 인가 방식이 되었다.
+초기 Kubernetes는 ABAC(Attribute-Based Access Control, 속성 기반 접근 제어)을 사용했다. ABAC는 정책을 JSON 파일로 정의하고 API 서버 시작 시 `--authorization-policy-file` 인자로 전달하는 방식이었다. 정책을 변경하려면 파일을 수정한 후 API 서버를 재시작해야 했고, 이는 프로덕션 클러스터에서 수십 초의 다운타임을 초래했다.
+
+RBAC(Role-Based Access Control, 역할 기반 접근 제어)은 권한 정책을 Kubernetes 리소스(Role, ClusterRole, RoleBinding, ClusterRoleBinding)로 표현하여 동적으로 관리할 수 있다. API 서버 재시작 없이 `kubectl apply`로 즉시 적용된다. Kubernetes 1.8부터 기본 인가 방식이 되었다. 트레이드오프로는 Role/ClusterRole이 별도 리소스로 분리되므로 권한 설계 시 네임스페이스 스코프와 클러스터 스코프를 명확히 구분해야 하고, 잘못 설계하면 과도한 권한(ClusterRole + ClusterRoleBinding) 부여로 보안 위험이 발생한다.
 
 ### 13.2 RBAC 구조
 
+> **Kubernetes의 User 모델**: Kubernetes에는 User 리소스가 없다. 사용자 인증(Authentication)은 kubeconfig의 인증서 CN(Common Name) 필드로 결정되며, 이 CN 값이 RoleBinding의 `subjects[].name`에 매핑된다. 즉 `kubectl config`에서 설정하는 user는 Kubernetes 오브젝트가 아니라 kubeconfig 파일의 클라이언트 인증서 CN이다. ServiceAccount는 이와 달리 클러스터 내부 Pod가 API 서버에 인증할 때 사용하는 K8s 내장 리소스이며 `kubectl get serviceaccount`로 조회 가능하다.
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+graph TD
+  A[Role / ClusterRole\n어떤 리소스에 어떤 동작을 허용하는가] --> B[RoleBinding / ClusterRoleBinding\n누구에게 Role을 부여하는가]
+  B --> C[subjects\nUser / Group / ServiceAccount]
 ```
-Role / ClusterRole       (어떤 리소스에 어떤 동작을 허용하는가)
-  │
-  └── RoleBinding / ClusterRoleBinding  (누구에게 Role을 부여하는가)
-       │
-       └── subjects: User, Group, ServiceAccount
-```
+
+_그림 3. RBAC 구성 요소 간 관계._
 
 - **Role**: 네임스페이스 스코프 권한이다.
 - **ClusterRole**: 클러스터 스코프 권한이다. 네임스페이스 없는 리소스(Node, PV 등)에 대한 권한 정의에 사용한다.
@@ -1741,6 +1640,22 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
+**apiGroups 설명:**
+
+`apiGroups` 필드는 대상 리소스가 속한 Kubernetes API 그룹을 지정한다.
+
+| apiGroups 값 | 의미 | 해당 리소스 예시 |
+|---|---|---|
+| `""` (빈 문자열) | 코어 API 그룹 (core group) | Pod, Service, ConfigMap, Secret, PV, PVC, Namespace, Node |
+| `"apps"` | apps 그룹 | Deployment, StatefulSet, DaemonSet, ReplicaSet |
+| `"batch"` | batch 그룹 | Job, CronJob |
+| `"rbac.authorization.k8s.io"` | RBAC 그룹 | Role, ClusterRole, RoleBinding, ClusterRoleBinding |
+| `"networking.k8s.io"` | 네트워킹 그룹 | Ingress, NetworkPolicy |
+
+각 리소스가 어떤 그룹에 속하는지는 `kubectl api-resources` 명령으로 확인할 수 있다. `APIVERSION` 컬럼에 `/`가 없으면 코어 그룹(`""`), `apps/v1`처럼 `/`가 있으면 그 앞부분이 `apiGroups` 값이다.
+
+`resources` 필드에서 `pods/log`처럼 `/`를 사용하는 것은 서브리소스를 의미한다. `pods`는 Pod 자체를, `pods/log`는 Pod의 로그 조회 엔드포인트를 별도로 제어한다.
+
 **주요 verbs:**
 
 | verb | 설명 |
@@ -1761,36 +1676,26 @@ kubectl apply -f rbac.yaml
 kubectl get role -n dev
 ```
 
-```text
-NAME         CREATED AT
-pod-reader   2025-01-01T00:00:00Z
-```
+> **예시(참조) — NAME         CREATED AT:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl get rolebinding -n dev
 ```
 
-```text
-NAME        ROLE              AGE
-read-pods   Role/pod-reader   10s
-```
+> **예시(참조) — NAME        ROLE              AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 특정 사용자의 권한 테스트
 kubectl auth can-i get pods --namespace=dev --as=developer1
 ```
 
-```text
-yes
-```
+> **예시(참조) — yes:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl auth can-i delete pods --namespace=dev --as=developer1
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ---
 
@@ -1798,7 +1703,7 @@ no
 
 ### 14.1 등장 배경
 
-멀티 테넌트 클러스터에서 하나의 팀이 리소스를 과도하게 사용하면 다른 팀에 영향을 미친다. ResourceQuota는 네임스페이스 수준에서 전체 리소스 사용량을 제한하고, LimitRange는 개별 Pod/Container 수준에서 기본값과 허용 범위를 설정한다.
+멀티 테넌트 클러스터에서 하나의 팀이 리소스를 과도하게 사용하면 다른 팀에 영향을 미친다. ResourceQuota는 네임스페이스 수준에서 전체 리소스 사용량을 제한하고, LimitRange는 개별 Pod/Container 수준에서 기본값과 허용 범위를 설정한다. 트레이드오프로는 ResourceQuota가 활성화된 네임스페이스에서 모든 Pod에 requests/limits를 명시해야 하므로, 이를 강제하면 기존에 requests를 생략한 레거시 매니페스트가 배포 거부된다. LimitRange의 default로 자동 주입이 가능하지만, 자동 주입된 값이 실제 워크로드에 부합하지 않을 경우 OOMKill이 발생할 수 있다.
 
 ### 14.2 ResourceQuota & LimitRange YAML
 
@@ -1851,34 +1756,19 @@ kubectl apply -f dev-quota.yaml
 kubectl get resourcequota -n dev
 ```
 
-```text
-NAME        AGE   REQUEST                                              LIMIT
-dev-quota   10s   persistentvolumeclaims: 0/5, pods: 5/20,            limits.cpu: 2500m/8, limits.memory: 1280Mi/16Gi
-                  requests.cpu: 500m/4, requests.memory: 640Mi/8Gi,
-                  services: 2/10
-```
+> **예시(참조) — NAME        AGE   REQUEST                     :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl get limitrange -n dev
 ```
 
-```text
-NAME         CREATED AT
-dev-limits   2025-01-01T00:00:00Z
-```
+> **예시(참조) — NAME         CREATED AT:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl describe limitrange dev-limits -n dev
 ```
 
-```text
-Name:       dev-limits
-Namespace:  dev
-Type        Resource  Min   Max  Default Request  Default Limit  Max Limit/Request Ratio
-----        --------  ---   ---  ---------------  -------------  -----------------------
-Container   cpu       50m   2    100m             500m           -
-Container   memory    64Mi  2Gi  128Mi            256Mi          -
-```
+> **예시(참조) — Name:       dev-limits:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ---
 
@@ -2059,28 +1949,13 @@ helm install my-nginx bitnami/nginx --namespace web --create-namespace
 helm list -n web
 ```
 
-```text
-NAME       NAMESPACE   REVISION   UPDATED                                STATUS     CHART          APP VERSION
-my-nginx   web         1          2025-01-01 00:00:00.000000 +0900 KST   deployed   nginx-15.0.0   1.25.0
-```
+> **예시(참조) — NAME       NAMESPACE   REVISION   UPDATED     :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl get all -n web
 ```
 
-```text
-NAME                            READY   STATUS    RESTARTS   AGE
-pod/my-nginx-abc12def34-xyz12   1/1     Running   0          30s
-
-NAME               TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-service/my-nginx   LoadBalancer   10.96.100.50   <pending>     80:31234/TCP   30s
-
-NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/my-nginx   1/1     1            1           30s
-
-NAME                                  DESIRED   CURRENT   READY   AGE
-replicaset.apps/my-nginx-abc12def34   1         1         1       30s
-```
+> **예시(참조) — NAME                            READY   STATUS:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **트러블슈팅 팁:**
 - `helm install` 실패 시 `helm status <release>`로 상태를 확인한다.
@@ -2189,41 +2064,7 @@ kubectl delete -k overlays/prod/
 kubectl kustomize overlays/prod/
 ```
 
-```text
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  labels:
-    app: myapp
-    env: production
-  name: prod-app-config-v1-abc123
-data:
-  DB_HOST: prod-mysql
-  LOG_LEVEL: warn
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    app: myapp
-    env: production
-  name: prod-myapp-v1
-spec:
-  replicas: 5
-  selector:
-    matchLabels:
-      app: myapp
-      env: production
-  template:
-    metadata:
-      labels:
-        app: myapp
-        env: production
-    spec:
-      containers:
-      - image: myapp:2.0.0
-        name: myapp
-```
+> **예시(참조) — apiVersion: v1:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ConfigMap 이름에 `abc123` 같은 해시가 추가된다. 이는 ConfigMap 내용이 변경될 때 Deployment가 자동으로 롤링 업데이트를 수행하도록 하기 위함이다.
 
@@ -2232,16 +2073,22 @@ kubectl apply -k overlays/prod/
 kubectl get all -l env=production
 ```
 
-```text
-NAME                                  READY   STATUS    RESTARTS   AGE
-pod/prod-myapp-v1-abc12def34-xyz12    1/1     Running   0          15s
+> **예시(참조) — NAME                                  READY   :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
-NAME                    TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-service/prod-myapp-v1   ClusterIP   10.96.50.100   <none>        80/TCP    15s
+### 16.6 Helm vs Kustomize 비교
 
-NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/prod-myapp-v1   1/1     1            1           15s
-```
+두 도구 모두 환경별 Kubernetes 구성을 관리하지만 철학이 다르다.
+
+| 특성 | Helm | Kustomize |
+|------|------|-----------|
+| 방식 | Go 템플릿 엔진 — 원본 YAML에 변수(`{{ .Values.xxx }}`)를 심어 렌더링 | 패치 오버레이 — 원본 base YAML을 수정하지 않고 overlay로 차이점만 덮어씀 |
+| 학습 곡선 | 높음 (Go 템플릿 문법, Chart 구조 이해 필요) | 낮음 (kustomization.yaml만 이해하면 됨) |
+| 별도 설치 | 필요 (`helm` CLI 설치) | 불필요 (kubectl에 내장: `kubectl apply -k`) |
+| 재사용성 | ArtifactHub에 공개 Chart가 풍부해 서드파티 소프트웨어 배포에 강점 | 조직 내 base를 팀 간 재사용하는 데 적합 |
+| 버전 관리 | Chart 버전과 릴리스 이력 관리(`helm rollback`) | 버전 관리 기능 없음 (Git으로 별도 관리) |
+| 언제 쓰나 | 복잡한 애플리케이션 배포, 오픈소스 Chart 활용, 릴리스 버전 관리가 필요할 때 | 간단한 환경별(dev/staging/prod) 구성 차이 관리, 기존 YAML을 최소한으로 변경하고 싶을 때 |
+
+실무에서는 두 도구를 함께 사용하기도 한다. Helm으로 서드파티 Chart를 설치하고, Kustomize로 그 결과 YAML에 조직 정책 패치를 적용하는 방식이다.
 
 ---
 
@@ -2249,7 +2096,7 @@ deployment.apps/prod-myapp-v1   1/1     1            1           15s
 
 ### 17.1 등장 배경
 
-기존 CI/CD 파이프라인에서 `kubectl apply`를 직접 실행하는 push 모델은 CI 서버에 클러스터 접근 권한을 부여해야 하고, 클러스터 상태와 Git 레포지토리 상태의 불일치(drift)를 감지하기 어렵다. GitOps는 Git 레포지토리를 단일 진실의 원천(Single Source of Truth)으로 삼고, 전용 컨트롤러가 클러스터 상태를 Git과 자동 동기화하는 pull 모델이다. CNCF graduated 프로젝트인 Argo와 Flux가 대표적이다.
+기존 CI/CD 파이프라인에서 `kubectl apply`를 직접 실행하는 push 모델은 CI 서버에 클러스터 접근 권한을 부여해야 하고, 클러스터 상태와 Git 레포지토리 상태의 불일치(drift)를 감지하기 어렵다. GitOps는 Git 레포지토리를 단일 진실의 원천(Single Source of Truth)으로 삼고, 전용 컨트롤러가 클러스터 상태를 Git과 자동 동기화하는 pull 모델이다. CNCF graduated 프로젝트인 Argo와 Flux가 대표적이다. 트레이드오프로는 Git이 단일 장애점이 되며, 민감 정보(Secret)를 Git에 평문으로 저장할 수 없어 Sealed Secrets 또는 ExternalSecrets Operator 같은 외부 시크릿 관리 솔루션이 반드시 필요하다.
 
 ### 17.2 ArgoCD 아키텍처 개요
 
@@ -2258,6 +2105,77 @@ deployment.apps/prod-myapp-v1   1/1     1            1           15s
 - **Application Controller**: 클러스터 상태와 Git 상태를 비교하고 동기화한다.
 - **ApplicationSet Controller**: 여러 Application을 템플릿으로 생성한다 (멀티 클러스터/테넌트 관리).
 
+### 17.2-a ArgoCD Application YAML
+
+ArgoCD의 핵심 리소스는 `Application` CRD이다. 아래는 Git 레포지토리의 Kustomize 오버레이를 `dev` 네임스페이스에 자동 동기화하는 예제이다.
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp-dev
+  namespace: argocd          # ArgoCD 자체 네임스페이스에 Application을 생성한다
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/myorg/myapp-manifests.git
+    targetRevision: HEAD      # 브랜치, 태그, 커밋 SHA 지정 가능
+    path: overlays/dev        # 레포지토리 내 매니페스트 경로 (Kustomize 오버레이)
+  destination:
+    server: https://kubernetes.default.svc   # 로컬 클러스터
+    namespace: dev
+  syncPolicy:
+    automated:
+      prune: true             # Git에서 삭제된 리소스를 클러스터에서도 삭제한다
+      selfHeal: true          # 클러스터 상태가 Git과 달라지면 자동으로 재동기화한다
+    syncOptions:
+    - CreateNamespace=true    # 대상 네임스페이스가 없으면 자동 생성한다
+```
+
+**주요 필드:**
+
+| 필드 | 설명 |
+|------|------|
+| `spec.source.repoURL` | 매니페스트가 저장된 Git 레포지토리 URL이다 |
+| `spec.source.targetRevision` | 동기화할 브랜치/태그/커밋이다. `HEAD`는 기본 브랜치 최신 커밋이다 |
+| `spec.source.path` | 레포지토리 내 Kustomize/Helm Chart/일반 YAML 디렉토리 경로이다 |
+| `spec.destination.server` | 배포 대상 클러스터 API 서버 URL이다. `https://kubernetes.default.svc`는 ArgoCD가 실행 중인 로컬 클러스터이다 |
+| `spec.syncPolicy.automated.prune` | `true`이면 Git에서 삭제된 리소스를 클러스터에서도 제거한다 |
+| `spec.syncPolicy.automated.selfHeal` | `true`이면 클러스터 상태가 Git과 차이(drift)가 생길 때 자동 복구한다 |
+
+### 17.2-b Flux GitRepository + Kustomization YAML
+
+Flux는 소스 관리와 클러스터 적용을 별도 CRD로 분리한다. `GitRepository`가 Git 레포지토리를 감시하고, `Kustomization`이 해당 소스를 클러스터에 적용한다.
+
+```yaml
+# GitRepository: Flux가 감시할 Git 레포지토리 정의
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: myapp-source
+  namespace: flux-system
+spec:
+  interval: 1m               # 1분마다 레포지토리 변경을 폴링한다
+  url: https://github.com/myorg/myapp-manifests.git
+  ref:
+    branch: main
+---
+# Kustomization: GitRepository 소스를 클러스터에 적용
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: myapp-dev
+  namespace: flux-system
+spec:
+  interval: 5m               # 5분마다 클러스터 상태와 Git 상태를 비교해 재적용한다
+  sourceRef:
+    kind: GitRepository
+    name: myapp-source
+  path: ./overlays/dev       # GitRepository 내 Kustomize 오버레이 경로
+  prune: true                # Git에서 삭제된 리소스를 클러스터에서도 삭제한다
+  targetNamespace: dev
+```
+
 ### 17.3 ArgoCD 상태 확인 명령어
 
 ```bash
@@ -2265,34 +2183,14 @@ deployment.apps/prod-myapp-v1   1/1     1            1           15s
 argocd app list
 ```
 
-```text
-NAME       CLUSTER                         NAMESPACE  PROJECT  STATUS  HEALTH   SYNCPOLICY  CONDITIONS
-myapp      https://kubernetes.default.svc  default    default  Synced  Healthy  Auto        <none>
-```
+> **예시(참조) — NAME       CLUSTER                         NAM:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 애플리케이션 상태 상세 확인
 argocd app get myapp
 ```
 
-```text
-Name:               myapp
-Project:            default
-Server:             https://kubernetes.default.svc
-Namespace:          default
-URL:                https://argocd.example.com/applications/myapp
-Repo:               https://github.com/org/k8s-manifests.git
-Target:             HEAD
-Path:               overlays/prod
-SyncWindow:         Sync Allowed
-Sync Policy:        Automated (Prune: Enabled, SelfHeal: Enabled)
-Sync Status:        Synced to HEAD (abc1234)
-Health Status:      Healthy
-
-GROUP  KIND        NAMESPACE  NAME       STATUS  HEALTH   HOOK  MESSAGE
-       Service     default    myapp      Synced  Healthy
-apps   Deployment  default    myapp      Synced  Healthy
-```
+> **예시(참조) — Name:               myapp:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 동기화 실행
@@ -2309,32 +2207,21 @@ argocd app history myapp
 flux check
 ```
 
-```text
- source-controller: deployment ready
- kustomize-controller: deployment ready
- helm-controller: deployment ready
- notification-controller: deployment ready
-```
+> **예시(참조) — source-controller: deployment ready:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # GitRepository 소스 확인
 flux get sources git
 ```
 
-```text
-NAME       REVISION     SUSPENDED  READY  MESSAGE
-myapp      main/abc1234  False      True   stored artifact for revision 'main/abc1234'
-```
+> **예시(참조) — NAME       REVISION     SUSPENDED  READY  MESS:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # Kustomization 상태 확인
 flux get kustomizations
 ```
 
-```text
-NAME       REVISION     SUSPENDED  READY  MESSAGE
-myapp      main/abc1234  False      True   Applied revision: main/abc1234
-```
+> **예시(참조) — NAME       REVISION     SUSPENDED  READY  MESS:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ---
 
@@ -2342,7 +2229,7 @@ myapp      main/abc1234  False      True   Applied revision: main/abc1234
 
 ### 18.1 등장 배경
 
-분산 시스템에서는 수십~수천 개의 Pod가 동적으로 생성/삭제된다. 전통적인 서버 모니터링(Nagios, Zabbix)은 정적 호스트 목록 기반이어서 동적 환경에 적합하지 않다. Prometheus는 pull 기반 메트릭 수집, 서비스 디스커버리, 강력한 쿼리 언어(PromQL)를 제공하는 CNCF graduated 프로젝트이다. Grafana는 Prometheus를 포함한 다양한 데이터 소스를 시각화하는 CNCF graduated 프로젝트이다.
+분산 시스템에서는 수십~수천 개의 Pod가 동적으로 생성/삭제된다. 전통적인 서버 모니터링(Nagios, Zabbix)은 정적 호스트 목록 기반이어서 동적 환경에 적합하지 않다. Prometheus는 pull 기반 메트릭 수집, 서비스 디스커버리, 강력한 쿼리 언어(PromQL)를 제공하는 CNCF graduated 프로젝트이다. Grafana는 Prometheus를 포함한 다양한 데이터 소스를 시각화하는 CNCF graduated 프로젝트이다. 트레이드오프로는 Prometheus의 기본 로컬 TSDB(시계열 데이터베이스, Time Series Database)는 단일 노드 스토리지 용량에 한계가 있고 고가용성(HA)을 기본 지원하지 않으므로, 대규모 클러스터나 장기 보존 메트릭이 필요한 경우 Thanos 또는 Cortex 같은 외부 저장소와 연동해야 한다.
 
 ### 18.2 Prometheus 아키텍처 개요
 
@@ -2358,31 +2245,25 @@ myapp      main/abc1234  False      True   Applied revision: main/abc1234
 kubectl get pods -n monitoring -l app=prometheus
 ```
 
-```text
-NAME                                     READY   STATUS    RESTARTS   AGE
-prometheus-server-abc12def34-xyz12       2/2     Running   0          7d
-```
+> **예시(참조) — NAME                                     READY:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 포트 포워딩으로 Prometheus UI 접근
 kubectl port-forward -n monitoring svc/prometheus-server 9090:80
 ```
 
+**PromQL(Prometheus Query Language) 주요 함수:**
+
+| 함수 | 의미 | 예시 |
+|------|------|------|
+| `rate(메트릭[5m])` | 지정한 기간(5분) 동안의 초당 평균 증가율을 계산한다. 카운터(counter) 타입 메트릭에 사용한다 | `rate(http_requests_total[5m])` → 초당 HTTP 요청 수 |
+| `increase(메트릭[1h])` | 지정한 기간(1시간) 동안의 절댓값 증가량을 계산한다 | `increase(kube_pod_container_status_restarts_total[1h])` → 1시간 내 재시작 횟수 |
+| `sum(메트릭) by (레이블)` | 레이블 기준으로 합산한다 | `sum(...) by (namespace)` → 네임스페이스별 합계 |
+| `avg by (레이블) (메트릭)` | 레이블 기준으로 평균을 계산한다 | `avg by (instance) (rate(...))` → 인스턴스별 평균 |
+
 PromQL 예제 쿼리:
 
-```text
-# 노드별 CPU 사용률
-100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
-
-# 네임스페이스별 메모리 사용량
-sum(container_memory_working_set_bytes{namespace!=""}) by (namespace)
-
-# Pod 재시작 횟수 (최근 1시간)
-increase(kube_pod_container_status_restarts_total[1h]) > 0
-
-# 사용 가능한 PVC 용량 비율
-kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes * 100
-```
+> **예시(참조) — 노드별 CPU 사용률:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 18.4 Grafana 대시보드 확인
 
@@ -2391,10 +2272,7 @@ kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes * 100
 kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
 ```
 
-```text
-NAME                       READY   STATUS    RESTARTS   AGE
-grafana-abc12def34-xyz12   1/1     Running   0          7d
-```
+> **예시(참조) — NAME                       READY   STATUS    R:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 포트 포워딩으로 Grafana UI 접근
@@ -2499,22 +2377,13 @@ kubectl set image deployment/nginx-deploy nginx=nginx:1.26
 kubectl rollout status deployment nginx-deploy
 ```
 
-```text
-Waiting for deployment "nginx-deploy" rollout to finish: 1 out of 3 new replicas have been updated...
-Waiting for deployment "nginx-deploy" rollout to finish: 2 out of 3 new replicas have been updated...
-Waiting for deployment "nginx-deploy" rollout to finish: 1 old replicas are pending termination...
-deployment "nginx-deploy" successfully rolled out
-```
+> **예시(참조) — Waiting for deployment "nginx-deploy" rollout :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 kubectl rollout history deployment nginx-deploy
 ```
 
-```text
-REVISION  CHANGE-CAUSE
-1         <none>
-2         <none>
-```
+> **예시(참조) — REVISION  CHANGE-CAUSE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 19.4 디버깅
 
@@ -2563,21 +2432,13 @@ kubectl explain deployment.spec.strategy
 kubectl top nodes
 ```
 
-```text
-NAME            CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
-control-plane   250m         12%    1024Mi          26%
-worker-1        800m         40%    2048Mi          51%
-worker-2        600m         30%    1536Mi          38%
-```
+![top — CPU/메모리 사용량](images/kcna-topnodes.png)
 
 ```bash
 kubectl get events --sort-by='.lastTimestamp' --field-selector reason=FailedScheduling
 ```
 
-```text
-LAST SEEN   TYPE      REASON             OBJECT              MESSAGE
-2m          Warning   FailedScheduling   pod/heavy-app-xxx   0/3 nodes are available: 3 Insufficient memory.
-```
+> **예시(참조) — LAST SEEN   TYPE      REASON             OBJEC:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 19.5 삭제
 

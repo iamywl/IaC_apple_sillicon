@@ -1,6 +1,42 @@
 # CKA 핵심 개념 정리
 
+> 학습 목표: CKA 5개 도메인의 핵심 개념과 내부 동작을 이해하고, 각 주제를 터미널에서 직접 풀 수 있는 수준으로 익힌다. | 도메인: 전체(Architecture 25%, Workloads 15%, Networking 20%, Storage 10%, Troubleshooting 30%) | 예상 소요: 6~8시간
+
 > CKA(Certified Kubernetes Administrator) 시험은 실기 시험이다. 모든 문제를 터미널에서 직접 해결해야 하므로, 개념을 이해하는 것뿐 아니라 kubectl 명령어와 YAML 작성에 익숙해야 한다.
+
+## 오늘의 학습 목표
+
+- [ ] Control Plane / Worker Node 구성 요소와 apiserver 중심 통신 흐름을 설명한다.
+- [ ] kubeadm init/join, 클러스터 업그레이드, etcd 백업/복구 절차를 순서대로 수행한다.
+- [ ] RBAC(Role/RoleBinding)와 kubeconfig 컨텍스트 전환을 다룬다.
+- [ ] 스케줄링(nodeSelector·Affinity·Taint/Toleration)과 리소스 관리(requests/limits·QoS·LimitRange·ResourceQuota)를 적용한다.
+- [ ] Service 4종·Ingress·NetworkPolicy·CoreDNS·CNI의 역할과 동작을 구분한다.
+- [ ] PV/PVC·StorageClass의 라이프사이클을 이해한다.
+- [ ] 노드·Pod·네트워크·Control Plane 장애를 체계적으로 진단하고 복구한다.
+
+## 시험 환경 사전 설정 (먼저 실행)
+
+CKA는 시간 제약이 빡빡한 실기 시험이다. 본문의 실습 명령은 `kubectl`을 그대로 쓰지만, 실제 시험과 평소 연습에서는 아래 단축 설정을 셸 시작 시 한 번 실행해 타수를 줄인다. 본문에 `k`, `$do`가 나오면 각각 `kubectl`, `--dry-run=client -o yaml`로 읽으면 된다.
+
+```bash
+# kubectl 단축 alias 와 자동완성
+alias k=kubectl
+complete -o default -F __start_kubectl k
+
+# 매니페스트 골격을 빠르게 뽑는 단축 변수
+export do="--dry-run=client -o yaml"
+# 사용 예: k run nginx --image=nginx $do > pod.yaml
+
+# 즉시 삭제(graceful 대기 생략)
+export now="--force --grace-period=0"
+```
+
+이 저장소에서 로컬 클러스터로 연습할 때는 대상 클러스터를 항상 명시한다(예: dev 클러스터). 본문 예시의 `kubectl` 앞에 `--kubeconfig`를 붙여 쓰면 된다.
+
+```bash
+# 로컬 tart dev 클러스터로 연습할 때 (kubeconfig 경로는 이 저장소 기준)
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+```
 
 ---
 
@@ -24,6 +60,16 @@
 | **kube-controller-manager** | 다양한 컨트롤러(Deployment, ReplicaSet, Node, Job 등)를 실행한다. | 10257 |
 | **cloud-controller-manager** | 클라우드 프로바이더별 컨트롤러(로드밸런서, 노드, 라우트 등)를 실행한다. | 10258 |
 
+apiserver는 etcd로의 쓰기 통로를 독점한다(scheduler·controller-manager·kubelet 등 다른 컴포넌트는 etcd에 직접 접근하지 못하고 apiserver를 경유한다). 따라서 apiserver가 다운되면 Pod 생성/업데이트/삭제 같은 상태 변경 작업이 전부 불가능해진다. 이미 실행 중인 Pod는 kubelet이 자체적으로 유지하므로 당장 죽지는 않지만, 새 배포·스케일링·자동 복구는 멈춘다.
+
+위 표에서 처음 등장한 인증·인가·admission control은 apiserver가 모든 요청을 받아들이기 전에 거치는 3단계 관문이다. 각 용어의 의미는 다음과 같다.
+
+| 단계 | 영문 | 한 줄 풀이 |
+|---|---|---|
+| 인증 | Authentication | "너는 누구인가"를 확인한다. 클라이언트 인증서·토큰 등으로 요청자의 신원을 식별한다. |
+| 인가 | Authorization | "그 일을 할 권한이 있는가"를 검사한다. RBAC 등으로 해당 사용자가 요청한 동작이 허용되는지 판정한다. |
+| Admission Control | Admission | 신원·권한 확인 후 추가 검증과 변경을 수행한다. 기본값 주입(변경)이나 정책 위반 차단(검증)이 여기서 일어난다. |
+
 ##### kube-apiserver 내부 동작
 
 kube-apiserver는 단순한 REST API 서버가 아니다. 요청이 도착하면 다음 파이프라인을 순차적으로 거친다:
@@ -40,10 +86,7 @@ apiserver는 etcd와 직접 통신하는 유일한 컴포넌트이다. 다른 �
 ps aux | grep kube-apiserver | grep -v grep
 ```
 
-```text
-# 기대 출력 예시
-root  1234  ... kube-apiserver --advertise-address=192.168.1.100 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --etcd-servers=https://127.0.0.1:2379 ...
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ##### kube-scheduler 내부 동작
 
@@ -55,7 +98,7 @@ kube-scheduler는 노드가 할당되지 않은 Pod(spec.nodeName이 비어 있�
 - `NodeAffinity`: requiredDuringSchedulingIgnoredDuringExecution 규칙을 평가하여 조건에 맞지 않는 노드를 제거한다.
 - `TaintToleration`: 노드의 Taint와 Pod의 Toleration을 비교하여 tolerate하지 못하는 노드를 제거한다.
 - `NodePorts`: Pod가 hostPort를 요구하는 경우, 해당 포트가 이미 사용 중인 노드를 제거한다.
-- `PodTopologySpread`: maxSkew 조건을 위반하게 되는 노드를 제거한다.
+- `PodTopologySpread`: maxSkew 조건을 위반하게 되는 노드를 제거한다. maxSkew는 같은 토폴로지 키 값(예: 같은 존, 같은 노드) 사이의 Pod 수 최대 허용 편차이다. 예를 들어 노드 A에 2개, 노드 B에 0개면 skew=2이며, maxSkew=1로 설정했다면 A에 추가 배치는 거부된다.
 - `VolumeBinding`: Pod가 요구하는 PVC를 해당 노드에서 바인딩할 수 있는지 검사한다.
 - `InterPodAffinity`: requiredDuringSchedulingIgnoredDuringExecution으로 설정된 podAffinity/podAntiAffinity 규칙을 평가한다.
 
@@ -74,15 +117,7 @@ kube-scheduler는 노드가 할당되지 않은 Pod(spec.nodeName이 비어 있�
 kubectl -n kube-system get pod kube-scheduler-controlplane -o jsonpath='{.spec.containers[0].command}' | tr ',' '\n'
 ```
 
-```text
-# 기대 출력 예시
-[kube-scheduler
---authentication-kubeconfig=/etc/kubernetes/scheduler.conf
---authorization-kubeconfig=/etc/kubernetes/scheduler.conf
---bind-address=127.0.0.1
---kubeconfig=/etc/kubernetes/scheduler.conf
---leader-elect=true]
-```
+![kube-scheduler 컨테이너 실행 인자(jsonpath)](images/c01-sched-cmd.png)
 
 ##### kube-controller-manager 내부 동작
 
@@ -114,7 +149,7 @@ kubectl -n kube-system describe pod kube-controller-manager-controlplane | grep 
 kubelet은 각 노드에서 systemd 서비스로 실행되는 에이전트이다. 주요 동작은 다음과 같다:
 
 1. **Pod 동기화**: apiserver의 Watch API를 통해 해당 노드에 할당된 Pod 목록을 수신한다. 10초(기본) 간격의 `syncLoop`에서 현재 실행 중인 컨테이너와 desired 상태를 비교하여 생성/삭제/재시작을 결정한다.
-2. **컨테이너 런타임 인터페이스(CRI)**: kubelet은 gRPC를 통해 컨테이너 런타임(containerd, CRI-O)과 통신한다. `RuntimeService`(컨테이너 생명주기)와 `ImageService`(이미지 관리) 두 가지 gRPC 서비스를 호출한다.
+2. **컨테이너 런타임 인터페이스(CRI)**: kubelet은 gRPC를 통해 컨테이너 런타임(containerd, CRI-O)과 통신한다. gRPC는 Google이 만든 고성능 원격 프로시저 호출(RPC) 프레임워크로, HTTP/2 위에서 Protocol Buffers(바이너리 직렬화 포맷)를 써 빠른 바이너리 통신을 제공한다. kubelet은 `RuntimeService`(컨테이너 생명주기)와 `ImageService`(이미지 관리) 두 가지 gRPC 서비스를 호출한다.
 3. **cgroup 관리**: kubelet은 Pod의 resources.requests/limits를 리눅스 cgroup(v1 또는 v2)에 매핑한다. CPU limits는 cgroup의 `cpu.cfs_quota_us`/`cpu.cfs_period_us`로 변환되고, 메모리 limits는 `memory.limit_in_bytes`로 설정된다.
 4. **Probe 실행**: kubelet은 컨테이너의 liveness/readiness/startup probe를 직접 실행한다. HTTP probe의 경우 kubelet이 직접 HTTP GET 요청을 보내고, exec probe의 경우 컨테이너 내에서 명령을 실행한다.
 5. **노드 상태 보고**: kubelet은 주기적으로(기본 10초) 노드의 상태(Ready, MemoryPressure, DiskPressure, PIDPressure)를 apiserver에 보고한다. 이 보고는 `Lease` 객체를 통해 이루어진다.
@@ -124,26 +159,7 @@ kubelet은 각 노드에서 systemd 서비스로 실행되는 에이전트이다
 cat /var/lib/kubelet/config.yaml | head -30
 ```
 
-```text
-# 기대 출력 예시
-apiVersion: kubelet.config.k8s.io/v1beta1
-kind: KubeletConfiguration
-authentication:
-  anonymous:
-    enabled: false
-  webhook:
-    cacheTTL: 0s
-    enabled: true
-  x509:
-    clientCAFile: /etc/kubernetes/pki/ca.crt
-authorization:
-  mode: Webhook
-cgroupDriver: systemd
-clusterDNS:
-- 10.96.0.10
-clusterDomain: cluster.local
-staticPodPath: /etc/kubernetes/manifests
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ##### kube-proxy 내부 동작과 iptables 체인 구조
 
@@ -174,23 +190,14 @@ IPVS 모드를 사용하려면 노드에 `ip_vs`, `ip_vs_rr`, `ip_vs_wrr`, `ip_v
 kubectl -n kube-system get configmap kube-proxy -o jsonpath='{.data.config\.conf}' | grep mode
 ```
 
-```text
-# 기대 출력 예시
-mode: "iptables"
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # iptables 규칙에서 특정 Service의 체인 확인
 iptables -t nat -L KUBE-SERVICES -n | head -20
 ```
 
-```text
-# 기대 출력 예시 (ClusterIP 10.96.0.1의 kubernetes Service)
-Chain KUBE-SERVICES (2 references)
-target     prot opt source               destination
-KUBE-SVC-NPX46M4PTMTKRN6Y  tcp  --  0.0.0.0/0   10.96.0.1     /* default/kubernetes:https cluster IP */ tcp dpt:443
-KUBE-SVC-TCOU7JCQXEZGVUNU  tcp  --  0.0.0.0/0   10.96.0.10    /* kube-system/kube-dns:dns-tcp cluster IP */ tcp dpt:53
-```
+> **예시(참조) — 기대 출력 예시 (ClusterIP 10.96.0.1의 kubernetes Service):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ##### Container Runtime과 CRI
 
@@ -207,36 +214,28 @@ CRI는 두 가지 gRPC 서비스로 구성된다:
 ls -la /run/containerd/containerd.sock
 ```
 
-```text
-# 기대 출력 예시
-srw-rw---- 1 root root 0 Jan  1 00:00 /run/containerd/containerd.sock
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # crictl로 런타임 정보 확인
 crictl info | head -5
 ```
 
-```text
-# 기대 출력 예시
-{
-  "status": {
-    "conditions": [
-      {
-        "type": "RuntimeReady",
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### 통신 흐름
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  user(["사용자"]) --> kubectl["kubectl"]
+  kubectl --> api["kube-apiserver"]
+  api --> etcd[("etcd\n읽기/쓰기")]
+  api --> sched["kube-scheduler\nPod 스케줄링"]
+  sched --> kubelet["kubelet\nPod 실행"]
+  kubelet --> rt["Container Runtime\n컨테이너 생성"]
 ```
-사용자 → kubectl → kube-apiserver → etcd (읽기/쓰기)
-                         ↓
-                    kube-scheduler (Pod 스케줄링)
-                         ↓
-                    kubelet (Pod 실행)
-                         ↓
-                    Container Runtime (컨테이너 생성)
-```
+_그림 1. 클러스터 통신 흐름: 모든 컴포넌트가 apiserver를 경유한다._
 
 모든 컴포넌트는 kube-apiserver를 통해서만 통신한다. 컴포넌트 간 직접 통신은 하지 않는다. 이 설계의 이점은 다음과 같다:
 - apiserver가 유일한 etcd 클라이언트이므로, 접근 제어와 감사(audit)를 중앙 집중화할 수 있다.
@@ -250,30 +249,14 @@ crictl info | head -5
 kubectl get componentstatuses
 ```
 
-```text
-# 기대 출력 예시 (deprecated이지만 일부 버전에서 동작)
-NAME                 STATUS    MESSAGE             ERROR
-scheduler            Healthy   ok
-controller-manager   Healthy   ok
-etcd-0               Healthy   {"health":"true"}
-```
+![componentstatuses(deprecated) 또는 kube-system Pod 상태](images/c01-componentstatus.png)
 
 ```bash
 # 대안: kube-system Pod 상태로 확인
 kubectl -n kube-system get pods
 ```
 
-```text
-# 기대 출력 예시
-NAME                                   READY   STATUS    RESTARTS   AGE
-coredns-5d78c9869d-abc12               1/1     Running   0          24h
-coredns-5d78c9869d-def34               1/1     Running   0          24h
-etcd-controlplane                      1/1     Running   0          24h
-kube-apiserver-controlplane            1/1     Running   0          24h
-kube-controller-manager-controlplane   1/1     Running   0          24h
-kube-proxy-gh567                       1/1     Running   0          24h
-kube-scheduler-controlplane            1/1     Running   0          24h
-```
+![kube-system Control Plane Pod 상태](images/c01-kubesystem.png)
 
 ---
 
@@ -305,14 +288,7 @@ sysctl net.bridge.bridge-nf-call-iptables net.ipv4.ip_forward
 swapon --summary
 ```
 
-```text
-# 기대 출력 예시 (올바르게 설정된 경우)
-br_netfilter           32768  0
-overlay               151552  0
-net.bridge.bridge-nf-call-iptables = 1
-net.ipv4.ip_forward = 1
-(swapon 출력이 비어 있으면 스왑 비활성화 상태)
-```
+> **예시(참조) — 기대 출력 예시 (올바르게 설정된 경우):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### kubeadm init 과정 (Control Plane 초기화)
 
@@ -338,28 +314,14 @@ net.ipv4.ip_forward = 1
 kubeadm init --dry-run --pod-network-cidr=192.168.0.0/16
 ```
 
-```text
-# 기대 출력 예시 (오류가 없는 경우)
-[init] Using Kubernetes version: v1.30.0
-[preflight] Running pre-flight checks
-[preflight] Pulling images required for setting up a Kubernetes cluster
-...
-[dryrun] Would write file "/etc/kubernetes/manifests/kube-apiserver.yaml"
-[dryrun] Would write file "/etc/kubernetes/manifests/kube-controller-manager.yaml"
-[dryrun] Would write file "/etc/kubernetes/manifests/kube-scheduler.yaml"
-[dryrun] Would write file "/etc/kubernetes/manifests/etcd.yaml"
-```
+> **예시(참조) — 기대 출력 예시 (오류가 없는 경우):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 생성된 인증서 확인
 ls /etc/kubernetes/pki/
 ```
 
-```text
-# 기대 출력 예시
-apiserver.crt              apiserver-etcd-client.crt   apiserver-kubelet-client.crt  ca.crt  etcd/  front-proxy-ca.crt      front-proxy-client.crt  sa.key
-apiserver.key              apiserver-etcd-client.key   apiserver-kubelet-client.key  ca.key         front-proxy-ca.key      front-proxy-client.key  sa.pub
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### kubeadm join 과정 (Worker Node 추가)
 
@@ -367,18 +329,17 @@ Worker Node를 클러스터에 추가하는 과정이다:
 
 1. `kubeadm init` 완료 후 출력되는 `kubeadm join` 명령을 Worker Node에서 실행한다.
 2. 토큰과 CA 인증서 해시를 사용하여 apiserver에 TLS 부트스트래핑 인증을 수행한다. 토큰은 클러스터에 등록된 bootstrap-token Secret과 대조된다.
-3. kubelet은 CSR(Certificate Signing Request)을 apiserver에 제출하여 자신의 클라이언트 인증서를 발급받는다.
+3. kubelet은 CSR(Certificate Signing Request, 인증서 서명 요청)을 apiserver에 제출하여 자신의 클라이언트 인증서를 발급받는다.
 4. kubelet이 시작되고 노드가 클러스터에 등록된다.
+
+TLS 부트스트래핑(TLS bootstrapping)은 "정식 클라이언트 인증서가 아직 없는 새 노드가, 단기 토큰만으로 신원을 인정받아 자신의 정식 인증서를 발급받는 절차"를 가리킨다. 닭-달걀 문제(인증서로 인증해야 하는데 인증서가 아직 없음)를 해소하기 위한 것이다. 흐름은 다음과 같다. ① `kubeadm init`이 만든 bootstrap-token이 `kube-system` 네임스페이스에 `bootstrap-token-<id>` Secret으로 저장된다. ② Worker의 kubelet이 join 시 이 토큰을 제시하면, apiserver가 해당 Secret과 대조해 "부트스트랩 권한이 있는 임시 사용자"로 인증한다. ③ 인증된 kubelet은 자신의 CSR을 제출하고, 이 CSR은 (kubeadm 기본 설정에서) 자동 승인되어 정식 클라이언트 인증서가 발급된다. ④ 이후 kubelet은 토큰이 아니라 이 정식 인증서로 apiserver와 통신한다. 즉 토큰은 최초 신원 확인용 1회성 자격이고, 정식 인증서가 이를 대체한다.
 
 토큰이 만료된 경우 새 토큰을 생성할 수 있다:
 ```bash
 kubeadm token create --print-join-command
 ```
 
-```text
-# 기대 출력 예시
-kubeadm join 192.168.1.100:6443 --token abcdef.0123456789abcdef --discovery-token-ca-cert-hash sha256:abc123def456...
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### 장애 시나리오: kubeadm init 실패 후 재시도
 
@@ -425,25 +386,7 @@ apt-mark hold kubeadm
 kubeadm upgrade plan
 ```
 
-```text
-# 기대 출력 예시
-[upgrade/config] Making sure the configuration is correct:
-[preflight] Running pre-flight checks.
-[upgrade] Running cluster health checks
-[upgrade] Fetching available versions to upgrade to
-Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':
-COMPONENT   CURRENT       TARGET
-kubelet     v1.29.0       v1.30.0
-
-Upgrade to the latest version in the v1.30 series:
-COMPONENT                 CURRENT   TARGET
-kube-apiserver            v1.29.0   v1.30.0
-kube-controller-manager   v1.29.0   v1.30.0
-kube-scheduler            v1.29.0   v1.30.0
-kube-proxy                v1.29.0   v1.30.0
-CoreDNS                   v1.11.1   v1.11.3
-etcd                      3.5.10    3.5.12
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 3. Control Plane 컴포넌트 업그레이드
@@ -470,12 +413,7 @@ kubectl uncordon controlplane
 kubectl get nodes
 ```
 
-```text
-# 기대 출력 예시
-NAME           STATUS   ROLES           AGE   VERSION
-controlplane   Ready    control-plane   30d   v1.30.0
-node01         Ready    <none>          30d   v1.29.0
-```
+![get nodes — 노드 상태(dev 실측)](images/c01-nodes.png)
 
 #### Worker Node 업그레이드 절차
 
@@ -557,16 +495,11 @@ ETCDCTL_API=3 etcdctl get / --prefix --keys-only --limit=10 \
   --key=/etc/kubernetes/pki/etcd/server.key
 ```
 
-```text
-# 기대 출력 예시
-/registry/apiregistration.k8s.io/apiservices/v1.
-/registry/apiregistration.k8s.io/apiservices/v1.admissionregistration.k8s.io
-/registry/apiregistration.k8s.io/apiservices/v1.apiextensions.k8s.io
-/registry/apiregistration.k8s.io/apiservices/v1.apps
-/registry/apiregistration.k8s.io/apiservices/v1.authentication.k8s.io
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### etcd 백업 (etcdctl snapshot save)
+
+실습 전제: 이 작업은 etcd가 Static Pod로 떠 있는 Control Plane 노드 안에서 실행한다. 이 저장소에서는 파괴 실습이 허용된 staging 클러스터의 master 노드에 SSH로 접속해(`ssh staging-master`) 수행한다. 인증서 경로 `--cacert`/`--cert`/`--key`는 etcd가 자신의 클라이언트와 TLS 통신을 검증하는 데 쓰는 파일이며(각각 CA 인증서, 서버 인증서, 서버 키), kubeadm으로 설치한 클러스터에서는 `/etc/kubernetes/pki/etcd/` 아래에 위치한다. 아래 기대 출력 블록은 실측값 예시이며, 실제 staging 클러스터에서 명령을 실행한 터미널 화면 캡처로 교체하는 것이 원칙이다(미캡처).
 
 etcdctl은 반드시 **API 버전 3**을 사용해야 한다.
 
@@ -582,15 +515,7 @@ etcdctl은 반드시 **API 버전 3**을 사용해야 한다.
 cat /etc/kubernetes/manifests/etcd.yaml | grep -E "cert-file|key-file|trusted-ca-file"
 ```
 
-```text
-# 기대 출력 예시
-    - --cert-file=/etc/kubernetes/pki/etcd/server.crt
-    - --key-file=/etc/kubernetes/pki/etcd/server.key
-    - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
-    - --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
-    - --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
-    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 백업 명령:
 ```bash
@@ -601,25 +526,14 @@ ETCDCTL_API=3 etcdctl snapshot save /tmp/etcd-backup.db \
   --key=/etc/kubernetes/pki/etcd/server.key
 ```
 
-```text
-# 기대 출력 예시
-{"level":"info","ts":"2024-01-15T10:30:00.000Z","msg":"snapshot file created","path":"/tmp/etcd-backup.db"}
-Snapshot saved at /tmp/etcd-backup.db
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 백업 검증:
 ```bash
 ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-backup.db --write-out=table
 ```
 
-```text
-# 기대 출력 예시
-+----------+----------+------------+------------+
-|   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |
-+----------+----------+------------+------------+
-| 3f2a1b4c |    15847 |       1024 |     4.2 MB |
-+----------+----------+------------+------------+
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 HASH 값이 표시되고 REVISION이 0이 아니면 백업이 정상적으로 수행된 것이다.
 
@@ -650,12 +564,13 @@ mv /tmp/etcd.yaml.bak /etc/kubernetes/manifests/etcd.yaml
 crictl ps | grep etcd
 ```
 
-```text
-# 기대 출력 예시 (etcd가 정상 기동된 경우)
-a1b2c3d4e5f6   e5f6a1b2c3d4   About a minute ago   Running   etcd   0   abc123def456
-```
+> **예시(참조) — 기대 출력 예시 (etcd가 정상 기동된 경우):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
-복구 후 `--data-dir` 경로를 변경한 경우에는 etcd 매니페스트(`/etc/kubernetes/manifests/etcd.yaml`)에서 `--data-dir` 플래그와 해당 hostPath 볼륨 마운트 경로를 일치시켜야 한다.
+복구 후 `--data-dir` 경로를 변경한 경우에는 etcd 매니페스트(`/etc/kubernetes/manifests/etcd.yaml`)에서 `--data-dir` 플래그와 해당 hostPath 볼륨 마운트 경로를 일치시켜야 한다. 구체적으로 두 곳을 함께 바꿔야 한다. ① `spec.containers[0].command`의 `--data-dir=<경로>` 플래그, ② `spec.volumes` 중 `name: etcd-data`로 연결된 hostPath의 `path`. 이 둘이 어긋나면 etcd 컨테이너가 빈 디렉터리를 보고 기동되어 복구한 데이터가 보이지 않는다.
+
+예를 들어 스냅샷을 `--data-dir=/var/lib/etcd-restore`로 복구했다면, ① command의 `--data-dir=/var/lib/etcd`를 `--data-dir=/var/lib/etcd-restore`로 바꾸고, ② `name: etcd-data` 볼륨의 `hostPath.path`도 `/var/lib/etcd`에서 `/var/lib/etcd-restore`로 동일하게 바꾼다. 두 값이 항상 같은 경로를 가리켜야 한다.
+
+기본 경로(`/var/lib/etcd`)를 그대로 쓰고 싶다면, 복구 시 `--data-dir`를 따로 지정하지 않거나 `/var/lib/etcd`로 복구하면 매니페스트를 수정할 필요가 없다(시험에서는 이 방식이 단순해 실수가 적다).
 
 #### 장애 시나리오: etcd 데이터 손상
 
@@ -671,14 +586,7 @@ ETCDCTL_API=3 etcdctl member list \
   --write-out=table
 ```
 
-```text
-# 기대 출력 예시 (정상)
-+------------------+---------+-------------+---------------------------+---------------------------+
-|        ID        | STATUS  |    NAME     |       PEER ADDRS          |      CLIENT ADDRS         |
-+------------------+---------+-------------+---------------------------+---------------------------+
-| 8e9e05c52164694d | started | controlplane| https://192.168.1.100:2380| https://192.168.1.100:2379|
-+------------------+---------+-------------+---------------------------+---------------------------+
-```
+> **예시(참조) — 기대 출력 예시 (정상):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # etcd 엔드포인트 건강 상태 확인
@@ -689,10 +597,7 @@ ETCDCTL_API=3 etcdctl endpoint health \
   --key=/etc/kubernetes/pki/etcd/server.key
 ```
 
-```text
-# 기대 출력 예시 (정상)
-https://127.0.0.1:2379 is healthy: successfully committed proposal: took = 2.345ms
-```
+> **예시(참조) — 기대 출력 예시 (정상):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -741,10 +646,7 @@ kubectl create role pod-reader \
   --namespace=dev
 ```
 
-```text
-# 기대 출력 예시
-role.rbac.authorization.k8s.io/pod-reader created
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # RoleBinding 생성: 사용자 jane에게 pod-reader 역할 부여
@@ -754,44 +656,28 @@ kubectl create rolebinding jane-pod-reader \
   --namespace=dev
 ```
 
-```text
-# 기대 출력 예시
-rolebinding.rbac.authorization.k8s.io/jane-pod-reader created
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 권한 테스트: jane 사용자가 dev 네임스페이스에서 Pod를 조회할 수 있는지 확인
 kubectl auth can-i get pods --namespace=dev --as=jane
 ```
 
-```text
-# 기대 출력 예시
-yes
-```
+![jane 의 pods get/delete 권한 점검](images/c01-jane-rbac.png)
 
 ```bash
 # 권한 테스트: jane 사용자가 dev 네임스페이스에서 Pod를 삭제할 수 있는지 확인
 kubectl auth can-i delete pods --namespace=dev --as=jane
 ```
 
-```text
-# 기대 출력 예시
-no
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 특정 사용자의 모든 권한 확인
 kubectl auth can-i --list --namespace=dev --as=jane
 ```
 
-```text
-# 기대 출력 예시
-Resources                                       Non-Resource URLs   Resource Names   Verbs
-pods                                            []                  []               [get list watch]
-selfsubjectaccessreviews.authorization.k8s.io   []                  []               [create]
-selfsubjectrulesreviews.authorization.k8s.io    []                  []               [create]
-...
-```
+![jane 의 전체 권한 목록](images/c01-jane-list.png)
 
 #### API Groups
 
@@ -809,15 +695,7 @@ Core API 그룹의 `apiGroups`는 `[""]`로 지정한다. 이는 Core 그룹이 
 kubectl api-resources --sort-by=name | head -20
 ```
 
-```text
-# 기대 출력 예시
-NAME                              SHORTNAMES   APIVERSION                        NAMESPACED   KIND
-bindings                                       v1                                true         Binding
-clusterrolebindings                            rbac.authorization.k8s.io/v1      false        ClusterRoleBinding
-clusterroles                                   rbac.authorization.k8s.io/v1      false        ClusterRole
-configmaps                        cm           v1                                true         ConfigMap
-...
-```
+![API 리소스/그룹 목록](images/c01-api-resources.png)
 
 #### ServiceAccount
 
@@ -832,20 +710,14 @@ configmaps                        cm           v1                               
 kubectl create serviceaccount my-sa -n dev
 ```
 
-```text
-# 기대 출력 예시
-serviceaccount/my-sa created
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # ServiceAccount에 대한 토큰 수동 생성 (1.24+)
 kubectl create token my-sa -n dev --duration=24h
 ```
 
-```text
-# 기대 출력 예시
-eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1... (JWT 토큰)
-```
+![ServiceAccount 토큰 발급(JWT)](images/c01-token.png)
 
 ---
 
@@ -861,19 +733,29 @@ eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1... (JWT 토큰)
 - 설정이 간단하지만, Control Plane 노드 장애 시 etcd 멤버도 함께 영향을 받는다.
 - 최소 3개의 Control Plane 노드가 필요하다 (etcd의 quorum 요구사항).
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  lb(["Load Balancer"])
+  subgraph CP1["Control Plane Node 1"]
+    a1["apiserver\nscheduler\ncontroller-mgr"]
+    e1[("etcd")]
+  end
+  subgraph CP2["Control Plane Node 2"]
+    a2["apiserver\nscheduler\ncontroller-mgr"]
+    e2[("etcd")]
+  end
+  subgraph CP3["Control Plane Node 3"]
+    a3["apiserver\nscheduler\ncontroller-mgr"]
+    e3[("etcd")]
+  end
+  e1 <--> e2
+  e2 <--> e3
+  lb --> a1
+  lb --> a2
+  lb --> a3
 ```
-Control Plane Node 1         Control Plane Node 2         Control Plane Node 3
-┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
-│ apiserver       │         │ apiserver       │         │ apiserver       │
-│ scheduler       │         │ scheduler       │         │ scheduler       │
-│ controller-mgr  │         │ controller-mgr  │         │ controller-mgr  │
-│ etcd            │←───────→│ etcd            │←───────→│ etcd            │
-└─────────────────┘         └─────────────────┘         └─────────────────┘
-         ↑                           ↑                           ↑
-         └───────────────────────────┼───────────────────────────┘
-                                     │
-                              Load Balancer
-```
+_그림 2. Stacked etcd 토폴로지: 3개 Control Plane 노드와 로드밸런서, etcd 멤버 간 복제._
 
 HA 구성에서 scheduler와 controller-manager는 리더 선출(leader election)을 수행한다. 한 시점에 하나의 인스턴스만 활성(active) 상태이고, 나머지는 대기(standby) 상태이다. 리더가 장애 시 다른 인스턴스가 자동으로 리더를 인수한다. 리더 선출은 `kube-system` 네임스페이스의 Lease 객체를 통해 이루어진다.
 
@@ -882,10 +764,7 @@ HA 구성에서 scheduler와 controller-manager는 리더 선출(leader election
 kubectl -n kube-system get lease kube-scheduler -o jsonpath='{.spec.holderIdentity}'
 ```
 
-```text
-# 기대 출력 예시
-controlplane-1_a1b2c3d4-e5f6-7890-abcd-ef1234567890
-```
+![scheduler 리더 lease holderIdentity](images/c01-lease.png)
 
 #### External etcd 토폴로지
 
@@ -950,32 +829,21 @@ contexts:                       # 클러스터 + 사용자 + 네임스페이스 
 kubectl config current-context
 ```
 
-```text
-# 기대 출력 예시
-my-context
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 사용 가능한 컨텍스트 목록
 kubectl config get-contexts
 ```
 
-```text
-# 기대 출력 예시
-CURRENT   NAME           CLUSTER        AUTHINFO       NAMESPACE
-*         my-context     my-cluster     my-user        default
-          prod-context   prod-cluster   prod-admin     production
-```
+![kubeconfig 컨텍스트 목록](images/c01-contexts.png)
 
 ```bash
 # 컨텍스트 전환
 kubectl config use-context prod-context
 ```
 
-```text
-# 기대 출력 예시
-Switched to context "prod-context".
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 특정 컨텍스트의 기본 네임스페이스 변경
@@ -1000,10 +868,7 @@ CKA 시험에서는 여러 클러스터를 전환하며 문제를 풀어야 한�
 kubectl get pods
 ```
 
-```text
-# 오류 출력 예시
-error: You must be logged in to the server (Unauthorized)
-```
+> **예시(참조) — 오류 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 확인 사항:
 1. kubeconfig의 server 주소가 올바른지 확인한다.
@@ -1059,27 +924,14 @@ spec:
 kubectl rollout status deployment/nginx-deploy
 ```
 
-```text
-# 기대 출력 예시 (진행 중)
-Waiting for deployment "nginx-deploy" rollout to finish: 2 out of 4 new replicas have been updated...
-
-# 기대 출력 예시 (완료)
-deployment "nginx-deploy" successfully rolled out
-```
+![rollout status + history](images/c01-rollout.png)
 
 ```bash
 # 배포 이력 확인
 kubectl rollout history deployment/nginx-deploy
 ```
 
-```text
-# 기대 출력 예시
-deployment.apps/nginx-deploy
-REVISION  CHANGE-CAUSE
-1         <none>
-2         kubectl set image deployment/nginx-deploy nginx=nginx:1.25
-3         kubectl set image deployment/nginx-deploy nginx=nginx:1.26
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 특정 리비전 상세 확인
@@ -1103,13 +955,7 @@ kubectl rollout resume deployment/nginx-deploy
 kubectl get replicasets -l app=nginx-deploy
 ```
 
-```text
-# 기대 출력 예시
-NAME                      DESIRED   CURRENT   READY   AGE
-nginx-deploy-5d8f6b7c9a   4         4         4       10m
-nginx-deploy-7b8c9d0e1f   0         0         0       30m
-nginx-deploy-3a4b5c6d7e   0         0         0       1h
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -1128,18 +974,34 @@ spec:
 
 해당 레이블이 있는 노드에만 Pod가 스케줄링된다. 매칭되는 노드가 없으면 Pod는 Pending 상태가 된다.
 
+실습 전제: 클러스터가 가동 중이고 kubeconfig(`~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 등)가 설정되어 있어야 한다. 아래는 노드에 레이블을 부여하고, 그 레이블을 nodeSelector로 매칭하는 흐름이다. 명령과 기대 출력을 단계별로 분리해 둔다.
+
+먼저 노드에 레이블을 부여한다.
+
 ```bash
 # 노드에 레이블 추가
 kubectl label nodes node01 disktype=ssd
+```
 
-# 레이블 확인
+> **예시(참조) — 기대 출력 예시 (레이블이 부여되면 다음과 같이 응답한다):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
+
+부여된 레이블이 실제로 노드에 반영되었는지 확인한다. `--show-labels`는 노드의 전체 레이블 목록을 마지막 컬럼에 출력하므로, `grep`으로 방금 추가한 `disktype` 키만 걸러서 본다.
+
+```bash
+# 레이블 확인 (disktype 레이블이 붙은 노드만 출력)
 kubectl get nodes --show-labels | grep disktype
 ```
 
-```text
-# 기대 출력 예시
-node01   Ready   <none>   30d   v1.30.0   beta.kubernetes.io/arch=amd64,...,disktype=ssd
+> **예시(참조) — 기대 출력 예시 (node01 행의 LABELS 컬럼 일부):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
+
+특정 노드의 레이블만 키-값 형태로 깔끔하게 보려면 `--show-labels` 대신 jsonpath로 추출하는 방법도 있다.
+
+```bash
+# node01의 레이블만 키=값 형태로 출력
+kubectl get node node01 -o jsonpath='{.metadata.labels}' | tr ',' '\n'
 ```
+
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### Node Affinity
 
@@ -1197,6 +1059,8 @@ spec:
 
 #### Pod Affinity / Pod Anti-Affinity
 
+앞의 nodeSelector와 Node Affinity는 "Pod와 노드의 관계"만 정의할 수 있다. 즉 "이 Pod는 SSD 노드에 둬라" 같은 조건은 표현되지만, "이 Pod를 다른 Pod와 같이/따로 둬라" 같은 Pod 사이의 관계는 표현할 수 없다. 실전에서는 후자가 자주 필요하다. 예를 들어 웹 서버(nginx)의 응답 지연을 줄이려면 자주 조회하는 캐시 서버(redis)를 같은 노드(또는 같은 존)에 배치해 네트워크 왕복을 줄여야 한다(데이터 지역성). 반대로 같은 Deployment의 복제본을 한 노드에 몰아두면 그 노드 장애 시 전부 죽으므로, 서로 다른 노드로 흩어 놓아야 가용성이 올라간다. 이런 Pod 간 배치 의도를 코드화한 것이 podAffinity와 podAntiAffinity이다.
+
 다른 Pod와의 관계를 기반으로 스케줄링한다. 이 기능은 데이터 지역성(data locality)이나 고가용성(HA) 분산을 구현하기 위해 사용된다.
 
 **podAffinity**: 특정 Pod가 실행 중인 노드(또는 같은 토폴로지 도메인)에 함께 스케줄링한다. 예를 들어 웹 서버와 캐시 서버를 같은 노드에 배치하여 네트워크 지연을 최소화할 수 있다.
@@ -1237,6 +1101,32 @@ spec:
 
 주의: podAffinity/podAntiAffinity의 계산 복잡도는 O(N^2)에 가깝다(N = 클러스터의 Pod 수). 대규모 클러스터에서 과도하게 사용하면 스케줄링 지연이 발생할 수 있다.
 
+#### Pod Topology Spread Constraints
+
+podAntiAffinity로도 "Pod를 흩어 놓기"는 가능하지만, 한계가 있다. requiredDuringScheduling으로 hostname 단위 anti-affinity를 걸면 "한 노드에 최대 1개"처럼 전부-아니면-전무(all-or-nothing) 규칙만 표현되고, "각 존에 가능한 한 고르게 1개 차이 이내로 분산"처럼 분산의 균등함 정도를 정량적으로 제어할 수 없다. topologySpreadConstraints는 이 균등함을 maxSkew라는 수치로 직접 제어하기 위해 도입된 것이다.
+
+maxSkew(최대 편차)는 같은 토폴로지 키 값(예: 같은 존, 같은 노드)으로 묶이는 토폴로지 도메인들 사이에서 허용되는 Pod 수의 최대 차이이다. 앞 절 scheduler 내부 동작에서 본 필터링 단계의 `PodTopologySpread` 플러그인이 이 제약을 평가하여, 배치 결과가 maxSkew를 위반하게 되는 노드를 후보에서 제거한다(`whenUnsatisfiable: DoNotSchedule`인 경우) 또는 스코어링 단계에서 더 고르게 분산되는 노드에 높은 점수를 부여한다(`ScheduleAnyway`인 경우).
+
+```yaml
+spec:
+  topologySpreadConstraints:
+  - maxSkew: 1                                  # 도메인 간 Pod 수 차이는 최대 1
+    topologyKey: topology.kubernetes.io/zone    # 분산 기준이 되는 노드 레이블 키(존 단위)
+    whenUnsatisfiable: DoNotSchedule            # 위반 시 스케줄링 거부(Pending)
+    labelSelector:                              # 분산 대상으로 셀 Pod의 레이블
+      matchLabels:
+        app: web
+```
+
+각 필드의 의미는 다음과 같다.
+
+- `maxSkew`: 도메인 간 허용 편차이다. 예를 들어 존이 3개이고 Pod 6개를 배치할 때 maxSkew=1이면 (2,2,2)는 허용되지만 (4,1,1)은 거부된다(편차 3).
+- `topologyKey`: 도메인을 묶는 노드 레이블 키이다. `topology.kubernetes.io/zone`(존 단위) 또는 `kubernetes.io/hostname`(노드 단위)을 주로 쓴다.
+- `whenUnsatisfiable`: 제약을 만족시킬 수 없을 때의 동작이다. `DoNotSchedule`은 hard 제약으로 위반 시 Pod를 Pending으로 둔다. `ScheduleAnyway`는 soft 제약으로, 위반하더라도 가장 고르게 분산되는 노드를 스코어링으로 선호하되 일단 배치는 한다.
+- `labelSelector`: skew를 계산할 때 셀 대상 Pod를 고른다. 보통 자기 자신과 같은 워크로드(같은 app 레이블)를 지정한다.
+
+podAntiAffinity와의 구분: podAntiAffinity는 "같이 두지 마라"는 회피 규칙이고, topologySpreadConstraints는 "고르게 펴라"는 균등 분산 규칙이다. 트레이드오프로, hard(`DoNotSchedule`) 제약을 너무 빡빡하게(maxSkew를 작게) 걸면 도메인 수보다 Pod가 많을 때 추가 배치가 Pending으로 막힐 수 있으므로, 가용성 분산 목적이라면 `ScheduleAnyway`를 우선 검토한다.
+
 ---
 
 ### 2.3 Taint와 Toleration
@@ -1264,30 +1154,21 @@ NoExecute는 노드 장애 시 자동으로 적용된다. 노드가 NotReady 상
 kubectl taint nodes node01 gpu=true:NoSchedule
 ```
 
-```text
-# 기대 출력 예시
-node/node01 tainted
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # Taint 제거 (끝에 - 추가)
 kubectl taint nodes node01 gpu=true:NoSchedule-
 ```
 
-```text
-# 기대 출력 예시
-node/node01 untainted
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 노드의 Taint 확인
 kubectl describe node node01 | grep -A5 Taints
 ```
 
-```text
-# 기대 출력 예시
-Taints:             gpu=true:NoSchedule
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### Toleration 설정
 
@@ -1351,6 +1232,8 @@ spec:
 
 #### QoS(Quality of Service) 클래스
 
+QoS 클래스가 왜 필요한지부터 본다. 노드의 가용 메모리가 부족해지면 kubelet은 일부 Pod를 강제 종료(eviction)해서 메모리를 회수해야 한다. 이때 모든 Pod를 동등하게 취급하면 정작 중요한 워크로드가 먼저 죽을 수 있으므로, 어떤 Pod부터 희생시킬지 정하는 우선순위가 필요하다. 쿠버네티스는 Pod의 requests/limits 설정 여부를 보고 QoS 클래스를 자동으로 매긴 뒤, 이를 축출 우선순위로 삼는다. 즉 QoS 클래스는 사용자가 직접 지정하는 필드가 아니라 requests/limits 설정에서 파생되는 분류이다.
+
 쿠버네티스는 Pod의 requests/limits 설정에 따라 QoS 클래스를 자동 할당한다. 노드의 메모리가 부족하면 낮은 QoS 클래스의 Pod부터 축출(evict)된다:
 
 | QoS 클래스 | 조건 | 축출 우선순위 |
@@ -1364,10 +1247,7 @@ spec:
 kubectl get pod my-pod -o jsonpath='{.status.qosClass}'
 ```
 
-```text
-# 기대 출력 예시
-Burstable
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### LimitRange
 
@@ -1405,17 +1285,7 @@ spec:
 kubectl -n dev describe limitrange resource-limits
 ```
 
-```text
-# 기대 출력 예시
-Name:       resource-limits
-Namespace:  dev
-Type        Resource  Min   Max   Default Request  Default Limit  Max Limit/Request Ratio
-----        --------  ---   ---   ---------------  -------------  -----------------------
-Container   cpu       50m   2     100m             500m           -
-Container   memory    64Mi  1Gi   128Mi            256Mi          -
-Pod         cpu       -     4     -                -              -
-Pod         memory    -     2Gi   -                -              -
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### ResourceQuota
 
@@ -1445,30 +1315,17 @@ spec:
 kubectl -n dev describe resourcequota compute-quota
 ```
 
-```text
-# 기대 출력 예시
-Name:            compute-quota
-Namespace:       dev
-Resource         Used   Hard
---------         ----   ----
-configmaps       2      10
-limits.cpu       1500m  8
-limits.memory    512Mi  8Gi
-persistentvolumeclaims  1   5
-pods             3      20
-requests.cpu     750m   4
-requests.memory  384Mi  4Gi
-secrets          2      10
-services         1      10
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
-ResourceQuota가 설정된 네임스페이스에서는 모든 Pod에 requests/limits를 지정해야 한다. 미지정 시 Pod 생성이 거부된다. LimitRange로 기본값을 설정하면 이 문제를 방지할 수 있다.
+ResourceQuota가 설정된 네임스페이스에서는 모든 Pod에 requests/limits를 지정해야 한다. 미지정 시 Pod 생성이 거부된다. 거부될 때 Admission Controller는 `Error from server (Forbidden): error when creating ...: pods "xxx" is forbidden: failed quota: compute-quota: must specify limits.cpu,limits.memory,requests.cpu,requests.memory` 형태의 오류를 반환한다(quota가 추적하는 항목을 어느 컨테이너도 명시하지 않았다는 뜻이다). 시험에서 이 메시지를 만나면 해결 흐름은 다음과 같다: 매 Pod마다 requests/limits를 손으로 써넣는 대신, 같은 네임스페이스에 LimitRange의 `defaultRequest`/`default`(앞 절 참조)를 설정해 두면 LimitRange Admission Controller가 ResourceQuota 검증보다 먼저 기본값을 주입하므로, 값을 생략한 Pod도 거부 없이 생성된다. (미캡처 — 클러스터 가동 시 day 본문에서 실측 캡처로 교체한다.)
 
 ---
 
 ### 2.5 워크로드 리소스 비교
 
 #### DaemonSet
+
+등장 배경: 로그 수집기나 모니터링 에이전트처럼 "모든 노드에 한 벌씩" 떠 있어야 하는 워크로드가 있다. Deployment는 replicas 개수만 맞추고 어느 노드에 둘지는 scheduler에 맡기므로, 노드마다 정확히 하나가 뜬다는 보장이 없다(여러 개가 한 노드에 몰리거나, 새 노드에 자동으로 뜨지 않는다). DaemonSet은 "노드 집합에 하나씩"을 직접 보장하여 이 요구를 충족한다.
 
 - 모든 노드(또는 지정된 노드)에 **정확히 하나의 Pod**를 실행한다.
 - 노드가 추가되면 자동으로 Pod가 생성되고, 노드가 제거되면 Pod도 삭제된다.
@@ -1481,11 +1338,7 @@ ResourceQuota가 설정된 네임스페이스에서는 모든 Pod에 requests/li
 kubectl -n kube-system get daemonset kube-proxy
 ```
 
-```text
-# 기대 출력 예시
-NAME         DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-kube-proxy   3         3         3       3            3           <none>          30d
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### StatefulSet
 
@@ -1499,6 +1352,8 @@ kube-proxy   3         3         3       3            3           <none>        
 StatefulSet이 필요한 이유: Deployment로 생성한 Pod는 이름이 랜덤 해시로 부여되고, 재시작 시 새 이름을 받으며, 스토리지를 공유한다. 이는 상태를 가진 애플리케이션(예: 데이터베이스 레플리카)에서 문제가 된다. 각 인스턴스가 고유한 정체성(identity)과 전용 스토리지를 가져야 하기 때문이다.
 
 #### Job
+
+등장 배경: Deployment/ReplicaSet은 Pod를 "항상 떠 있는 상태"로 유지하는 것이 목적이라, Pod가 정상 종료해도 계속 재시작시킨다. 그러나 배치 연산·마이그레이션·백업처럼 한 번 끝나면 종료하는 것이 정상인 일회성 작업에는 이 모델이 맞지 않는다(끝난 작업을 무한히 다시 실행한다). Job은 "지정한 횟수만큼 성공적으로 완료되면 종료"를 보장하여 이런 일회성 작업을 처리한다.
 
 - 하나 이상의 Pod를 생성하여 **지정된 작업을 완료**할 때까지 실행한다.
 - Pod가 성공적으로 완료되면 Job은 완료 상태가 된다.
@@ -1517,11 +1372,7 @@ kubectl create job pi --image=perl:5.34 -- perl -Mbignum=bpi -wle 'print bpi(200
 kubectl get jobs
 ```
 
-```text
-# 기대 출력 예시
-NAME   COMPLETIONS   DURATION   AGE
-pi     1/1           45s        2m
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### CronJob
 
@@ -1559,30 +1410,151 @@ Static Pod 경로 확인:
 cat /var/lib/kubelet/config.yaml | grep staticPodPath
 ```
 
-```text
-# 기대 출력 예시
-staticPodPath: /etc/kubernetes/manifests
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 또는 kubelet 프로세스에서 확인
 ps aux | grep kubelet | grep -- --config
 ```
 
-```text
-# 기대 출력 예시
-root  5678  ... /usr/bin/kubelet --config=/var/lib/kubelet/config.yaml ...
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # Static Pod로 실행되는 컴포넌트 확인
 ls /etc/kubernetes/manifests/
 ```
 
-```text
-# 기대 출력 예시
-etcd.yaml  kube-apiserver.yaml  kube-controller-manager.yaml  kube-scheduler.yaml
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
+
+---
+
+### 2.7 Probe (liveness / readiness / startup)
+
+#### 등장 배경
+
+probe(헬스체크) 이전에는 kubelet이 컨테이너의 건강 상태를 "프로세스가 살아 있는가"로만 판단했다. 즉 컨테이너의 주 프로세스(PID 1)가 종료되지 않으면 정상으로 간주했다. 그러나 프로세스는 떠 있지만 내부적으로 교착 상태(deadlock)에 빠지거나 무한 루프에 걸려 요청에 응답하지 못하는 경우가 있다. 이때 운영자가 수동으로 발견해 재시작하기 전까지 장애가 방치된다. 또한 컨테이너가 막 시작되어 아직 초기화(DB 커넥션 풀 생성, 캐시 로딩 등)가 끝나지 않았는데도 Service가 트래픽을 보내면 실패 응답이 나간다. probe는 이 두 문제(살아 있지만 응답 못 함, 떠 있지만 아직 준비 안 됨)를 kubelet이 자동으로 감지하도록 도입된 것이다.
+
+#### 3종 probe의 차이
+
+| probe | 무엇을 판정하나 | 실패 시 동작 |
+|---|---|---|
+| **liveness** | 컨테이너가 살아서 정상 동작하는가 | 컨테이너를 재시작한다(restartPolicy에 따름). |
+| **readiness** | 컨테이너가 트래픽을 받을 준비가 됐는가 | Service의 Endpoints에서 해당 Pod를 제외한다(재시작은 안 함). |
+| **startup** | 느린 초기화가 완료됐는가 | startup이 성공할 때까지 liveness/readiness를 보류한다. 실패가 누적되면 재시작. |
+
+readiness와 liveness의 혼동이 가장 흔한 실수이다. liveness 실패는 "재시작"이고, readiness 실패는 "트래픽 차단(재시작 아님)"이다. 초기화가 느린 앱에 liveness만 짧게 걸면, 초기화가 끝나기 전에 liveness가 실패해 컨테이너가 무한 재시작(CrashLoopBackOff)에 빠진다. 이 경우 startup probe로 초기화 구간을 보호하거나 liveness의 initialDelaySeconds를 충분히 늘려야 한다.
+
+#### probe 핸들러 3종과 파라미터
+
+probe를 실행하는 방법(핸들러)은 3가지이다. 앞 절 kubelet 내부 동작에서 본 것처럼 이 검사는 apiserver가 아니라 각 노드의 kubelet이 직접 수행한다.
+
+```yaml
+spec:
+  containers:
+  - name: app
+    image: myapp:1.0
+    livenessProbe:
+      httpGet:                 # HTTP GET 핸들러: 2xx/3xx 응답이면 성공
+        path: /healthz
+        port: 8080
+      initialDelaySeconds: 10  # 컨테이너 시작 후 첫 검사까지 대기(초)
+      periodSeconds: 10        # 검사 주기(초)
+      timeoutSeconds: 1        # 응답 대기 한도(초)
+      failureThreshold: 3      # 연속 실패 횟수가 이 값에 도달하면 실패 처리
+    readinessProbe:
+      tcpSocket:               # TCP 핸들러: 해당 포트로 연결되면 성공
+        port: 8080
+      periodSeconds: 5
+    startupProbe:
+      exec:                    # exec 핸들러: 명령 종료코드 0이면 성공
+        command: ["cat", "/tmp/ready"]
+      failureThreshold: 30     # 30회까지 재시도
+      periodSeconds: 10        # 즉 최대 300초까지 초기화 대기
 ```
+
+- `httpGet`: kubelet이 컨테이너 IP의 지정 경로로 HTTP GET을 보낸다. 상태 코드 200~399면 성공이다.
+- `tcpSocket`: 지정 포트로 TCP 연결이 수립되면 성공이다.
+- `exec`: 컨테이너 안에서 명령을 실행해 종료 코드가 0이면 성공이다.
+- `initialDelaySeconds`: 컨테이너 시작 후 첫 probe까지의 유예 시간이다. 너무 짧으면 초기화 중 컨테이너가 재시작된다.
+- `periodSeconds`: probe 반복 주기(기본 10초)이다.
+- `failureThreshold`: 연속 실패가 몇 번 쌓이면 실패로 확정할지(기본 3)이다. startup probe에서 `failureThreshold × periodSeconds`가 곧 허용 초기화 시간이다.
+
+트레이드오프: probe 주기를 너무 촘촘히(periodSeconds를 작게) 잡으면 kubelet과 애플리케이션에 검사 부하가 늘고, 너무 느슨하면 장애 감지가 늦어진다. liveness를 외부 의존성(DB 등)까지 검사하도록 만들면, 의존성 장애가 곧 컨테이너 무한 재시작으로 번지므로 liveness는 자기 자신의 건강만 검사하고 의존성 확인은 readiness에 둔다.
+
+---
+
+### 2.8 ConfigMap과 Secret
+
+#### 등장 배경
+
+설정값(접속 URL, 기능 플래그)이나 민감 정보(DB 비밀번호, API 키)를 컨테이너 이미지 안에 박아 넣으면, 환경(dev/prod)마다 이미지를 새로 빌드해야 하고 비밀번호가 이미지 레이어에 남아 유출 위험이 생긴다. ConfigMap은 비민감 설정을, Secret은 민감 정보를 이미지와 분리해 클러스터 리소스로 관리하기 위한 객체이다. 같은 이미지를 환경별로 다른 설정/비밀과 조합해 재사용할 수 있다.
+
+ConfigMap과 Secret은 구조가 거의 같다. 차이는 Secret이 값을 base64로 인코딩해 저장하고(암호화가 아니라 인코딩이다 — etcd 평문 저장이 기본이므로 별도 암호화 설정 필요), RBAC로 접근을 제한하기 쉽게 분리돼 있다는 점이다.
+
+#### 생성 (명령형)
+
+```bash
+# ConfigMap: 리터럴 값으로 생성
+kubectl create configmap app-config \
+  --from-literal=LOG_LEVEL=info \
+  --from-literal=APP_MODE=prod
+
+# ConfigMap: 파일에서 생성
+kubectl create configmap app-config --from-file=./app.properties
+
+# Secret(generic): 리터럴 값으로 생성 (kubectl이 자동으로 base64 인코딩)
+kubectl create secret generic db-secret \
+  --from-literal=DB_PASSWORD=s3cr3t
+```
+
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
+
+Secret 타입은 용도별로 구분된다.
+
+| 타입 | 용도 |
+|---|---|
+| `Opaque`(generic) | 임의의 키-값. 가장 일반적이다. |
+| `kubernetes.io/dockerconfigjson` | 프라이빗 레지스트리 인증(imagePullSecrets). |
+| `kubernetes.io/tls` | TLS 인증서/키(`tls.crt`, `tls.key`). Ingress TLS에 사용한다. |
+| `kubernetes.io/service-account-token` | ServiceAccount 토큰. |
+
+#### Pod에 주입하는 두 방식
+
+**1) 환경 변수로 주입**: 개별 키를 `valueFrom`으로 가져오거나, 전체를 `envFrom`으로 한 번에 가져온다.
+
+```yaml
+spec:
+  containers:
+  - name: app
+    image: myapp:1.0
+    env:
+    - name: DB_PASSWORD               # 개별 키를 환경 변수로
+      valueFrom:
+        secretKeyRef:
+          name: db-secret
+          key: DB_PASSWORD
+    envFrom:
+    - configMapRef:                   # ConfigMap의 모든 키를 환경 변수로 일괄 주입
+        name: app-config
+```
+
+**2) 볼륨으로 마운트**: ConfigMap/Secret의 각 키가 마운트 경로 아래 파일로 나타난다. 볼륨 마운트 방식은 ConfigMap 값이 갱신되면(약간의 지연 후) 파일도 자동 갱신되는 반면, 환경 변수 주입은 Pod 재시작 전까지 갱신되지 않는다.
+
+```yaml
+spec:
+  containers:
+  - name: app
+    image: myapp:1.0
+    volumeMounts:
+    - name: config-vol
+      mountPath: /etc/config         # 이 경로 아래에 키별 파일 생성
+  volumes:
+  - name: config-vol
+    configMap:
+      name: app-config
+```
+
+시험 주의: `kubectl create secret`에 `--from-literal`로 평문을 주면 kubectl이 base64 인코딩을 대신 해준다. 그러나 Secret을 YAML로 직접 작성할 때 `data:` 필드에는 **이미 base64로 인코딩한 값**을 넣어야 한다(`echo -n s3cr3t | base64`). 평문을 넣으려면 `data:` 대신 `stringData:` 필드를 쓰면 apiserver가 인코딩한다. `kubectl get secret -o yaml`로 보이는 값은 인코딩된 상태이므로, 원문 확인은 `kubectl get secret db-secret -o jsonpath='{.data.DB_PASSWORD}' | base64 -d`로 디코딩한다.
 
 ---
 
@@ -1620,22 +1592,14 @@ spec:
 kubectl get svc my-service
 ```
 
-```text
-# 기대 출력 예시
-NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-my-service   ClusterIP   10.96.45.123   <none>        80/TCP    5m
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # Service의 엔드포인트 확인 (실제로 트래픽이 전달되는 Pod IP:port)
 kubectl get endpoints my-service
 ```
 
-```text
-# 기대 출력 예시
-NAME         ENDPOINTS                                      AGE
-my-service   10.244.1.5:8080,10.244.2.8:8080,10.244.3.2:8080   5m
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### NodePort
 
@@ -1666,11 +1630,7 @@ spec:
 kubectl get svc my-nodeport-svc
 ```
 
-```text
-# 기대 출력 예시
-NAME              TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-my-nodeport-svc   NodePort   10.96.78.234   <none>        80:30080/TCP   3m
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### LoadBalancer
 
@@ -1696,15 +1656,7 @@ spec:
 kubectl get svc my-lb-svc
 ```
 
-```text
-# 기대 출력 예시 (클라우드 환경)
-NAME        TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE
-my-lb-svc   LoadBalancer   10.96.12.34    203.0.113.100    80:31234/TCP   5m
-
-# 기대 출력 예시 (온프레미스, MetalLB 미설치)
-NAME        TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-my-lb-svc   LoadBalancer   10.96.12.34    <pending>     80:31234/TCP   5m
-```
+> **예시(참조) — 기대 출력 예시 (클라우드 환경):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### ExternalName
 
@@ -1751,16 +1703,7 @@ DNS 레코드: `<pod-name>.<service-name>.<namespace>.svc.cluster.local`
 kubectl run test-dns --image=busybox:1.28 --rm -it --restart=Never -- nslookup my-headless-svc.default.svc.cluster.local
 ```
 
-```text
-# 기대 출력 예시 (Pod IP가 직접 반환됨)
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      my-headless-svc.default.svc.cluster.local
-Address 1: 10.244.1.5
-Address 2: 10.244.2.8
-Address 3: 10.244.3.2
-```
+> **예시(참조) — 기대 출력 예시 (Pod IP가 직접 반환됨):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -1777,6 +1720,23 @@ Ingress는 클러스터 외부에서 내부 Service로의 HTTP/HTTPS 라우팅 �
 - **Ingress Controller**: 실제 트래픽 라우팅을 수행하는 컨트롤러이다. nginx, traefik, HAProxy, Contour, Envoy 기반 등이 있다. 클러스터에 별도로 설치해야 한다. Ingress Controller 없이 Ingress 리소스만 생성하면 아무런 효과가 없다.
 - **IngressClass**: 어떤 Ingress Controller가 Ingress를 처리할지 지정한다. 여러 Ingress Controller가 설치된 클러스터에서 라우팅을 구분하는 데 사용된다.
 - **Ingress 리소스**: 라우팅 규칙을 정의하는 쿠버네티스 리소스이다.
+
+세 요소가 왜 나누어져 있는지를 먼저 잡고 가면 이후 설명이 덜 혼란스럽다. Ingress 리소스는 "어떤 경로를 어떤 Service로 보낼지"라는 규칙(데이터)일 뿐이고, 그 규칙을 실제로 읽어 트래픽을 흘려보내는 실행 주체가 Ingress Controller(클러스터 안에 도는 nginx/traefik 같은 Pod)이다. 그런데 Ingress Controller는 종류별로 따로 설치되며 한 클러스터에 둘 이상 설치될 수 있다. 이때 어떤 Ingress 리소스를 어떤 Controller가 처리할지 짝지어 주는 식별자가 IngressClass이다. 정리하면 규칙은 Ingress, 실행기는 Controller, 둘을 연결하는 라벨이 IngressClass이다.
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  user(["외부 사용자"]) --> net(["인터넷 / LoadBalancer"])
+  net --> ctrl["Ingress Controller\n(nginx Pod)"]
+  ctrl -. "Ingress 규칙을 읽음" .-> rule{{"Ingress 리소스\n(host/path 규칙)"}}
+  ctrl --> svc1["Service A"]
+  ctrl --> svc2["Service B"]
+  svc1 --> p1(["Pod"])
+  svc2 --> p2(["Pod"])
+```
+_그림. Ingress 트래픽 경로: 외부 트래픽이 하나의 진입점(Controller)으로 들어와 Ingress 리소스의 host/path 규칙에 따라 여러 Service로 분기된다._
+
+각 Ingress Controller(nginx, traefik 등)는 클러스터에 따로 설치되어야 하며, 여러 Controller를 설치한 경우 각 Ingress 리소스의 `ingressClassName`(또는 IngressClass의 default 지정)으로 어떤 Controller가 그 규칙을 처리할지 지정한다. 이 매칭이 없으면 어느 Controller도 해당 규칙을 가져가지 않아 라우팅이 동작하지 않는다.
 
 #### IngressClass
 
@@ -1877,10 +1837,7 @@ spec:
 kubectl create secret tls tls-secret --cert=tls.crt --key=tls.key
 ```
 
-```text
-# 기대 출력 예시
-secret/tls-secret created
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 **pathType 종류:**
 - `Exact`: 정확히 일치하는 경로만 매칭한다. 예: `/api`는 `/api`에만 매칭, `/api/`에는 매칭하지 않는다.
@@ -1892,33 +1849,14 @@ secret/tls-secret created
 kubectl get ingress my-ingress
 ```
 
-```text
-# 기대 출력 예시
-NAME         CLASS   HOSTS               ADDRESS        PORTS     AGE
-my-ingress   nginx   myapp.example.com   192.168.1.50   80, 443   10m
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # Ingress 상세 확인
 kubectl describe ingress my-ingress
 ```
 
-```text
-# 기대 출력 예시
-Name:             my-ingress
-Namespace:        default
-Address:          192.168.1.50
-Ingress Class:    nginx
-Default backend:  <default>
-TLS:
-  tls-secret terminates myapp.example.com
-Rules:
-  Host               Path  Backends
-  ----               ----  --------
-  myapp.example.com
-                     /api   api-service:80 (10.244.1.5:8080,10.244.2.8:8080)
-                     /web   web-service:80 (10.244.3.2:3000)
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -1971,7 +1909,9 @@ spec:
   - Egress
 ```
 
-주의: Egress를 차단하면 DNS 조회도 차단된다. DNS(kube-system의 CoreDNS, UDP 53)에 대한 egress 허용을 별도로 추가해야 한다:
+왜 egress를 막으면 멀쩡하던 통신까지 깨지는지 먼저 짚는다. 쿠버네티스에서 Pod가 다른 Service를 부를 때는 IP가 아니라 `my-svc.my-ns.svc.cluster.local` 같은 이름을 쓰고, 이 이름을 실제 ClusterIP로 바꿔 주는 것이 클러스터 DNS(CoreDNS)이다. 그런데 DNS 질의 자체가 CoreDNS Pod로 나가는 아웃바운드(egress) 트래픽이다. 따라서 모든 egress를 차단하면 이름 해석이 먼저 실패하고, 그 결과 Pod 안에서 Service 조회를 포함한 거의 모든 외부 호출이 "이름을 못 찾음" 단계에서 막힌다. IP를 직접 적어 호출하는 경우가 아니라면 사실상 통신 불능이 된다.
+
+주의: 그러므로 egress를 차단할 때는 최소한 kube-system 네임스페이스의 CoreDNS로 향하는 DNS 트래픽(UDP/TCP 53)은 별도로 허용해야 한다. DNS(kube-system의 CoreDNS, UDP 53)에 대한 egress 허용을 별도로 추가한다:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -2086,43 +2026,14 @@ YAML 들여쓰기에서 `-`의 위치가 차이를 결정한다. CKA 시험에�
 kubectl get networkpolicy -n production
 ```
 
-```text
-# 기대 출력 예시
-NAME                   POD-SELECTOR   AGE
-default-deny-all       <none>         1h
-allow-specific         app=db         30m
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # NetworkPolicy 상세 확인
 kubectl describe networkpolicy allow-specific -n production
 ```
 
-```text
-# 기대 출력 예시
-Name:         allow-specific
-Namespace:    production
-Created on:   2024-01-15 10:00:00 +0000 UTC
-Labels:       <none>
-Annotations:  <none>
-Spec:
-  PodSelector:     app=db
-  Allowing ingress traffic:
-    To Port: 3306/TCP
-    From:
-      PodSelector: app=backend
-    From:
-      NamespaceSelector: env=staging
-    From:
-      IPBlock:
-        CIDR: 10.0.0.0/8
-        Except: 10.0.1.0/24
-  Allowing egress traffic:
-    To Port: 6379/TCP
-    To:
-      PodSelector: app=cache
-  Policy Types: Ingress, Egress
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -2153,14 +2064,7 @@ CoreDNS는 쿠버네티스 클러스터의 DNS 서버이다. `kube-system` 네�
 kubectl run test-dns --image=busybox:1.28 --rm -it --restart=Never -- nslookup kubernetes.default
 ```
 
-```text
-# 기대 출력 예시
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      kubernetes.default
-Address 1: 10.96.0.1 kubernetes.default.svc.cluster.local
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### CoreDNS 설정
 
@@ -2195,12 +2099,7 @@ DNS 해석이 실패하면 Pod 내에서 Service 이름으로 통신할 수 없�
 kubectl -n kube-system get pods -l k8s-app=kube-dns
 ```
 
-```text
-# 기대 출력 예시 (정상)
-NAME                       READY   STATUS    RESTARTS   AGE
-coredns-5d78c9869d-abc12   1/1     Running   0          24h
-coredns-5d78c9869d-def34   1/1     Running   0          24h
-```
+> **예시(참조) — 기대 출력 예시 (정상):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 2. CoreDNS 로그에서 오류 확인
@@ -2210,23 +2109,14 @@ kubectl -n kube-system logs -l k8s-app=kube-dns --tail=20
 kubectl -n kube-system get svc kube-dns
 ```
 
-```text
-# 기대 출력 예시
-NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
-kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   30d
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 4. Pod의 resolv.conf에서 DNS 서버 주소 확인
 kubectl exec my-pod -- cat /etc/resolv.conf
 ```
 
-```text
-# 기대 출력 예시
-nameserver 10.96.0.10
-search default.svc.cluster.local svc.cluster.local cluster.local
-options ndots:5
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 `ndots:5`는 중요한 설정이다. 쿼리 도메인에 `.`이 5개 미만이면, search domain을 순차적으로 붙여서 먼저 시도한다. 예를 들어 `my-svc`를 조회하면 `my-svc.default.svc.cluster.local`, `my-svc.svc.cluster.local`, `my-svc.cluster.local`을 순서대로 시도한 후, 마지막으로 `my-svc` 자체를 조회한다. 외부 도메인을 자주 조회하면 불필요한 DNS 쿼리가 발생할 수 있다.
 
@@ -2241,7 +2131,9 @@ options ndots:5
 2. 모든 노드는 NAT 없이 모든 Pod와 통신할 수 있어야 한다.
 3. Pod가 자기 자신의 IP 주소로 보는 것과 다른 Pod가 보는 IP 주소가 같아야 한다.
 
-이 요구사항을 구현하는 방법은 여러 가지이며(VXLAN 오버레이, BGP 라우팅, eBPF 등), 쿠버네티스는 특정 구현을 강제하지 않는다. 대신 CNI(Container Network Interface)라는 표준 플러그인 인터페이스를 정의하여, 다양한 네트워크 플러그인이 이를 구현하도록 한다. CNI는 CNCF 프로젝트로, 컨테이너에 네트워크 인터페이스를 추가/삭제하는 최소한의 인터페이스(ADD/DEL/CHECK 명령)만 정의한다.
+이 요구사항을 구현하는 방법은 여러 가지이며(VXLAN 오버레이: 노드 간 가상 터널로 Pod 패킷을 캡슐화하는 방식, BGP 라우팅: 라우터 간 경로 교환 프로토콜로 Pod 대역을 광고하는 방식, eBPF: 커널에 안전하게 프로그램을 올려 패킷을 처리하는 기술 등), 쿠버네티스는 특정 구현을 강제하지 않는다. 대신 CNI(Container Network Interface)라는 표준 플러그인 인터페이스를 정의하여, 다양한 네트워크 플러그인이 이를 구현하도록 한다. CNI는 CNCF 프로젝트로, 컨테이너에 네트워크 인터페이스를 추가/삭제하는 최소한의 인터페이스(ADD/DEL/CHECK 명령)만 정의한다.
+
+CNI 이전에는 어땠는가. 표준 인터페이스가 없던 시절에는 각 클라우드 제공자(AWS·GCP 등)와 온프레미스 환경이 저마다 다른 방식으로 Pod 네트워킹을 구현했고, 클러스터를 옮길 때마다 네트워크 계층을 새로 맞춰야 했다. CNI는 이 부분을 "플러그인으로 교체 가능한 표준"으로 떼어냈고, 그 결과 kubeadm은 네트워크 구현을 클러스터 설치에 묶지 않고 사용자가 골라 끼우도록 설계했다. 이것이 바로 `kubeadm init` 직후 노드가 `NotReady`로 보이는 이유다. 컨트롤 플레인은 떴지만 아직 CNI 플러그인이 없어 Pod 네트워킹이 성립하지 않은 상태이고, CNI를 설치하면 노드가 Ready로 바뀐다. 즉 CNI를 사후에 별도 설치해야 하는 것은 버그가 아니라 의도된 설계이다.
 
 - CNI 플러그인 설정 파일 위치: `/etc/cni/net.d/`
 - CNI 바이너리 위치: `/opt/cni/bin/`
@@ -2258,10 +2150,7 @@ options ndots:5
 ls /etc/cni/net.d/
 ```
 
-```text
-# 기대 출력 예시 (Calico 설치 시)
-10-calico.conflist  calico-kubeconfig
-```
+> **예시(참조) — 기대 출력 예시 (Calico 설치 시):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 노드의 Pod 네트워크 대역 확인 (Calico 예시)
@@ -2270,10 +2159,7 @@ kubectl get ipamblocks -o wide
 kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
 ```
 
-```text
-# 기대 출력 예시
-10.244.0.0/24 10.244.1.0/24 10.244.2.0/24
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -2401,20 +2287,15 @@ PVC는 다음 조건을 만족하는 PV에 바인딩된다:
 3. **StorageClass**가 일치해야 한다 (지정된 경우). `storageClassName: ""`을 명시하면 StorageClass가 없는 PV에만 바인딩된다.
 4. **Label Selector**가 일치해야 한다 (지정된 경우).
 
+조건 2에서 본 1:1 바인딩, 즉 10Gi PV에 5Gi를 요청해도 남은 5Gi를 다른 PVC가 못 쓰는 규칙이 처음엔 낭비처럼 보인다. 그러나 PV와 PVC는 각각 하나의 실제 스토리지 백엔드(예: AWS EBS 볼륨 하나, NFS share 하나)를 가리키는 핸들이다. 하나의 PV가 가리키는 백엔드 용량을 쪼개 여러 PVC에 나눠 붙이려면, 같은 디스크를 여러 워크로드가 공유하면서도 서로의 데이터를 침범하지 않도록 파티셔닝·격리·성능 보장을 스토리지 계층에서 추가로 책임져야 한다. 이는 복잡도와 장애 위험을 크게 키우므로, 쿠버네티스는 PV-PVC를 1:1로 단순하게 묶고, 용량 분할이 필요하면 더 작은 PV를 여러 개 만들거나 동적 프로비저닝으로 PVC마다 별도 볼륨을 생성하도록 설계했다. 즉 1:1 바인딩은 제약이 아니라 격리와 성능 보장을 단순하게 유지하기 위한 선택이다.
+
 ```bash
 # PV와 PVC 상태 확인
 kubectl get pv
 kubectl get pvc
 ```
 
-```text
-# 기대 출력 예시
-NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM             STORAGECLASS   AGE
-my-pv   10Gi       RWO            Retain           Bound    default/my-pvc    manual         5m
-
-NAME     STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-my-pvc   Bound    my-pv    10Gi       RWO            manual         3m
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -2471,20 +2352,20 @@ volumeBindingMode: WaitForFirstConsumer
 kubectl get storageclass
 ```
 
-```text
-# 기대 출력 예시
-NAME                     PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-fast-storage (default)   kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer   true                   30d
-standard                 kubernetes.io/gce-pd    Delete          Immediate              true                   30d
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
 ### 4.5 PV 라이프사이클
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  a["Available"] --> b["Bound"]
+  b --> r["Released"]
+  r --> e(["삭제 또는 재사용"])
 ```
-Available → Bound → Released → (삭제 또는 재사용)
-```
+_그림 3. PV 라이프사이클 상태 전이._
 
 | 상태 | 설명 |
 |---|---|
@@ -2512,13 +2393,7 @@ kubectl patch pv my-pv --type=json -p='[{"op": "remove", "path": "/spec/claimRef
 kubectl get pv
 ```
 
-```text
-# 기대 출력 예시
-NAME      CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM             STORAGECLASS   AGE
-my-pv     10Gi       RWO            Retain           Released    default/my-pvc    manual         1h
-my-pv-2   5Gi        RWO            Delete           Available                     fast-storage   30m
-my-pv-3   20Gi       RWX            Retain           Bound       prod/data-pvc     nfs-storage    2d
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -2534,12 +2409,7 @@ CKA 시험에서 가장 높은 비중을 차지하는 도메인이다. 체계적
 kubectl get nodes
 ```
 
-```text
-# 기대 출력 예시 (node01이 NotReady)
-NAME           STATUS     ROLES           AGE   VERSION
-controlplane   Ready      control-plane   30d   v1.30.0
-node01         NotReady   <none>          30d   v1.30.0
-```
+> **예시(참조) — 기대 출력 예시 (node01이 NotReady):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 kubectl describe node node01
@@ -2547,16 +2417,7 @@ kubectl describe node node01
 
 노드의 `Conditions` 섹션을 확인한다:
 
-```text
-# 기대 출력 예시 (문제 있는 노드)
-Conditions:
-  Type                 Status  LastHeartbeatTime                 Reason                       Message
-  ----                 ------  -----------------                 ------                       -------
-  MemoryPressure       False   2024-01-15T10:00:00Z             KubeletHasSufficientMemory   kubelet has sufficient memory available
-  DiskPressure         False   2024-01-15T10:00:00Z             KubeletHasNoDiskPressure     kubelet has no disk pressure
-  PIDPressure          False   2024-01-15T10:00:00Z             KubeletHasSufficientPID      kubelet has sufficient PID available
-  Ready                False   2024-01-15T09:55:00Z             KubeletNotReady              container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:Network plugin returns error: cni plugin not initialized
-```
+> **예시(참조) — 기대 출력 예시 (문제 있는 노드):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 노드가 `NotReady` 상태인 경우 확인 사항:
 1. **kubelet 서비스 상태**: `systemctl status kubelet`
@@ -2574,16 +2435,7 @@ Conditions:
 systemctl status kubelet
 ```
 
-```text
-# 기대 출력 예시 (문제 있는 경우)
-● kubelet.service - kubelet: The Kubernetes Node Agent
-     Loaded: loaded (/lib/systemd/system/kubelet.service; enabled; vendor preset: enabled)
-    Drop-In: /usr/lib/systemd/system/kubelet.service.d
-             └─10-kubeadm.conf
-     Active: activating (auto-restart) (Result: exit-code) since ...
-       Docs: https://kubernetes.io/docs/
-    Process: 1234 ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS ... (code=exited, status=1/FAILURE)
-```
+> **예시(참조) — 기대 출력 예시 (문제 있는 경우):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # kubelet 재시작
@@ -2615,25 +2467,7 @@ journalctl -u kubelet --no-pager -l | tail -50
 kubeadm certs check-expiration
 ```
 
-```text
-# 기대 출력 예시
-CERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY   EXTERNALLY MANAGED
-admin.conf                 Jan 15, 2025 10:00 UTC   364d            ca                      no
-apiserver                  Jan 15, 2025 10:00 UTC   364d            ca                      no
-apiserver-etcd-client      Jan 15, 2025 10:00 UTC   364d            ca                      no
-apiserver-kubelet-client   Jan 15, 2025 10:00 UTC   364d            ca                      no
-controller-manager.conf    Jan 15, 2025 10:00 UTC   364d            ca                      no
-etcd-healthcheck-client    Jan 15, 2025 10:00 UTC   364d            ca                      no
-etcd-peer                  Jan 15, 2025 10:00 UTC   364d            ca                      no
-etcd-server                Jan 15, 2025 10:00 UTC   364d            ca                      no
-front-proxy-client         Jan 15, 2025 10:00 UTC   364d            ca                      no
-scheduler.conf             Jan 15, 2025 10:00 UTC   364d            ca                      no
-
-CERTIFICATE AUTHORITY      EXPIRES                  RESIDUAL TIME   EXTERNALLY MANAGED
-ca                         Jan 12, 2034 10:00 UTC   3649d           no
-etcd-ca                    Jan 12, 2034 10:00 UTC   3649d           no
-front-proxy-ca             Jan 12, 2034 10:00 UTC   3649d           no
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 인증서 갱신 (모든 인증서)
@@ -2650,13 +2484,34 @@ crictl stop <container-id>
 openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | grep -E "Issuer|Subject|Not Before|Not After"
 ```
 
-```text
-# 기대 출력 예시
-        Issuer: CN = kubernetes
-        Not Before: Jan 15 10:00:00 2024 GMT
-        Not After : Jan 15 10:00:00 2025 GMT
-        Subject: CN = kube-apiserver
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
+
+#### 🛠 직접 해보기 — kubelet 중지로 NotReady 재현 후 복구
+
+파괴 실습이 허용된 dev 클러스터의 worker 노드에서 kubelet을 의도적으로 중지해 노드를 NotReady로 만든 뒤 복구한다. `ssh dev-worker1`은 `~/.ssh/config`에 등록된 VM 별칭으로 비밀번호 없이 접속된다(처음 1회만 주석). 시험에서 "노드가 NotReady"인 문제의 진단 흐름을 손에 익히는 것이 목적이다. 제한 시간 5분을 의식한다.
+
+```bash
+# (로컬에서) 현재 노드 상태 — 모두 Ready 인지 먼저 확인
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes
+
+# (worker 노드에 접속) dev-worker1 은 ~/.ssh/config 에 등록된 VM 별칭
+ssh dev-worker1
+
+# 1. kubelet 중지 → 노드가 곧 NotReady 로 전환된다
+sudo systemctl stop kubelet
+exit
+
+# 2. (로컬) NotReady 확인 — node-monitor-grace-period(기본 40초) 후 반영된다
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes -w
+
+# 3. (worker) 복구 — kubelet 재시작
+ssh dev-worker1 'sudo systemctl start kubelet'
+
+# 4. (로컬) 다시 Ready 가 될 때까지 대기
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml wait --for=condition=Ready node --all --timeout=120s
 ```
+
+검증 포인트: 2단계에서 STATUS가 `NotReady`로 바뀌면 노드 진단 절차(`systemctl status kubelet` → `journalctl -u kubelet`)가 의미를 갖는다. 4단계가 통과하면 복구가 완료된 것이다. 출력 캡처는 미캡처(클러스터 가동 시 day 본문에서 교체).
 
 ---
 
@@ -2677,13 +2532,7 @@ Pod가 스케줄링되지 않은 상태이다.
 kubectl describe pod <pod-name>   # Events 섹션 확인
 ```
 
-```text
-# 기대 출력 예시 (리소스 부족)
-Events:
-  Type     Reason            Age   From               Message
-  ----     ------            ----  ----               -------
-  Warning  FailedScheduling  10s   default-scheduler  0/3 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }, 2 Insufficient cpu.
-```
+> **예시(참조) — 기대 출력 예시 (리소스 부족):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 kubectl get events --sort-by='.lastTimestamp' --field-selector involvedObject.name=<pod-name>
@@ -2705,24 +2554,13 @@ kubectl get events --sort-by='.lastTimestamp' --field-selector involvedObject.na
 kubectl logs <pod-name> --previous
 ```
 
-```text
-# 기대 출력 예시 (설정 오류)
-Error: cannot connect to database at postgres:5432: connection refused
-```
+> **예시(참조) — 기대 출력 예시 (설정 오류):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 kubectl describe pod <pod-name>      # Exit Code, 재시작 횟수 확인
 ```
 
-```text
-# 기대 출력 예시
-    Last State:     Terminated
-      Reason:       Error
-      Exit Code:    1
-      Started:      Mon, 15 Jan 2024 10:00:00 +0000
-      Finished:     Mon, 15 Jan 2024 10:00:05 +0000
-    Restart Count:  5
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### ImagePullBackOff
 
@@ -2738,17 +2576,7 @@ kubectl describe pod <pod-name>      # Exit Code, 재시작 횟수 확인
 kubectl describe pod <pod-name>   # Events에서 pull 실패 원인 확인
 ```
 
-```text
-# 기대 출력 예시 (이미지 미존재)
-Events:
-  Type     Reason     Age   From               Message
-  ----     ------     ----  ----               -------
-  Normal   Pulling    30s   kubelet            Pulling image "nginx:nonexistent-tag"
-  Warning  Failed     25s   kubelet            Failed to pull image "nginx:nonexistent-tag": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:nonexistent-tag": failed to resolve reference "docker.io/library/nginx:nonexistent-tag": docker.io/library/nginx:nonexistent-tag: not found
-  Warning  Failed     25s   kubelet            Error: ErrImagePull
-  Normal   BackOff    10s   kubelet            Back-off pulling image "nginx:nonexistent-tag"
-  Warning  Failed     10s   kubelet            Error: ImagePullBackOff
-```
+> **예시(참조) — 기대 출력 예시 (이미지 미존재):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 #### Error
 
@@ -2780,14 +2608,7 @@ kubectl describe pod <pod-name>   # Exit Code 확인
 kubectl describe pod <pod-name>   # "OOMKilled" 확인
 ```
 
-```text
-# 기대 출력 예시
-    Last State:     Terminated
-      Reason:       OOMKilled
-      Exit Code:    137
-      Started:      Mon, 15 Jan 2024 10:00:00 +0000
-      Finished:     Mon, 15 Jan 2024 10:05:00 +0000
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 해결:
 - `resources.limits.memory`를 늘린다. 적정 값은 애플리케이션의 실제 메모리 사용 패턴을 모니터링하여 결정한다.
@@ -2799,11 +2620,7 @@ kubectl describe pod <pod-name>   # "OOMKilled" 확인
 kubectl top pod <pod-name>
 ```
 
-```text
-# 기대 출력 예시
-NAME       CPU(cores)   MEMORY(bytes)
-my-pod     50m          245Mi
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ---
 
@@ -2819,84 +2636,7 @@ my-pod     50m          245Mi
    kubectl get endpoints <service-name>   # 엔드포인트가 비어있으면 selector 불일치
    ```
 
-   ```text
-   # 기대 출력 예시 (엔드포인트가 비어있는 경우 - 문제)
-   NAME         ENDPOINTS   AGE
-   my-service   <none>      5m
-
-   # 기대 출력 예시 (정상)
-   NAME         ENDPOINTS                                      AGE
-   my-service   10.244.1.5:8080,10.244.2.8:8080                5m
-   ```
-
-2. **Service의 port와 targetPort 확인**
-   - `port`: Service가 수신하는 포트
-   - `targetPort`: Pod 컨테이너가 수신하는 포트. 이 값이 컨테이너의 실제 리스닝 포트와 일치해야 한다.
-
-3. **Pod가 정상적으로 실행 중인지 확인**
-   ```bash
-   kubectl get pods -l <selector-labels>
-   ```
-
-4. **Pod 내에서 프로세스가 해당 포트에서 수신 중인지 확인**
-   ```bash
-   kubectl exec <pod-name> -- netstat -tlnp
-   # 또는
-   kubectl exec <pod-name> -- ss -tlnp
-   ```
-
-5. **kube-proxy 상태 확인**
-   ```bash
-   kubectl -n kube-system get pods -l k8s-app=kube-proxy
-   kubectl -n kube-system logs -l k8s-app=kube-proxy --tail=20
-   ```
-
-#### DNS 해석 실패
-
-확인 사항:
-1. **CoreDNS Pod 상태 확인**
-   ```bash
-   kubectl -n kube-system get pods -l k8s-app=kube-dns
-   ```
-
-2. **CoreDNS 로그 확인**
-   ```bash
-   kubectl -n kube-system logs -l k8s-app=kube-dns --tail=20
-   ```
-
-3. **DNS 테스트**
-   ```bash
-   kubectl run test-dns --image=busybox:1.28 --rm -it --restart=Never -- \
-     nslookup kubernetes.default
-   ```
-
-   ```text
-   # 기대 출력 예시 (정상)
-   Server:    10.96.0.10
-   Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-   Name:      kubernetes.default
-   Address 1: 10.96.0.1 kubernetes.default.svc.cluster.local
-
-   # 기대 출력 예시 (실패)
-   ;; connection timed out; no servers could be reached
-   ```
-
-4. **CoreDNS ConfigMap 확인**
-   ```bash
-   kubectl -n kube-system get configmap coredns -o yaml
-   ```
-
-일반적인 DNS 실패 원인:
-- CoreDNS Pod가 CrashLoopBackOff 상태이다 (Corefile 설정 오류, 루프 감지 등).
-- kube-dns Service의 ClusterIP가 kubelet 설정의 `clusterDNS`와 일치하지 않는다.
-- NetworkPolicy가 DNS 트래픽(UDP 53)을 차단하고 있다.
-
----
-
-### 5.4 로그 분석 도구
-
-#### kubectl 기반
+   > **예시(참조) — 엔드포인트가 비어있는 경우(문제):** `kubectl get endpoints` 결과가 비어 있으면 Service selector 와 Pod label 불일치다. 실측 Endpoints 캡처는 day11·day12·02-examples 참고.
 
 ```bash
 # Pod 로그 확인
@@ -2955,14 +2695,7 @@ crictl ps
 crictl ps -a   # 종료된 컨테이너 포함
 ```
 
-```text
-# 기대 출력 예시
-CONTAINER           IMAGE               CREATED             STATE               NAME                      ATTEMPT
-a1b2c3d4e5f6        e5f6a1b2c3d4        2 hours ago         Running             kube-apiserver            0
-b2c3d4e5f6a1        f6a1b2c3d4e5        2 hours ago         Running             kube-controller-manager   0
-c3d4e5f6a1b2        a1b2c3d4e5f6        2 hours ago         Running             kube-scheduler            0
-d4e5f6a1b2c3        b2c3d4e5f6a1        2 hours ago         Running             etcd                      0
-```
+> **예시(참조) — 기대 출력 예시:** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 컨테이너 로그
@@ -2977,7 +2710,7 @@ crictl images
 
 ---
 
-### 5.5 클러스터 컴포넌트 장애
+### 5.4 클러스터 컴포넌트 장애
 
 #### kube-apiserver 장애
 
@@ -2989,11 +2722,7 @@ crictl images
 crictl ps | grep apiserver
 ```
 
-```text
-# 기대 출력 예시 (apiserver가 없거나 반복 재시작 중)
-(출력 없음 또는)
-e5f6a1b2c3d4   abc123   5 seconds ago   Running   kube-apiserver   15   ...
-```
+> **예시(참조) — 기대 출력 예시 (apiserver가 없거나 반복 재시작 중):** 개념 이해용 기대 출력 예시다(일반 placeholder 클러스터 기준). 동일·유사 명령의 **실측 스크린샷**은 CKA daily(day01~20) 및 02·03 본문 캡처에서 확인할 수 있다.
 
 ```bash
 # 매니페스트 확인
@@ -3069,7 +2798,85 @@ ETCDCTL_API=3 etcdctl member list \
 - `--initial-cluster` 설정 오류 (HA 구성에서 멤버 주소가 잘못된 경우)
 - 디스크 I/O 성능 저하 (etcd는 쓰기 지연에 민감하다. SSD를 권장하며, `fsync` 지연이 10ms를 초과하면 경고가 발생한다)
 
+#### 🛠 직접 해보기 — apiserver 매니페스트 오타 주입 후 진단·복구
+
+파괴 실습이 허용된 staging 클러스터의 master 노드에서 apiserver Static Pod 매니페스트에 의도적 오타를 넣어 apiserver를 다운시킨 뒤, crictl/journalctl로 진단하고 복구한다. apiserver가 죽으면 `kubectl`이 동작하지 않으므로, 노드에 직접 들어가 crictl로 진단하는 흐름을 익히는 것이 핵심이다. `ssh staging-master`는 `~/.ssh/config`에 등록된 VM 별칭으로 비밀번호 없이 접속된다(처음 1회만 주석). 반드시 백업을 먼저 떠 두고 시작한다.
+
+```bash
+# staging-master 는 ~/.ssh/config 에 등록된 VM 별칭
+ssh staging-master
+
+# 0. 매니페스트 백업 (복구 안전장치)
+sudo cp /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/kube-apiserver.yaml.bak
+
+# 1. 오타 주입 — 컨테이너 이미지 태그를 존재하지 않는 값으로 바꾼다
+#    (직접 편집: --image 또는 image: 줄의 버전을 v9.9.9 등으로 변경)
+sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
+
+# 2. 진단 — apiserver 컨테이너가 사라지거나 재시작을 반복한다
+sudo crictl ps -a | grep apiserver
+sudo journalctl -u kubelet --no-pager -l | grep -i apiserver | tail -20
+
+# 3. 복구 — 백업 매니페스트로 되돌리면 kubelet 이 자동으로 재기동한다
+sudo cp /tmp/kube-apiserver.yaml.bak /etc/kubernetes/manifests/kube-apiserver.yaml
+exit
+
+# 4. (로컬) apiserver 정상화 확인
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml get --raw='/healthz'
+```
+
+검증 포인트: 2단계에서 `kubectl`이 `connection refused`로 막히고 crictl에서만 apiserver 상태가 보이는 것을 직접 확인한다. 4단계에서 `ok`가 반환되면 복구가 완료된 것이다. Static Pod는 kubectl로 삭제할 수 없고 매니페스트 파일이 단일 진실원(source of truth)이라는 점이 이 실습의 핵심이다. 출력 캡처는 미캡처(클러스터 가동 시 day 본문에서 교체).
+
 ---
+
+## ✅ 자가점검
+
+다음 질문에 답한 뒤 정답을 펼쳐 확인한다.
+
+<details>
+<summary>1. apiserver가 다운되면 이미 실행 중인 Pod는 즉시 죽는가?</summary>
+
+즉시 죽지 않는다. 실행 중인 Pod는 각 노드의 kubelet이 자체적으로 유지하므로 계속 동작한다. 다만 새 배포·스케일링·자동 복구 같은 상태 변경 작업은 멈춘다(apiserver가 etcd 쓰기 통로를 독점하기 때문).
+</details>
+
+<details>
+<summary>2. 클러스터를 1.28에서 1.30으로 한 번에 업그레이드할 수 있는가?</summary>
+
+불가능하다. 한 마이너 버전씩 순차적으로(1.28 → 1.29 → 1.30) 올려야 한다. apiserver가 N-1, N, N+1 버전 간 API 호환성만 보장하기 때문이다. 업그레이드 순서는 Control Plane 먼저, Worker Node 나중이다.
+</details>
+
+<details>
+<summary>3. etcd 노드 5개 중 몇 개까지 장애를 허용하는가?</summary>
+
+2개까지 허용한다. quorum = (n/2)+1 = 3 이므로 3개가 살아 있으면 쓰기가 가능하다. 짝수 노드는 비효율적이라 실무에서는 3개 또는 5개를 쓴다.
+</details>
+
+<details>
+<summary>4. ResourceQuota가 설정된 네임스페이스에서 requests/limits 없이 Pod를 만들면?</summary>
+
+생성이 거부된다(예: `must specify requests.cpu`). LimitRange로 기본 requests/defaultRequest와 default limits를 설정해 두면 Admission 단계에서 값이 자동 주입되어 거부를 피할 수 있다.
+</details>
+
+<details>
+<summary>5. 모든 컨테이너에 requests=limits로 지정한 Pod의 QoS 클래스는?</summary>
+
+Guaranteed이다. 노드 메모리 부족 시 가장 마지막에 축출된다. requests만 일부 지정하면 Burstable, 아무것도 지정하지 않으면 BestEffort(가장 먼저 축출)이다.
+</details>
+
+<details>
+<summary>6. Static Pod를 kubectl delete로 지울 수 있는가?</summary>
+
+지울 수 없다. Static Pod는 kubelet이 `/etc/kubernetes/manifests/`의 매니페스트 파일을 읽어 직접 관리하므로, 매니페스트 파일을 옮기거나 삭제해야 Pod가 사라진다. apiserver에는 미러(mirror) Pod로만 보인다.
+</details>
+
+## 더 읽을거리
+
+- 쿠버네티스 공식 문서 — Cluster Architecture: https://kubernetes.io/docs/concepts/architecture/
+- kubeadm으로 클러스터 부트스트랩: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/
+- etcd 운영 가이드(백업/복구): https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/
+- RBAC 인가: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- 스케줄러 동작과 플러그인: https://kubernetes.io/docs/concepts/scheduling-eviction/
+- 같은 저장소 심화 문서: [../../certification/etcd/](../../certification/etcd/), [../../certification/containerd/](../../certification/containerd/)
 
 ## 시험 팁
 

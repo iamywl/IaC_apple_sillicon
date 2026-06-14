@@ -28,20 +28,14 @@ D) Code
 
 **정답: C) Cloud ✅**
 
-4C 모델은 바깥쪽부터 Cloud -> Cluster -> Container -> Code 순서이다. 각 계층의 보안이 바깥 계층의 보안에 의존하므로, Cloud 계층이 가장 기본적인 보안 기반이 된다. tart-infra에서는 Tart VM이 Cloud 계층에 해당한다.
+4C 모델은 바깥쪽부터 Cloud -> Cluster -> Container -> Code 순서이다. 각 계층의 보안이 바깥 계층의 보안에 의존하므로, Cloud 계층이 가장 기본적인 보안 기반이 된다. 이 저장소의 실습 환경에서는 Tart(Apple Silicon Mac에서 가상머신을 자동으로 생성·관리하는 VM 자동화 도구)로 띄운 VM과 그 호스트 하이퍼바이저가 Cloud 계층에 해당하며, 이 하이퍼바이저 격리가 인프라 보안의 기초가 된다.
 
 **검증:**
 ```bash
 # Kubernetes 공식 문서에서 4C 계층 구조 확인
 kubectl explain pod.spec.containers.securityContext
 ```
-```text
-# 4C 계층 구조 (바깥→안쪽)
-# Cloud  : 인프라(AWS/GCP/Azure/Bare Metal) 보안 — IAM, 네트워크, 물리 보안
-# Cluster: K8s 컴포넌트(API Server, etcd, kubelet) 보안
-# Container: 이미지, 런타임, SecurityContext 설정
-# Code   : 애플리케이션 레벨 취약점, 입력 검증, 의존성 관리
-```
+> **참조 — 4C 보안 모델(Cloud/Cluster/Container/Code):** 4C 계층 구조 (바깥→안쪽) ...
 
 **오답 분석:**
 - A) Container — 안쪽에서 세 번째 계층이다. 컨테이너 이미지, 런타임 보안을 담당한다.
@@ -80,13 +74,7 @@ kubectl get ciliumnetworkpolicy -n demo -o yaml
 # Istio mTLS STRICT 모드 확인 (서비스 간 상호 인증)
 kubectl get peerauthentication -n demo -o yaml
 ```
-```text
-# default-deny 정책 적용 시 예상 출력:
-# spec:
-#   endpointSelector: {}
-#   ingress: []        ← 모든 인바운드 트래픽 차단
-#   egress: []         ← 모든 아웃바운드 트래픽 차단
-```
+> **예시(참조) — default-deny 정책 적용 시 예상 출력::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 내부 네트워크 트래픽 신뢰 — 이는 전통적 경계 보안(Perimeter Security) 모델이다. Zero Trust와 정반대이다.
@@ -125,12 +113,7 @@ docker inspect nginx:1.25 --format='{{index .RepoDigests 0}}'
 # Pod에서 실제 사용 중인 이미지 다이제스트 확인
 kubectl get pod <pod-name> -o jsonpath='{.status.containerStatuses[0].imageID}'
 ```
-```text
-# 다이제스트 형식 예시:
-nginx@sha256:6db391d1c0cfb30588ba0bf72ea999404f2764feb30e637966acb637f8c8d26c
-# 태그 형식(권장하지 않음):
-nginx:latest  ← 가리키는 이미지가 언제든 변경될 수 있다
-```
+> **예시(참조) — 다이제스트 형식 예시::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) latest 태그 사용 — 태그는 mutable이다. 레지스트리에서 동일 태그에 다른 이미지를 push할 수 있으므로 재현성(reproducibility)이 보장되지 않는다.
@@ -162,6 +145,8 @@ D) Pod의 리소스 사용량을 제한한다
 
 SBOM(Software Bill of Materials)은 소프트웨어의 모든 구성 요소, 라이브러리, 의존성을 목록화한 문서이다. 취약점 발견 시 영향 범위를 빠르게 파악하고 대응하는 데 필수적이다. SPDX와 CycloneDX가 대표적인 SBOM 표준 형식이다.
 
+아래 검증 명령은 클러스터 가동 없이 Trivy/Syft만 설치되어 있으면 로컬에서 그대로 재현할 수 있다. `trivy image --format cyclonedx nginx:1.25 | jq '.components[]'`를 직접 실행하면 nginx 이미지에 포함된 OS 패키지·라이브러리가 components 배열로 출력되며, 그 일부가 아래 텍스트 예시처럼 `name`/`version`/`type` 필드를 가진 항목으로 나타난다. 즉 SBOM은 "이 이미지 안에 무엇이 들어 있는가"를 기계가 읽을 수 있는 목록으로 만든 것이다.
+
 **검증:**
 ```bash
 # Trivy로 컨테이너 이미지의 SBOM 생성 (CycloneDX 형식)
@@ -171,19 +156,7 @@ syft nginx:1.25 -o spdx-json > sbom-spdx.json
 # SBOM 내용 확인
 cat sbom.json | jq '.components[] | {name, version, type}' | head -20
 ```
-```text
-# SBOM 출력 예시 (CycloneDX):
-{
-  "name": "libssl3",
-  "version": "3.1.4-r2",
-  "type": "library"
-}
-{
-  "name": "zlib",
-  "version": "1.3-r2",
-  "type": "library"
-}
-```
+> **예시(참조) — SBOM 출력 예시 (CycloneDX)::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 컨테이너 런타임 성능 최적화 — SBOM은 성능과 무관하다. 성능 최적화는 cgroup, 런타임 설정의 영역이다.
@@ -215,6 +188,8 @@ D) 운영 환경에서만 보안 테스트를 수행한다
 
 Shift Left는 보안 활동을 소프트웨어 개발 라이프사이클의 초기 단계(설계, 코딩, 빌드)로 앞당기는 것이다. CI/CD 파이프라인에 이미지 스캔, SAST, DAST 등을 통합하여 취약점을 조기에 발견하고 수정 비용을 절감한다.
 
+여기서 등장하는 분석 기법 용어를 먼저 풀이한다. SAST(Static Application Security Testing — 정적 분석, 프로그램을 실행하지 않고 소스코드/바이트코드를 훑어 취약 패턴을 탐지)는 빌드 전에 코드 자체의 결함(SQL 인젝션 패턴, 하드코딩된 비밀 등)을 찾는다. DAST(Dynamic Application Security Testing — 동적 분석, 애플리케이션을 실제 실행시켜 외부에서 요청을 보내 런타임 취약점을 탐지)는 실행 중인 서비스의 인증 우회·XSS 같은 결함을 찾는다. SCA(Software Composition Analysis — 소프트웨어 구성 분석, 직접 작성한 코드가 아니라 의존하는 오픈소스 라이브러리의 알려진 CVE를 탐지)는 `package.json`·`go.mod` 같은 의존성 목록을 취약점 DB와 대조한다. SAST·SCA는 코드/의존성을 보고 실행 전에, DAST는 실행 후에 동작한다는 점이 핵심 차이이다.
+
 **검증:**
 ```bash
 # CI 파이프라인에서 Shift Left 구현 예시 (Jenkinsfile / GitHub Actions)
@@ -227,15 +202,7 @@ trivy image myapp:${GIT_SHA}
 # 4단계: IaC 보안 검사
 trivy config --severity HIGH,CRITICAL k8s-manifests/
 ```
-```text
-# Trivy 이미지 스캔 결과 예시:
-Total: 3 (HIGH: 2, CRITICAL: 1)
-┌──────────┬────────────────┬──────────┬─────────┬──────────────────────┐
-│ Library  │ Vulnerability  │ Severity │ Version │ Fixed Version        │
-├──────────┼────────────────┼──────────┼─────────┼──────────────────────┤
-│ libssl3  │ CVE-2024-0727  │ CRITICAL │ 3.1.4   │ 3.1.5               │
-└──────────┴────────────────┴──────────┴─────────┴──────────────────────┘
-```
+> **참조 — 취약점/CVE 개념:** Trivy 이미지 스캔 결과 예시: ...
 
 **오답 분석:**
 - A) 배포 후 모니터링 단계로 미루기 — 이는 Shift Right에 해당한다. 프로덕션 모니터링은 필요하지만, 보안 결함 수정 비용은 개발 후기로 갈수록 기하급수적으로 증가한다.
@@ -278,15 +245,7 @@ cosign sign myregistry.io/myapp:v1.0  # OIDC 인증 후 자동 서명
 cosign verify --certificate-identity=user@example.com \
   --certificate-oidc-issuer=https://accounts.google.com myregistry.io/myapp:v1.0
 ```
-```text
-# 서명 검증 성공 시 출력:
-Verification for myregistry.io/myapp:v1.0 --
-The following checks were performed on each of these signatures:
-  - The cosign claims were validated
-  - The signatures were verified against the specified public key
-
-[{"critical":{"identity":{"docker-reference":"myregistry.io/myapp"},...}]
-```
+> **예시(참조) — 서명 검증 성공 시 출력::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 이미지 크기 축소 — 이미지 경량화는 멀티스테이지 빌드, distroless/alpine 베이스 이미지가 담당한다.
@@ -331,17 +290,7 @@ curl -k https://<api-server>:6443/api/v1/namespaces --header "Authorization: "
 # 비활성화 상태에서 RBAC 확인
 kubectl get clusterrolebinding | grep anonymous
 ```
-```text
-# --anonymous-auth=false 설정 시 인증 없는 요청 결과:
-{
-  "kind": "Status",
-  "apiVersion": "v1",
-  "status": "Failure",
-  "message": "Unauthorized",
-  "code": 401
-}
-# --anonymous-auth=true (기본값) 시 system:anonymous로 처리됨
-```
+![kube-apiserver 보안 플래그(grep)](images/kcsa-apiserver-flags.png)
 
 **오답 분석:**
 - A) `--disable-anonymous-auth` — 존재하지 않는 플래그이다. API Server가 기동 시 오류를 반환한다.
@@ -388,18 +337,36 @@ ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \
   --key=/etc/kubernetes/pki/etcd/server.key \
   get /registry/secrets/default/my-secret | hexdump -C | head
 ```
-```text
-# etcd TLS 인증서 파일 목록:
-ca.crt  ca.key  healthcheck-client.crt  healthcheck-client.key
-peer.crt  peer.key  server.crt  server.key
+![etcd 내 Secret 저장 형태(hexdump)](images/kcsa-etcd.png)
 
-# 암호화 미적용 시 etcd에서 Secret 평문 노출:
-/registry/secrets/default/my-secret
-k8s:enc:identity:v1:...password=MyS3cretP@ss
+**🛠 직접 해보기 (encryption at rest 적용 전후 비교):**
+전제 — staging 클러스터가 가동 중이어야 하며(`./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh staging`), API Server 정적 파드 매니페스트와 etcd 인증서를 수정·재기동하는 파괴적 실습이므로 staging 또는 dev에서만 수행한다(platform/prod 금지). 마스터 노드 SSH 접속(`ssh staging-master`) 후 root로 작업한다.
 
-# 암호화 적용(aescbc) 시:
-k8s:enc:aescbc:v1:key1:... (바이너리 데이터)
+```bash
+# (a) 암호화 미적용 상태에서 Secret 생성 후 etcd 평문 노출 확인
+kubectl --kubeconfig kubeconfig/staging.yaml create secret generic my-secret \
+  --from-literal=password=MyS3cretP@ss -n default
+ssh staging-master 'sudo ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  get /registry/secrets/default/my-secret | hexdump -C | head'
+#   → password=MyS3cretP@ss 가 평문으로 보이면 암호화 미적용 상태이다.
+
+# (b) EncryptionConfiguration 작성 및 API Server에 연결
+#   /etc/kubernetes/enc/enc.yaml 에 aescbc 프로바이더로 EncryptionConfiguration 생성 후,
+#   kube-apiserver.yaml 에 --encryption-provider-config=/etc/kubernetes/enc/enc.yaml 추가.
+#   static pod 이므로 매니페스트 저장 즉시 API Server 가 재기동된다.
+
+# (c) 기존 Secret 재암호화(replace) 후 다시 조회
+kubectl --kubeconfig kubeconfig/staging.yaml get secret my-secret -n default -o yaml \
+  | kubectl --kubeconfig kubeconfig/staging.yaml replace -f -
+#   다시 (a)의 etcdctl get 을 실행하면 k8s:enc:aescbc:v1:... 바이너리로 바뀌어
+#   더 이상 평문 password 가 보이지 않는다.
 ```
+
+이 실습의 핵심은 (a)와 (c)의 동일한 etcdctl 조회 결과를 비교하는 것이다. EncryptionConfiguration은 적용 이후 새로 쓰이는(write) 객체에만 암호화를 적용하므로, 이미 저장된 Secret은 `replace`로 한 번 다시 써 주어야 암호화된다.
 
 **오답 분석:**
 - A) 데이터 압축/로그 로테이션 — 운영 효율성 관련이며 보안과 직접적 관련이 없다.
@@ -429,7 +396,7 @@ D) `--rotate-certificates=true`로 인증서 자동 갱신을 활성화한다
 
 **정답: C) `--read-only-port=10255`로 읽기 전용 포트를 활성화한다 ✅**
 
-kubelet의 읽기 전용 포트(10255)는 인증 없이 노드 정보를 노출하므로 `--read-only-port=0`으로 비활성화해야 한다. tart-infra의 kubelet 설정에서 authorization mode가 Webhook으로 설정되어 있는지 확인해 볼 수 있다.
+kubelet의 읽기 전용 포트(10255)는 인증 없이 노드 정보를 노출하므로 `--read-only-port=0`으로 비활성화해야 한다. 정답을 가리는 핵심은 authorization mode이다. 보기 B의 `--authorization-mode=Webhook`은 kubelet이 수신한 요청의 인가 판단을 API Server에 위임하는 올바른 설정이므로, tart-infra의 kubelet 설정에서 이 값이 Webhook으로 지정되어 있는지를 확인해 두면 보기 B가 정상 설정임을 직접 검증할 수 있다.
 
 **검증:**
 ```bash
@@ -440,22 +407,7 @@ curl http://<node-ip>:10255/pods
 # 보안 포트(10250) 인증 확인
 curl -k https://<node-ip>:10250/pods
 ```
-```text
-# 안전한 kubelet 설정:
-readOnlyPort: 0                    # 읽기 전용 포트 비활성화
-authentication:
-  anonymous:
-    enabled: false                 # 익명 접근 차단
-  webhook:
-    enabled: true                  # API Server 인증 위임
-authorization:
-  mode: Webhook                    # API Server 인가 위임
-
-# 10255 포트 활성화 시 인증 없이 노출되는 정보:
-# /pods — 노드의 모든 Pod 목록(환경변수 포함)
-# /spec — 노드 하드웨어 스펙
-# /stats — 리소스 사용량 통계
-```
+> **예시(참조) — 안전한 kubelet 설정::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) `--anonymous-auth=false` — 올바른 보안 설정이다. kubelet에 대한 익명 접근을 차단한다.
@@ -496,13 +448,7 @@ kubectl config view --minify -o jsonpath='{.users[0].user}'
 # API Server에 X.509 인증서로 접근
 curl -k --cert client.crt --key client.key https://<api-server>:6443/api/v1/pods
 ```
-```text
-# API Server 인증 플래그 예시:
---client-ca-file=/etc/kubernetes/pki/ca.crt          # X.509 인증
---service-account-key-file=/etc/kubernetes/pki/sa.pub # SA 토큰 인증
---oidc-issuer-url=https://keycloak.example.com/realms/k8s  # OIDC 인증
---token-auth-file=/etc/kubernetes/tokens.csv          # Static Token (비권장)
-```
+> **예시(참조) — API Server 인증 플래그 예시::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) X.509 클라이언트 인증서 — API Server의 `--client-ca-file` 플래그로 활성화되는 인증 방식이다. kubeadm 기본 인증 방식이다.
@@ -544,18 +490,7 @@ openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -dates
 # 인증서 SAN(Subject Alternative Name) 확인
 openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | grep -A1 "Subject Alternative Name"
 ```
-```text
-# /etc/kubernetes/pki/ 디렉터리 구조:
-ca.crt                ca.key                 # 클러스터 CA
-apiserver.crt         apiserver.key          # API Server 서빙 인증서
-apiserver-kubelet-client.crt/key             # API Server→kubelet 클라이언트 인증서
-front-proxy-ca.crt    front-proxy-ca.key     # Front Proxy CA
-front-proxy-client.crt/key                   # Aggregation Layer 인증서
-sa.key                sa.pub                 # ServiceAccount 토큰 서명 키
-etcd/                                        # etcd 전용 인증서 디렉터리
-  ca.crt  ca.key  server.crt  server.key  peer.crt  peer.key
-  healthcheck-client.crt  healthcheck-client.key
-```
+> **예시(참조) — /etc/kubernetes/pki/ 디렉터리 구조::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) `/var/lib/kubelet/pki/` — kubelet 자체의 서빙 인증서가 위치하는 경로이다. API Server 인증서 위치가 아니다.
@@ -569,7 +504,7 @@ kubeadm은 PKI(Public Key Infrastructure) 체계를 사용하여 클러스터 �
 `/etc/kubernetes/pki/ca.key` 파일에 대한 접근 권한이 부적절하게 설정(예: 0644)되면, 노드에 접근한 공격자가 CA 키로 `system:masters` 그룹의 클라이언트 인증서를 자체 서명하여 cluster-admin 권한을 획득한다. `openssl req` + `openssl x509`로 수 초 만에 가능하다.
 
 **등장 배경:**
-kubeadm 이전에는 수동으로 각 컴포넌트의 인증서를 생성하고 배포해야 했다. 인증서 경로가 표준화되지 않아 운영 복잡성이 높았다. kubeadm이 `/etc/kubernetes/pki/`를 표준 경로로 지정하고, `kubeadm init` 시 전체 PKI 체계를 자동 생성하면서 인증서 관리가 표준화되었다.
+kubeadm 이전에는 수동으로 각 컴포넌트의 인증서를 생성하고 배포해야 했다. 이때 조직마다 인증서를 두는 위치가 제각각이어서(`/opt/k8s/certs`, `/etc/ssl/k8s`, `/srv/kubernetes` 등), 운영 인수인계나 자동화 스크립트 작성 시 "이 클러스터의 인증서가 어디에 있는가"부터 확인해야 하는 복잡성이 있었다. kubeadm이 `/etc/kubernetes/pki/`를 표준 경로로 지정하면서 — `/etc/`는 호스트별 설정 파일을 두는 POSIX 관례 경로이다 — 모든 kubeadm 배포 클러스터가 동일한 위치에서 인증서를 관리하게 표준화되었다. `kubeadm init` 시 전체 PKI 체계를 이 경로에 자동 생성하므로, 점검·갱신·트러블슈팅 명령을 클러스터마다 바꿀 필요가 없어졌다.
 
 </details>
 
@@ -596,14 +531,7 @@ cat /etc/kubernetes/manifests/kube-controller-manager.yaml | grep service-accoun
 # CSR 관련 컨트롤러 확인
 kubectl get csr
 ```
-```text
-# kube-controller-manager의 보안 관련 컨트롤러:
-# - serviceaccount-token  : SA 생성 시 토큰 Secret 관리
-# - csrsigning            : kubelet CSR 자동 서명
-# - csrapproving          : CSR 자동 승인 (조건부)
-# - namespace             : NS 삭제 시 하위 리소스 정리 (Secret, RBAC 포함)
-# - root-ca-cert-publisher: 각 NS에 CA 인증서 ConfigMap 배포
-```
+> **예시(참조) — kube-controller-manager의 보안 관련 컨트롤러::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) ServiceAccount 토큰 발급 — kube-controller-manager의 TokenController가 담당하는 기능이다.
@@ -645,14 +573,7 @@ kubectl get validatingwebhookconfigurations
 # Admission 순서 확인 (API Server 로그)
 kubectl logs -n kube-system kube-apiserver-<node> | grep admission
 ```
-```text
-# Admission 처리 순서:
-# 1. Mutating Admission (built-in) → ServiceAccount, DefaultStorageClass 등
-# 2. Mutating Webhook                → Istio sidecar injection, Vault injection 등
-# 3. Object Schema Validation         → OpenAPI 스키마 검증
-# 4. Validating Admission (built-in) → PodSecurity, NodeRestriction 등
-# 5. Validating Webhook               → OPA Gatekeeper, Kyverno 등
-```
+> **예시(참조) — Admission 처리 순서::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Validating -> Mutating -> Webhook — 순서가 반대이다. Mutating이 먼저 실행되어야 변경된 결과를 Validating이 검증할 수 있다.
@@ -661,6 +582,8 @@ kubectl logs -n kube-system kube-apiserver-<node> | grep admission
 
 **보안 원리:**
 Admission Controller는 API Server의 인증/인가 이후, etcd에 객체가 저장되기 전에 실행되는 게이트키퍼이다. Mutating 단계에서는 요청 객체를 변경한다(예: Istio가 sidecar 컨테이너를 주입, PodPreset이 환경변수를 추가). Validating 단계에서는 최종 객체가 정책을 준수하는지 검증만 하고 변경하지 않는다. 이 순서를 보장함으로써 Mutating이 주입한 sidecar가 Validating의 보안 정책(이미지 레지스트리 제한 등)을 통과하는지 확인할 수 있다.
+
+실제 admission 처리는 두 레이어로 나뉜다는 점을 구분해야 한다. (1) 빌트인 admission plugin(API Server에 컴파일되어 들어간 NamespaceLifecycle·NodeRestriction·PodSecurity 등)은 코드에 박힌 고정 순서로 실행된다. (2) 그 흐름 안에서 동적 webhook이 호출되는데, 전체 순서는 "빌트인 mutating plugin 실행 → MutatingAdmissionWebhook(웹훅 등록 객체들을 직렬로 호출, 같은 phase 내 호출 순서는 webhook 이름의 알파벳순으로 결정) → 빌트인 validating plugin 실행 → ValidatingAdmissionWebhook(역시 직렬)" 이다. 동일 phase 내 여러 webhook의 순서가 중요한 이유는, 앞선 mutating webhook이 넣은 라벨/필드를 뒤따르는 webhook이 다시 읽거나 덮어쓸 수 있어 결과가 호출 순서에 의존하기 때문이다. 즉 mutating끼리는 순서에 따라 최종 객체가 달라질 수 있고(직렬·이름순), validating끼리는 하나라도 거부하면 전체가 거부되므로 순서와 무관하게 "전원 통과"여야 한다.
 
 **공격 시나리오:**
 Validating Webhook(OPA Gatekeeper)이 "privileged 컨테이너 금지" 정책을 적용 중이다. Mutating Webhook이 악의적으로 구성되어 Pod spec에 `privileged: true`를 주입한다. Mutating이 먼저 실행되므로 이 변경이 적용되지만, 이후 Validating 단계에서 Gatekeeper가 이를 탐지하여 요청을 거부한다. 만약 순서가 반대라면 이 공격이 탐지되지 않는다.
@@ -693,20 +616,7 @@ cat /var/lib/kubelet/config.yaml | grep staticPodPath
 # static pod와 일반 pod 구분 (mirror pod 확인)
 kubectl get pods -n kube-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.kubernetes\.io/config\.source}{"\n"}{end}'
 ```
-```text
-# /etc/kubernetes/manifests/ 디렉터리 내용:
-etcd.yaml
-kube-apiserver.yaml
-kube-controller-manager.yaml
-kube-scheduler.yaml
-
-# static pod의 config.source 어노테이션:
-kube-apiserver-master    file     ← kubelet이 파일에서 직접 생성
-kube-scheduler-master    file
-
-# 일반 pod:
-nginx-deployment-xxx     api      ← API Server를 통해 생성
-```
+> **예시(참조) — /etc/kubernetes/manifests/ 디렉터리 내용::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) API Server를 통해 생성되므로 RBAC 적용 — static Pod는 API Server를 거치지 않고 kubelet이 직접 생성한다. API Server에 mirror pod가 생성되지만, 이는 읽기 전용이다.
@@ -745,17 +655,7 @@ cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep enable-admission-plugin
 # 기본 활성화 목록 확인 (kube-apiserver --help)
 kube-apiserver --help 2>&1 | grep -A5 "enable-admission-plugins"
 ```
-```text
-# kubeadm 기본 활성화 admission plugins:
---enable-admission-plugins=NodeRestriction
-
-# 권장 보안 admission plugins:
---enable-admission-plugins=NodeRestriction,PodSecurity,ServiceAccount,
-  ResourceQuota,LimitRanger,NamespaceLifecycle
-
-# AlwaysAdmit이 활성화된 경우 (위험):
-# 모든 요청이 무조건 통과 → privileged pod, hostPath 마운트 등 모두 허용
-```
+> **예시(참조) — kubeadm 기본 활성화 admission plugins::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) PodSecurity — PSA(Pod Security Admission)는 Pod Security Standards(baseline, restricted)를 강제하는 필수 보안 플러그인이다. PSP(PodSecurityPolicy)의 후속이다.
@@ -804,27 +704,7 @@ kubectl get clusterrolebindings -o wide | head -20
 # 특정 사용자의 권한 테스트
 kubectl auth can-i list pods -n demo --as=dev-user
 ```
-```text
-# Role 예시 (네임스페이스 범위):
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  namespace: demo         ← 반드시 네임스페이스 지정
-  name: pod-reader
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "watch", "list"]
-
-# ClusterRole 예시 (클러스터 범위):
-kind: ClusterRole
-metadata:
-  name: node-reader       ← namespace 필드 없음
-rules:
-- apiGroups: [""]
-  resources: ["nodes"]    ← 클러스터 범위 리소스
-  verbs: ["get", "list"]
-```
+> **예시(참조) — Role 예시 (네임스페이스 범위)::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - B) 범위가 반대 — Role은 네임스페이스 범위, ClusterRole이 클러스터 범위이다. 명칭 그대로이다.
@@ -874,14 +754,7 @@ EOF
 # 정책 적용 후 통신 테스트
 kubectl exec -n demo test-pod -- curl -s --max-time 3 http://nginx-svc
 ```
-```text
-# default-deny 적용 후 curl 결과:
-curl: (28) Connection timed out after 3001 milliseconds
-command terminated with exit code 28
-
-# NetworkPolicy가 없을 때:
-<html><body><h1>Welcome to nginx!</h1></body></html>
-```
+> **예시(참조) — default-deny 적용 후 curl 결과::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 어떤 Pod도 선택하지 않음 — 빈 셀렉터 `{}`는 "조건 없음 = 전체 선택"이다. "선택 안 함"이 아니다.
@@ -925,18 +798,7 @@ ETCDCTL_API=3 etcdctl get /registry/secrets/demo/test-secret \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
   --key=/etc/kubernetes/pki/etcd/server.key | strings
 ```
-```text
-# kubectl로 조회한 Secret (Base64 인코딩):
-data:
-  password: TXlQQHNzdzByZA==
-
-# Base64 디코딩 결과:
-MyP@ssw0rd
-
-# etcd에서 직접 조회 시 (encryption at rest 미적용):
-/registry/secrets/demo/test-secret
-...password...MyP@ssw0rd...   ← 평문 노출
-```
+![Secret 은 Base64 인코딩일 뿐 암호화 아님](images/kcsa-secret.png)
 
 **오답 분석:**
 - A) AES-256 암호화 — 기본값이 아니다. EncryptionConfiguration에 `aescbc` 또는 `aesgcm` 프로바이더를 명시적으로 설정해야 적용된다.
@@ -994,21 +856,10 @@ spec:
       # readOnlyRootFilesystem 생략 — 이 상태로 생성 가능
 EOF
 ```
-```text
-# readOnlyRootFilesystem 없이도 생성 성공:
-pod/test-restricted created
-
-# PSA restricted에서 필수 항목 누락 시 에러 예시:
-Error from server (Forbidden): pods "test" is forbidden:
-  violates PodSecurity "restricted:latest":
-  allowPrivilegeEscalation != false
-  unrestricted capabilities
-  runAsNonRoot != true
-  seccompProfile not set
-```
+> **예시(참조) — readOnlyRootFilesystem 없이도 생성 성공::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
-- A) `runAsNonRoot: true` — restricted 필수 항목이다. 컨테이너가 root(UID 0)로 실행되지 않도록 강제한다.
+- A) `runAsNonRoot: true` — restricted 필수 항목이다. 컨테이너가 root(UID 0)로 실행되지 않도록 강제한다. 다만 정확히는 OR 조건이다 — 컨테이너 수준(또는 Pod 수준)에서 `runAsNonRoot: true`를 설정하거나, `runAsUser`를 0이 아닌 값으로 지정하는 두 방법 중 하나만 충족하면 restricted의 non-root 요구를 통과한다. 즉 `runAsUser: 1000`처럼 명시하면 `runAsNonRoot`를 생략해도 허용된다(위 검증 블록의 Pod가 둘 다 지정한 이유이기도 하다).
 - B) `allowPrivilegeEscalation: false` — restricted 필수 항목이다. `setuid` 비트를 통한 권한 상승을 차단한다.
 - D) `seccompProfile.type: RuntimeDefault` — restricted 필수 항목이다. 컨테이너가 사용할 수 있는 시스템 콜을 제한한다.
 
@@ -1048,25 +899,7 @@ kubectl exec <pod-name> -n demo -- cat /var/run/secrets/kubernetes.io/serviceacc
 kubectl exec <pod-name> -n demo -- cat /var/run/secrets/kubernetes.io/serviceaccount/token | \
   cut -d. -f2 | base64 -d 2>/dev/null | jq '.exp'
 ```
-```text
-# ServiceAccount 목록:
-NAME      SECRETS   AGE
-default   0         30d
-
-# Projected Volume으로 마운트된 토큰 (1.24+):
-# /var/run/secrets/kubernetes.io/serviceaccount/token
-# - 시간 제한 있음 (기본 3607초)
-# - 자동 갱신됨
-# - audience 바인딩됨
-
-# JWT 페이로드 예시:
-{
-  "aud": ["https://kubernetes.default.svc"],
-  "exp": 1735689600,      ← 만료 시간 존재
-  "iss": "https://kubernetes.default.svc",
-  "sub": "system:serviceaccount:demo:default"
-}
-```
+> **예시(참조) — ServiceAccount 목록::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 클러스터 범위 리소스 — ServiceAccount는 네임스페이스 범위(namespaced)이다. `kubectl api-resources --namespaced=true | grep serviceaccounts`로 확인 가능하다.
@@ -1128,15 +961,7 @@ EOF
 kubectl exec -n demo nginx-pod -- curl -s -X GET http://httpbin/api/data
 kubectl exec -n demo nginx-pod -- curl -s -X POST http://httpbin/api/data
 ```
-```text
-# GET 요청 결과 (허용):
-HTTP/1.1 200 OK
-{"data": "success"}
-
-# POST 요청 결과 (차단):
-Access denied
-# Cilium이 L7 프록시를 통해 HTTP 메서드를 검사하여 차단
-```
+> **예시(참조) — GET 요청 결과 (허용)::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - B) `spec.ingress.fromPorts.http` — 존재하지 않는 필드 경로이다. ingress에서 포트 지정은 `toPorts`이다.
@@ -1168,6 +993,8 @@ D) Constraint가 먼저 생성되어야 ConstraintTemplate을 생성할 수 있�
 
 ConstraintTemplate은 Rego 언어로 정책 로직을 정의하며, 새로운 CRD를 생성한다. Constraint는 해당 CRD의 인스턴스로서 구체적인 파라미터(예: 필수 레이블 목록, 허용 레지스트리 목록)와 적용 범위(어떤 리소스, 어떤 네임스페이스)를 지정한다.
 
+여기서 Rego(레고)는 OPA(Open Policy Agent)가 사용하는 선언적 정책 언어이다. SQL 쿼리처럼 "어떤 조건이 충족되면 위반"이라는 규칙을 기술하면 OPA가 그 조건의 매칭 여부를 판정한다. 아래 ConstraintTemplate 예시에서 `violation[{"msg": msg}]`는 "이 블록의 모든 조건이 참이면 한 건의 위반을 만들고 그 메시지를 msg에 담는다"는 의미이고, `input.review.object`는 검사 대상인 API 요청 객체(생성하려는 Namespace 등), `input.parameters`는 Constraint에서 지정한 파라미터(아래 예시의 `labels` 목록)를 가리킨다. 즉 ConstraintTemplate은 빈칸이 있는 정책 양식이고, Constraint가 그 빈칸(파라미터)과 적용 대상을 채우는 신청서에 해당한다.
+
 **검증:**
 ```bash
 # ConstraintTemplate 조회
@@ -1179,47 +1006,7 @@ kubectl create namespace test-no-labels
 # Gatekeeper 감사 로그 확인
 kubectl get k8srequiredlabels -o jsonpath='{.items[0].status.violations}'
 ```
-```text
-# ConstraintTemplate 예시 (정책 로직):
-apiVersion: templates.gatekeeper.sh/v1
-kind: ConstraintTemplate
-metadata:
-  name: k8srequiredlabels
-spec:
-  crd:
-    spec:
-      names:
-        kind: K8sRequiredLabels      # ← 새로운 CRD 생성
-      validation:
-        openAPIV3Schema:
-          properties:
-            labels:
-              type: array
-              items: { type: string }
-  targets:
-  - target: admission.k8s.gatekeeper.sh
-    rego: |
-      violation[{"msg": msg}] {
-        provided := {l | input.review.object.metadata.labels[l]}
-        required := {l | l := input.parameters.labels[_]}
-        missing := required - provided
-        count(missing) > 0
-        msg := sprintf("Missing labels: %v", [missing])
-      }
-
-# Constraint 예시 (파라미터 + 적용 범위):
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sRequiredLabels
-metadata:
-  name: require-team-label
-spec:
-  match:
-    kinds:
-    - apiGroups: [""]
-      kinds: ["Namespace"]
-  parameters:
-    labels: ["team", "environment"]
-```
+> **예시(참조) — ConstraintTemplate 예시 (정책 로직)::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 역할이 반대 — ConstraintTemplate이 정책 로직(Rego 코드)이고, Constraint가 인스턴스(파라미터)이다.
@@ -1262,20 +1049,9 @@ sops --encrypt --age age1... secret.yaml > secret.enc.yaml
 # Sealed Secrets로 암호화
 kubeseal --format=yaml < secret.yaml > sealed-secret.yaml
 ```
-```text
-# Git에 평문 Secret이 커밋된 경우:
-apiVersion: v1
-kind: Secret
-data:
-  password: cG9zdGdyZXMxMjM=    ← Base64(postgres123) — 누구나 디코딩 가능
+![Secret 은 Base64 인코딩일 뿐 암호화 아님](images/kcsa-secret.png)
 
-# Sealed Secret (암호화된 상태로 Git 커밋 가능):
-apiVersion: bitnami.com/v1alpha1
-kind: SealedSecret
-spec:
-  encryptedData:
-    password: AgBy3i4OJSWK... ← 클러스터 키 없이 복호화 불가능
-```
+> 위 이미지는 문제 18(etcd hexdump에서 Base64 평문 노출)에서 사용한 참조 이미지이다. 여기서는 "Secret이 Base64 인코딩일 뿐 암호화가 아니므로 Git에 평문 커밋하면 etcd 노출과 동일하게 누구나 디코딩해 원문을 얻는다"는 맥락으로 인용한다. Git 유출 그 자체를 보여주는 화면(아래 `git log`·`trufflehog` 검증 명령의 실행 결과)은 별도 캡처 대상이다.
 
 **오답 분석:**
 - A) RBAC로 Secret 접근 제한 — 올바른 관리 방법이다. `secrets` 리소스에 대한 `get`, `list`, `watch` verb를 최소한의 주체에만 허용해야 한다.
@@ -1329,19 +1105,7 @@ spec:
         add: ["NET_BIND_SERVICE"]
 EOF
 ```
-```text
-# drop ALL 적용 전 (기본 capability):
-CapPrm: 00000000a80425fb
-# 14개 기본 capability 포함: CHOWN, DAC_OVERRIDE, FSETID, FOWNER,
-# MKNOD, NET_RAW, SETGID, SETUID, SETFCAP, SETPCAP,
-# NET_BIND_SERVICE, SYS_CHROOT, KILL, AUDIT_WRITE
-
-# drop ALL 적용 후:
-CapPrm: 0000000000000000     ← 모든 capability 제거됨
-
-# drop ALL + add NET_BIND_SERVICE 적용 후:
-CapPrm: 0000000000000400     ← NET_BIND_SERVICE만 존재
-```
+> **예시(참조) — drop ALL 적용 전 (기본 capability)::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 모든 네트워크 기능 비활성화 — capability drop은 네트워크뿐 아니라 파일 시스템, 프로세스, 시스템 관리 등 모든 종류의 Linux capability를 대상으로 한다.
@@ -1375,7 +1139,7 @@ D) Session Hijacking
 
 **정답: B) Spoofing ✅**
 
-STRIDE는 Spoofing(위장), Tampering(변조), Repudiation(부인), Information Disclosure(정보 노출), Denial of Service(서비스 거부), Elevation of Privilege(권한 상승)의 약자이다. Kubernetes에서 Spoofing의 예시로는 위조된 ServiceAccount 토큰으로 API Server에 접근하는 시도가 있다.
+STRIDE는 Microsoft가 고안한 위협 모델링 프레임워크로, 각 문자가 하나의 위협 카테고리를 나타낸다: Spoofing(위장), Tampering(변조), Repudiation(부인), Information Disclosure(정보 노출), Denial of Service(서비스 거부), Elevation of Privilege(권한 상승). 시스템의 각 데이터 흐름(사용자→API Server, Pod→Pod 등)이 이 6가지 위협에 노출되어 있으므로, 흐름마다 어떤 위협이 가능한지 따져 그에 맞는 보안 통제를 설계하는 것이 STRIDE 분석의 핵심이다. Kubernetes에서 Spoofing의 예시로는 위조된 ServiceAccount 토큰으로 API Server에 접근하는 시도가 있다. 아래 검증 블록은 6가지 위협을 Kubernetes 보안 통제와 하나씩 매핑한 것이다.
 
 **검증:**
 ```bash
@@ -1391,15 +1155,7 @@ kubectl get resourcequota -n demo
 # Elevation of Privilege → PSA, RBAC escalate 제한
 kubectl auth can-i escalate clusterroles
 ```
-```text
-# STRIDE 모델과 Kubernetes 보안 매핑:
-# S - Spoofing(위장)             → mTLS, X.509 인증, OIDC
-# T - Tampering(변조)            → Admission Controller, 이미지 서명, Audit Log
-# R - Repudiation(부인)          → Audit Log, Rekor 투명성 로그
-# I - Information Disclosure     → Secret 암호화, RBAC, NetworkPolicy
-# D - Denial of Service         → ResourceQuota, LimitRange, PDB
-# E - Elevation of Privilege    → PSA, RBAC, SecurityContext
-```
+> **참조 — 위협 모델(STRIDE):** STRIDE 모델과 Kubernetes 보안 매핑: ...
 
 **오답 분석:**
 - A) Social Engineering — 사회 공학은 별도의 보안 도메인이며 STRIDE에 포함되지 않는다.
@@ -1442,20 +1198,7 @@ kubectl exec privileged-pod -- cat /proc/1/status | grep CapEff
 kubectl exec privileged-pod -- mount /dev/sda1 /mnt
 kubectl exec privileged-pod -- cat /mnt/etc/shadow
 ```
-```text
-# privileged 컨테이너:
-CapEff: 000001ffffffffff     ← 모든 capability 활성화
-/dev/ 디바이스 수: 200+       ← 호스트의 모든 디바이스 접근 가능
-
-# 일반 컨테이너:
-CapEff: 00000000a80425fb     ← 14개 기본 capability만
-/dev/ 디바이스 수: 15          ← 제한된 가상 디바이스만
-
-# privileged 컨테이너에서 호스트 탈출:
-# mount /dev/sda1 /mnt → 호스트 루트 파일시스템 접근
-# chroot /mnt → 호스트 환경으로 진입
-# 또는: nsenter --target 1 --mount --uts --ipc --net --pid -- /bin/bash
-```
+> **예시(참조) — privileged 컨테이너::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) `readOnlyRootFilesystem: true` — 이는 보안을 강화하는 설정이다. 컨테이너 탈출과 관련이 없다.
@@ -1498,16 +1241,7 @@ kubectl get pods -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}
 # Kyverno로 이미지 서명 강제 정책 확인
 kubectl get clusterpolicy verify-images -o yaml
 ```
-```text
-# 이미지 소스 확인 결과 예시:
-registry.internal/nginx:1.25-hardened     ← 프라이빗 레지스트리 (양호)
-docker.io/library/redis:7.2               ← 공개 레지스트리 (위험 검토 필요)
-ghcr.io/external-secrets/external-secrets:v0.9.0  ← 검증된 오픈소스
-
-# Trivy 스캔 결과:
-nginx:1.25 (alpine 3.18)
-Total: 2 (HIGH: 1, CRITICAL: 1)
-```
+> **예시(참조) — 이미지 소스 확인 결과 예시::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 이미지 서명 검증 — 이미지가 신뢰할 수 있는 빌드 파이프라인에서 생성되었고 변조되지 않았음을 보장하는 핵심 공급망 방어이다.
@@ -1515,7 +1249,7 @@ Total: 2 (HIGH: 1, CRITICAL: 1)
 - C) 프라이빗 레지스트리 — 이미지 소스를 통제하여, 검증되지 않은 외부 이미지의 유입을 방지한다.
 
 **보안 원리:**
-공급망 보안(Supply Chain Security)은 소프트웨어의 전체 라이프사이클(소스 코드 → 빌드 → 저장 → 배포)에서 무결성을 보장한다. SLSA(Supply-chain Levels for Software Artifacts) 프레임워크는 4단계의 성숙도를 정의한다: L1(빌드 프로세스 문서화), L2(빌드 서비스 사용), L3(빌드 플랫폼 보안 강화), L4(모든 의존성의 양방향 검증). Kubernetes 환경에서는 이미지 빌드 → 서명 → 스캔 → admission 검증 → 배포의 파이프라인으로 구현한다.
+공급망 보안(Supply Chain Security)은 소프트웨어의 전체 라이프사이클(소스 코드 → 빌드 → 저장 → 배포)에서 무결성을 보장한다. SLSA(Supply-chain Levels for Software Artifacts, 소프트웨어 공급망 구성 요소의 무결성 보증 성숙도 단계, "살사"로 읽는다) 프레임워크는 4단계의 성숙도를 정의한다: L1(빌드 프로세스 문서화), L2(빌드 서비스 사용), L3(빌드 플랫폼 보안 강화), L4(모든 의존성의 양방향 검증). Kubernetes 환경에서는 이미지 빌드 → 서명 → 스캔 → admission 검증 → 배포의 파이프라인으로 구현한다.
 
 **공격 시나리오:**
 공격자가 오픈소스 라이브러리의 maintainer 계정을 탈취(account takeover)하여 악성 코드가 포함된 새 버전을 릴리스한다. CI/CD에서 `npm install` 또는 `pip install`로 자동 업데이트되어 악성 코드가 이미지에 포함된다. 이미지 스캔(Trivy)으로 알려진 CVE는 탐지하지만, 새로 주입된 0-day 악성 코드는 탐지하지 못할 수 있다. 이 경우 SBOM + 의존성 잠금(lock file) + 이미지 서명이 추가 방어선이 된다.
@@ -1550,23 +1284,7 @@ kubectl get clusterroles -o json | jq '.items[] | select(.rules[].verbs[] == "es
 # 특정 SA의 실제 권한 확인
 kubectl auth can-i --list --as=system:serviceaccount:demo:default -n demo
 ```
-```text
-# cluster-admin 바인딩 감사 결과 (양호한 경우):
-{
-  "kind": "User",
-  "name": "kubernetes-admin"        ← 관리자 1명만 바인딩
-}
-
-# 위험한 경우:
-{
-  "kind": "Group",
-  "name": "system:serviceaccounts"  ← 모든 SA에 cluster-admin!
-}
-
-# escalate verb의 위험성:
-# escalate가 허용된 사용자는 자신에게 없는 권한도 다른 Role에 추가 가능
-# bind가 허용된 사용자는 자신에게 없는 ClusterRole을 다른 주체에 바인딩 가능
-```
+![cluster-admin ClusterRoleBinding subjects](images/kcsa-clusteradmin.png)
 
 **오답 분석:**
 - A) cluster-admin 사용 최소화 — 올바른 관행이다. cluster-admin은 모든 리소스에 대한 모든 verb를 허용하므로 극소수에게만 부여해야 한다.
@@ -1609,20 +1327,7 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=20
 # 테스트: 컨테이너에서 셸 실행하여 Falco 경고 유발
 kubectl exec -it test-pod -- /bin/bash
 ```
-```text
-# Falco 기본 규칙에 의한 경고 예시:
-15:30:45.123 Warning Terminal shell in container
-  (user=root container=test-pod shell=bash parent=runc
-   container_id=a1b2c3 image=nginx:1.25 k8s.pod=test-pod
-   k8s.ns=demo k8s.deployment=test)
-
-15:31:02.456 Warning Sensitive file opened for reading
-  (user=root command=cat /etc/shadow file=/etc/shadow
-   container_id=a1b2c3 k8s.pod=test-pod k8s.ns=demo)
-
-15:31:15.789 Notice Unexpected outbound connection
-  (command=curl fd=5 proto=tcp ip=185.143.223.1 port=4444)
-```
+![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
 
 **오답 분석:**
 - A) Terraform — IaC(Infrastructure as Code) 도구이다. 인프라 프로비저닝을 담당하며 런타임 보안과 무관하다.
@@ -1665,23 +1370,7 @@ kubectl exec normal-pod -- ip addr show
 kubectl exec hostnet-pod -- curl -s http://127.0.0.1:10250/pods
 kubectl exec hostnet-pod -- curl -s http://127.0.0.1:2379/version
 ```
-```text
-# hostNetwork: true Pod의 네트워크 인터페이스:
-1: lo: <LOOPBACK,UP> 127.0.0.1/8
-2: eth0: <BROADCAST> 192.168.1.100/24        ← 호스트 IP
-3: cni0: <BROADCAST> 10.244.0.1/24           ← CNI 브릿지
-4: veth12345@if3: ...                         ← 다른 Pod의 veth 인터페이스
-
-# 일반 Pod의 네트워크 인터페이스:
-1: lo: <LOOPBACK,UP> 127.0.0.1/8
-2: eth0@if10: <BROADCAST> 10.244.0.15/24     ← Pod CIDR IP만 보임
-
-# hostNetwork Pod에서 접근 가능한 로컬 서비스:
-# 127.0.0.1:10250 — kubelet API
-# 127.0.0.1:2379  — etcd (컨트롤 플레인 노드)
-# 127.0.0.1:10257 — controller-manager
-# 127.0.0.1:10259 — scheduler
-```
+> **예시(참조) — hostNetwork: true Pod의 네트워크 인터페이스::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 메모리 사용 증가 — hostNetwork는 네트워크 네임스페이스만 공유하며, 메모리 사용량과 관련이 없다.
@@ -1695,7 +1384,7 @@ Linux 네트워크 네임스페이스는 컨테이너의 네트워크 스택을 
 hostNetwork Pod에서 공격자가 `curl http://127.0.0.1:2379/v3/kv/range`로 etcd에 직접 접근한다(etcd가 localhost만 리스닝하고 있어 외부에서는 접근 불가하지만, hostNetwork Pod에서는 가능). etcd에 인증이 없거나 TLS peer 검증이 약하면 모든 Secret을 추출할 수 있다. 또한 `127.0.0.1:10250`의 kubelet API에 접근하여 동일 노드의 다른 Pod에 exec 명령을 실행할 수 있다.
 
 **등장 배경:**
-hostNetwork는 Ingress Controller, CNI 플러그인, 모니터링 에이전트 등 호스트 네트워크에 직접 접근해야 하는 시스템 컴포넌트를 위해 설계되었다. 예를 들어 MetalLB는 ARP/BGP로 로드밸런서 IP를 광고하기 위해 hostNetwork가 필요하다. 그러나 일반 애플리케이션 Pod에는 사용해서는 안 되며, PSA baseline에서 금지된다.
+hostNetwork는 Ingress Controller, CNI 플러그인, 모니터링 에이전트 등 호스트 네트워크에 직접 접근해야 하는 시스템 컴포넌트를 위해 설계되었다. 이들이 hostNetwork를 요구하는 이유는 각각의 기술적 제약 때문이다. (1) 로드밸런서 컴포넌트(MetalLB)는 ARP(Address Resolution Protocol, IP 주소를 MAC 주소로 매핑하는 L2 프로토콜)나 BGP로 로드밸런서 IP를 같은 네트워크의 모든 장비에 광고해야 하는데, 이 광고는 노드의 실제 네트워크 인터페이스에서 나가야 하므로 격리된 Pod 네트워크 네임스페이스 안에서는 불가능하다. (2) CNI 플러그인(Cilium)은 각 노드에서 Pod마다 생성되는 veth(가상 이더넷 페어) 디바이스와 호스트의 라우팅 테이블을 직접 조작해야 하므로, 호스트 네트워크 네임스페이스에 접근할 수 있어야 한다. (3) 노드 단위 모니터링 에이전트(node-exporter)는 호스트의 네트워크 통계 자체를 수집 대상으로 삼는다. 그러나 일반 애플리케이션 Pod에는 사용해서는 안 되며, PSA baseline에서 금지된다.
 
 </details>
 
@@ -1726,24 +1415,12 @@ istioctl x describe pod <pod-name> -n demo
 # Envoy 프록시에서 TLS 인증서 확인
 istioctl proxy-config secret <pod-name> -n demo
 # mTLS 통신 검증 (평문 요청 차단 확인)
+# 비메시(non-mesh) Pod: Istio sidecar(Envoy 프록시)가 주입되지 않은 일반 Pod.
+# Envoy가 없어 클라이언트 인증서를 제시하는 mTLS 핸드셰이크를 할 수 없으므로,
+# STRICT 모드 서비스로 보내는 평문 요청은 거부된다.
 kubectl exec -n demo non-mesh-pod -- curl -s http://nginx-svc.demo.svc:80
 ```
-```text
-# PeerAuthentication 목록:
-NAMESPACE   NAME      MODE     AGE
-demo        default   STRICT   30d
-
-# istioctl describe 출력:
-Pod: nginx-pod.demo
-  mTLS: STRICT
-  Cert Chain: VALID (expires in 23h)
-  Root Cert: VALID (expires in 29d)
-  Destination Rules: default/demo (mTLS enabled)
-
-# STRICT 모드에서 비메시 Pod의 요청 결과:
-curl: (56) Recv failure: Connection reset by peer
-# → mTLS가 아닌 평문 연결이 거부됨
-```
+> **예시(참조) — Istio mTLS/sidecar:** Istio 서비스메시 환경에서 PeerAuthentication(STRICT mTLS)·istio-proxy 사이드카 주입(2/2)을 확인한다(설치 환경 의존).
 
 **오답 분석:**
 - A) 로드 밸런싱 — 로드 밸런싱은 서비스 메시의 트래픽 관리 기능이며, mTLS와 별개이다. Envoy의 클러스터 로드 밸런서가 담당한다.
@@ -1795,21 +1472,7 @@ EOF
 # 전환 후 동일 테스트
 kubectl run test2 --image=busybox --restart=Never -- wget -qO- http://nginx-svc.demo:80
 ```
-```text
-# STRICT 모드 — 비메시 Pod 요청 결과:
-wget: error getting response: Connection reset by peer
-# → 평문 연결 거부
-
-# PERMISSIVE 모드 — 비메시 Pod 요청 결과:
-<html><body><h1>Welcome to nginx!</h1></body></html>
-# → 평문 연결 허용 (mTLS도 동시에 허용)
-
-# PeerAuthentication 모드 옵션:
-# UNSET      — 상위(메시 전체) 설정을 상속
-# DISABLE    — mTLS 비활성화 (평문만)
-# PERMISSIVE — mTLS + 평문 모두 허용
-# STRICT     — mTLS만 허용
-```
+> **예시(참조) — Istio mTLS/sidecar:** Istio 서비스메시 환경에서 PeerAuthentication(STRICT mTLS)·istio-proxy 사이드카 주입(2/2)을 확인한다(설치 환경 의존).
 
 **오답 분석:**
 - B) 외부 트래픽 차단/허용 — 외부 트래픽 제어는 Gateway, VirtualService, AuthorizationPolicy가 담당한다. PeerAuthentication은 서비스 간 mTLS 모드만 결정한다.
@@ -1841,6 +1504,8 @@ D) seccomp profile
 
 Docker Compose는 다중 컨테이너 애플리케이션 정의 도구이며, 보안 격리 기술이 아니다. gVisor는 사용자 공간 커널로 시스템 콜을 중재하고, Kata Containers는 경량 VM으로 컨테이너를 실행하며, seccomp은 시스템 콜을 필터링하여 보안 격리를 강화한다.
 
+이런 대체 런타임은 Kubernetes RuntimeClass로 선택한다. RuntimeClass는 Pod가 어떤 컨테이너 런타임에서 실행될지 고르는 메커니즘으로, Pod 스펙에 `runtimeClassName: gvisor`라고 지정하면 해당 Pod이 기본 런타임 runc 대신 gVisor(runsc) 런타임에서 실행된다. 아래 검증 블록에서 `kubectl get runtimeclass` 출력에 `gvisor`/`kata` 항목이 보이면, 클러스터에 해당 런타임이 설치되어 Pod에서 선택 가능한 상태라는 뜻이다.
+
 **검증:**
 ```bash
 # RuntimeClass로 gVisor/Kata 사용 확인
@@ -1862,24 +1527,7 @@ spec:
     image: nginx:1.25
 EOF
 ```
-```text
-# RuntimeClass 목록:
-NAME      HANDLER   AGE
-gvisor    runsc     30d
-kata      kata      30d
-
-# 격리 수준 비교:
-# runc (기본):     컨테이너 → Linux namespaces/cgroups → 호스트 커널
-#                  보안: 커널 취약점 시 호스트 직접 노출
-# gVisor (runsc):  컨테이너 → Sentry(사용자 공간 커널) → 호스트 커널
-#                  보안: ~70%의 시스템 콜이 Sentry에서 처리, 커널 공격 표면 축소
-# Kata:            컨테이너 → 경량 VM(QEMU/Firecracker) → 하이퍼바이저 → 호스트
-#                  보안: 하드웨어 레벨 격리, 커널 독립
-
-# seccomp 프로파일 (RuntimeDefault) 차단 시스템 콜 예시:
-# 차단: mount, reboot, swapon, init_module, ptrace
-# 허용: read, write, open, close, stat, mmap
-```
+> **예시(참조) — RuntimeClass 목록::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) gVisor (runsc) — 보안 격리 기술이다. Google이 개발한 사용자 공간 커널로, 컨테이너의 시스템 콜을 가로채어 호스트 커널 공격 표면을 줄인다.
@@ -1923,25 +1571,7 @@ cilium encrypt status
 # Cilium이 관리하는 보안 기능 확인
 cilium endpoint list -o jsonpath='{[*].status.policy}'
 ```
-```text
-# cilium status 출력 (보안 관련 항목):
-Encryption:              Wireguard   [NodeEncryption: Enabled]
-KubeProxyReplacement:    True
-NetworkPolicy:           Enabled
-L7 Proxy:                Enabled (Envoy)
-
-# cilium encrypt status:
-Encryption:  WireGuard
-Interface:   cilium_wg0
-Public key:  abc123...
-Peers:       3 (all connected)
-
-# CNI 보안 기능 범위:
-# ✅ NetworkPolicy 구현 (L3/L4/L7)
-# ✅ Pod 간 트래픽 암호화 (WireGuard/IPsec)
-# ✅ 네트워크 접근 제어
-# ❌ RBAC — API Server의 kube-apiserver가 담당
-```
+> **예시(참조) — cilium status 출력 (보안 관련 항목)::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) NetworkPolicy 구현 — CNI 플러그인의 핵심 보안 기능이다. CNI가 NetworkPolicy를 구현하지 않으면 정책을 생성해도 적용되지 않는다(예: Flannel은 NetworkPolicy 미지원).
@@ -1984,24 +1614,7 @@ trivy fs --scanners secret .
 # Grype로 SBOM 기반 스캔
 grype sbom:sbom.json
 ```
-```text
-# Trivy 스캔 결과 예시 (OS 패키지 취약점):
-nginx:1.25 (debian 12.4)
-Total: 45 (UNKNOWN: 0, LOW: 25, MEDIUM: 15, HIGH: 4, CRITICAL: 1)
-
-┌──────────────┬────────────────┬──────────┬────────────┬───────────────┐
-│   Library    │ Vulnerability  │ Severity │  Installed │ Fixed Version │
-├──────────────┼────────────────┼──────────┼────────────┼───────────────┤
-│ libssl3      │ CVE-2024-0727  │ CRITICAL │ 3.0.11-1   │ 3.0.13-1      │
-│ libc6        │ CVE-2023-6246  │ HIGH     │ 2.36-9     │ 2.36-9+deb12u4│
-└──────────────┴────────────────┴──────────┴────────────┴───────────────┘
-
-# Trivy config 스캔 결과 (설정 오류):
-deployment.yaml (kubernetes)
-Tests: 28 (SUCCESSES: 20, FAILURES: 8)
-FAIL: Container 'app' should set 'securityContext.runAsNonRoot' to true
-FAIL: Container 'app' should drop all capabilities
-```
+> **참조 — 취약점/CVE 개념:** Trivy 스캔 결과 예시 (OS 패키지 취약점): ...
 
 **오답 분석:**
 - A) OS 패키지 CVE — Trivy의 핵심 기능이다. NVD, Alpine SecDB, Debian Security Tracker 등의 취약점 DB와 이미지의 패키지 목록을 대조한다.
@@ -2046,28 +1659,7 @@ kubectl get certificate -n demo
 openssl s_client -connect demo.example.com:443 -tls1_1 2>&1 | grep -i protocol
 openssl s_client -connect demo.example.com:443 -tls1_3 2>&1 | grep -i protocol
 ```
-```text
-# 인증서 유효기간:
-notBefore=Jan  1 00:00:00 2025 GMT
-notAfter=Apr  1 00:00:00 2025 GMT    ← 만료일 확인 필수
-
-# cert-manager Certificate 상태:
-NAME       READY   SECRET       AGE
-demo-tls   True    tls-secret   30d
-
-# TLS 1.1 연결 시도 결과 (최소 TLS 1.2 설정 시):
-140000000000000:error:1409442E:SSL:ssl3_read_bytes:tlsv1 alert protocol version
-# → TLS 1.1 연결 거부
-
-# TLS 1.3 연결 결과:
-Protocol  : TLSv1.3
-Cipher    : TLS_AES_256_GCM_SHA384
-# → TLS 1.3 연결 성공
-
-# Nginx Ingress Controller TLS 최소 버전 설정:
-# nginx.ingress.kubernetes.io/ssl-min-version: "TLSv1.2"
-# nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-RSA-AES256-GCM-SHA384:..."
-```
+> **예시(참조) — 인증서 유효기간::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Ingress Controller CPU 사용량 — 성능 관련 지표이다. TLS 핸드셰이크의 CPU 부하는 있지만, 보안 점검 항목이 아니다.
@@ -2114,29 +1706,31 @@ kube-bench run --targets master --check 1.2.1,1.2.2
 # JSON 형식으로 결과 출력
 kube-bench run --json | jq '.Controls[].tests[].results[] | select(.status=="FAIL")'
 ```
-```text
-# kube-bench 출력 예시:
-[INFO] 1 Control Plane Security Configuration
-[INFO] 1.2 API Server
-[PASS] 1.2.1 Ensure that the --anonymous-auth argument is set to false
-[FAIL] 1.2.2 Ensure that the --token-auth-file parameter is not set
-[PASS] 1.2.3 Ensure that the --kubelet-https argument is set to true
-[WARN] 1.2.4 Ensure that the --kubelet-client-certificate and
-              --kubelet-client-key arguments are set as appropriate
+![kube-apiserver 보안 플래그(grep)](images/kcsa-apiserver-flags.png)
 
-== Summary ==
-45 checks PASS
-5 checks FAIL
-3 checks WARN
-0 checks INFO
+> 위 이미지는 문제 7에서 사용한 관련 배경 이미지(kube-apiserver의 보안 플래그를 `grep`으로 확인한 화면)이며, kube-bench의 실행 결과 자체가 아니다. CIS Benchmark는 바로 이런 컴포넌트 플래그(`--anonymous-auth`, `--audit-log-path` 등)의 설정값을 점검 항목으로 삼으므로 배경 참고용으로 인용한다. kube-bench가 실제로 출력하는 PASS/FAIL/WARN 판정 화면은 아래 미니랩에서 직접 실행해 확인한다.
 
-# FAIL 항목 상세:
-1.2.2 Ensure that the --token-auth-file parameter is not set
-  Remediation: Follow the documentation and configure alternate mechanisms
-  for authentication. Then, edit the API server pod specification file
-  /etc/kubernetes/manifests/kube-apiserver.yaml and remove the
-  --token-auth-file=<filename> parameter.
+**🛠 직접 해보기 (kube-bench 설치·실행):**
+전제 — dev 또는 staging 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh dev`). CIS 점검은 노드 파일시스템과 컴포넌트 설정을 읽으므로 SSH로 마스터 노드에 직접 들어가서 수행한다. 점검만 하는 읽기 작업이라 파괴적이지 않지만, 규약에 따라 dev/staging에서만 실행한다. tart 노드는 ARM64(Apple Silicon)이므로 릴리스 아키텍처에 주의한다.
+
+```bash
+# 1) 마스터 노드 접속 (VM 이름 별칭, 비밀번호 없이 접속됨)
+ssh dev-master
+
+# 2) kube-bench 바이너리 설치 (노드 아키텍처에 맞는 릴리스 선택)
+#    x86_64 노드: linux_amd64, tart ARM 노드: linux_arm64
+ARCH=$(uname -m); case "$ARCH" in x86_64) A=amd64;; aarch64|arm64) A=arm64;; esac
+curl -L "https://github.com/aquasecurity/kube-bench/releases/download/v0.7.0/kube-bench_0.7.0_linux_${A}.tar.gz" | tar xz
+
+# 3) 마스터(컨트롤 플레인) 대상 점검 후 결과 저장
+#    설정 파일/인증서 권한을 읽어야 하므로 sudo 필요
+sudo ./kube-bench run --targets master 2>&1 | tee kube-bench-result.txt
+
+# 4) FAIL 항목만 추려 우선 조치 대상 식별
+grep -E '^\[FAIL\]' kube-bench-result.txt
 ```
+
+점검 결과의 각 항목은 `[PASS]/[FAIL]/[WARN]`로 표시되고 FAIL 항목마다 Remediation(조치 방법)이 함께 출력되므로, 이를 §문제 7~15에서 다룬 API Server·etcd·kubelet 보안 플래그 수정과 연결해 직접 고쳐 보면 도메인 전체를 손으로 복습할 수 있다.
 
 **오답 분석:**
 - A) 성능 최적화 — CIS Benchmark는 보안 설정에 초점을 맞춘다. 성능 최적화는 별도의 벤치마크(예: Kubernetes perf-tests)가 담당한다.
@@ -2179,40 +1773,11 @@ cat /var/log/kubernetes/audit.log | jq 'select(.objectRef.resource=="secrets")'
 # 데이터 보존 정책 확인 (로그 로테이션)
 cat /etc/logrotate.d/kubernetes-audit
 ```
-```text
-# Audit 정책 예시 (GDPR 준수):
-apiVersion: audit.k8s.io/v1
-kind: Policy
-rules:
-- level: RequestResponse        # 요청/응답 본문까지 기록
-  resources:
-  - group: ""
-    resources: ["secrets"]       # Secret 접근 전체 감사
-  namespaces: ["production"]
-- level: Metadata               # 메타데이터만 기록
-  resources:
-  - group: ""
-    resources: ["pods", "services"]
-
-# Audit 로그 항목 예시:
-{
-  "kind": "Event",
-  "apiVersion": "audit.k8s.io/v1",
-  "verb": "get",
-  "user": {"username": "dev-user"},
-  "objectRef": {
-    "resource": "secrets",
-    "name": "user-credentials",
-    "namespace": "production"
-  },
-  "responseStatus": {"code": 200},
-  "requestReceivedTimestamp": "2025-03-30T10:15:30Z"
-}
-```
+> **참조 — audit 로깅(설정 의존):** Audit 정책 예시 (GDPR 준수): ...
 
 **오답 분석:**
 - A) Secret 암호화 — GDPR Article 32는 "적절한 기술적 조치"로 개인정보 암호화를 요구한다. etcd의 encryption at rest가 해당한다.
-- B) Audit 로그 — GDPR Article 30은 처리 활동 기록을 의무화한다. 누가 언제 개인정보에 접근했는지 감사 추적이 필요하다.
+- B) Audit 로그 — GDPR Article 30은 "처리 활동 기록(Records of Processing Activities)" 보관을 의무화하고, Article 33/34는 침해 발생 시 72시간 내 통지(Breach Notification)를 의무화한다. 침해 통지에는 누가 언제 어떤 개인정보에 접근했는지를 재구성할 수 있어야 하므로, 두 조항을 모두 충족하려면 클러스터 Audit 로그를 통한 감사 추적이 필요하다.
 - D) 데이터 보존 정책 — GDPR Article 5(1)(e)는 목적에 필요한 기간만 데이터를 보존하도록 규정한다.
 
 **보안 원리:**
@@ -2251,23 +1816,7 @@ kube-bench run --targets etcd --check 2.1
 # kubelet 인증/인가 점검
 kube-bench run --targets node --check 4.2
 ```
-```text
-# kube-bench 점검 영역:
-[INFO] 1 Control Plane Security Configuration
-[INFO]   1.1 Control Plane Node Configuration Files  ← 파일 권한 점검
-[INFO]   1.2 API Server                              ← 보안 플래그 점검
-[INFO]   1.3 Controller Manager                      ← CM 보안 설정
-[INFO]   1.4 Scheduler                               ← 스케줄러 보안
-[INFO] 2 Etcd Node Configuration                     ← etcd TLS/인증
-[INFO] 3 Control Plane Configuration                  ← 인증, RBAC
-[INFO] 4 Worker Node Security Configuration           ← kubelet, kube-proxy
-[INFO] 5 Kubernetes Policies                          ← PSA, NetworkPolicy, Secret
-
-# 점검하지 않는 영역:
-# ❌ 애플리케이션 코드 취약점 (SQL Injection, XSS 등)
-# ❌ 컨테이너 이미지 취약점 (CVE)
-# ❌ 런타임 이상 행위
-```
+> **참조 — 취약점/CVE 개념:** kube-bench 점검 영역: ...
 
 **오답 분석:**
 - A) API Server 보안 플래그 — kube-bench의 핵심 점검 항목이다. `--anonymous-auth`, `--authorization-mode`, `--audit-log-*` 등을 검사한다.
@@ -2313,24 +1862,7 @@ trivy image --format json -o evidence/scan-$(date +%Y%m%d).json nginx:1.25
 # 5. 변경 관리 증거 (Git 기록)
 git log --since="6 months ago" --oneline k8s-manifests/
 ```
-```text
-# SOC 2 Type I vs Type II 비교:
-# Type I  — 특정 시점의 통제 설계 적절성 평가 (스냅샷)
-# Type II — 일정 기간(6-12개월) 동안 통제의 운영 효과성 평가 (지속)
-
-# SOC 2 Trust Services Criteria (5개 원칙):
-# 1. Security (필수)   — RBAC, NetworkPolicy, 암호화, 접근 제어
-# 2. Availability      — PDB, HPA, 백업/복구
-# 3. Processing Integrity — Admission Control, 입력 검증
-# 4. Confidentiality   — Secret 암호화, mTLS, 데이터 분류
-# 5. Privacy           — GDPR과 유사한 개인정보 보호
-
-# Kubernetes 환경의 SOC 2 증거 자료 예시:
-# - Audit 로그: 접근 기록 6개월분
-# - RBAC 변경 이력: Git commit 기록
-# - 취약점 스캔 리포트: 월별 스캔 결과
-# - 인시던트 대응 기록: PagerDuty/Slack 알림 이력
-```
+> **예시(참조) — SOC 2 Type I vs Type II 비교::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Pod 최대 배포 — Pod 수는 용량 계획 관련이며, SOC 2 보안 통제와 무관하다.

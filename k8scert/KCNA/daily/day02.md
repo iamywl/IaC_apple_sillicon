@@ -1,5 +1,7 @@
 # KCNA Day 2: K8s 아키텍처 - 통신 흐름, Static Pod, 실전 문제
 
+> **이전 학습**: Day 1에서 K8s 컴포넌트 개요(API Server·etcd·Scheduler·kubelet·Controller Manager)를 학습했다. Day 2는 그 컴포넌트들이 실제로 어떤 순서로 통신하는지 흐름을 추적한다.
+
 > 학습 목표: K8s 클러스터 내부의 통신 흐름과 Static Pod 개념을 이해하고, 실전 모의 문제로 아키텍처 지식을 점검한다.
 > 예상 소요 시간: 60분 (개념 20분 + 문제 40분)
 > 시험 도메인: Kubernetes Fundamentals (46%) - Part 2
@@ -21,6 +23,12 @@
 ### 1.0 등장 배경
 
 기존 컨테이너 관리 방식에서는 사용자가 "어떤 서버에, 어떤 순서로" 컨테이너를 배치할지 직접 결정해야 했다. Docker Swarm은 단순한 스케줄링만 제공했고, 수동 운영에서는 서버 장애 시 복구까지 사람이 개입해야 했다. Kubernetes는 이 문제를 해결하기 위해 Watch 기반 비동기 이벤트 아키텍처를 채택했다. 모든 컴포넌트가 API Server를 허브로 삼아 Watch 이벤트를 구독하고, 자기 책임 범위 내에서 독립적으로 동작하는 구조이다. 이 설계 덕분에 각 컴포넌트의 장애가 다른 컴포넌트로 전파되지 않는다.
+
+**etcd란?** etcd는 CNCF(Cloud Native Computing Foundation) 졸업 프로젝트인 분산 key-value 데이터베이스로, K8s의 모든 오브젝트(Pod, Service, ConfigMap 등)의 desired state(원하는 상태)를 저장한다. 고가용성을 위해 Raft 합의 알고리즘으로 다중 노드 간 데이터 일관성을 보장한다. API Server만이 etcd에 직접 접근하며, 다른 모든 컴포넌트는 API Server를 통해 간접적으로 상태를 읽고 쓴다.
+
+**Watch란?** Watch는 API Server와 클라이언트(Scheduler, kubelet, Controller Manager 등) 간의 지속적 구독-알림 메커니즘이다. polling(주기적으로 "변경 있나요?" 라고 묻는 방식)과 달리, Watch는 etcd의 변경 이벤트를 gRPC streaming(TCP 위에서 동작하는 양방향 스트리밍 프로토콜로, HTTP/2를 전송 계층으로 사용한다)으로 실시간 전달한다. 예를 들어, Scheduler는 API Server에 "nodeName이 비어 있는 새 Pod가 생기면 알려달라"고 구독한다. 변경이 발생하면 API Server가 구독자에게 이벤트를 push하므로, 컴포넌트들은 불필요한 폴링 없이 API Server를 허브로 느슨한 결합을 유지한다.
+
+**K8s 전체를 관통하는 Watch-Reconcile 루프 철학**: K8s의 모든 컴포넌트는 동일한 패턴으로 동작한다. (1) Watch: API Server의 변경을 구독하여 실시간으로 감지한다. (2) Reconcile: 변경 감지 시 자기 책임 범위 내에서 동작한다(Scheduler는 노드 바인딩, kubelet은 컨테이너 생성, Controller Manager는 desired state 복구). (3) Report: 완료 후 상태를 다시 API Server에 보고한다. 이 반복이 Pod 생성·업데이트·삭제뿐 아니라 K8s 클러스터 자기 치유의 기초이다.
 
 ### 1.1 전체 흐름 다이어그램
 
@@ -74,13 +82,24 @@ Pod 생성 과정 (kubectl apply -f pod.yaml)
 단계 1-3: API Server 처리
   - kubectl이 YAML을 API Server에 전송 (HTTPS)
   - API Server가 요청을 처리: 인증 → 인가 → 어드미션 컨트롤
+    * 어드미션 컨트롤(Admission Control)은 API Server의 마지막 검증 단계이다.
+      Pod spec의 이미지 없음·SecurityContext 부재·ResourceQuota 초과 등을 확인하고,
+      필요 시 기본값(예: imagePullPolicy=IfNotPresent)을 주입하거나 요청을 거부한다.
+      ValidatingAdmissionWebhook(검증 전용)과 MutatingAdmissionWebhook(값 변환)으로 확장 가능하다.
   - 검증 통과 시 Pod 오브젝트를 etcd에 저장
   - 이 시점에 Pod의 nodeName 필드는 비어있음 (Pending 상태)
 
 단계 4-6: Scheduler 배치
   - Scheduler가 Watch를 통해 nodeName이 없는 Pod를 감지
   - 필터링(Filtering): 조건에 맞지 않는 노드 제외
-    → 리소스 부족, Taint 불일치, nodeSelector 불일치 등
+    → 리소스 부족(CPU/메모리 요청량 초과)
+    → nodeSelector: Pod YAML의 nodeSelector 라벨과 노드 라벨 불일치
+      (nodeSelector는 특정 라벨이 있는 노드에만 배치하는 단순 조건이다)
+    → Taint/Toleration 불일치: 노드의 Taint(오염 표시)에 Pod의 toleration(허용 선언)이 없으면 제외
+      (예: 특수 GPU 노드는 Taint로 표시해 일반 Pod 배치를 막는다)
+    → NodeAffinity: nodeSelector보다 세밀한 노드 선택 정책 (AND/OR/NotIn 등 지원)
+    → PVC(PersistentVolumeClaim, 영구볼륨청구) 미바인딩: Pod가 요구하는 스토리지가 미연결이면 제외
+    이 세부 주제는 CKA 스케줄링에서 깊이 다룬다.
   - 스코어링(Scoring): 남은 노드에 점수 부여
     → 리소스 균형, 이미지 캐시 존재 여부 등
   - 최고 점수 노드를 선택하여 Pod의 nodeName에 할당
@@ -89,6 +108,12 @@ Pod 생성 과정 (kubectl apply -f pod.yaml)
   - kubelet이 Watch를 통해 자기 노드에 할당된 Pod를 감지
   - Pod spec을 읽고 컨테이너 생성을 준비
   - CRI(Container Runtime Interface)를 통해 containerd에 요청
+    * K8s는 벤더 종속을 피하기 위해 플러그인 인터페이스를 표준화했다:
+      - CRI: kubelet과 컨테이너 런타임 간 통신 표준. 구현체: containerd, CRI-O
+      - CNI(Container Network Interface): K8s와 네트워크 플러그인 간 표준. 구현체: Cilium, Calico, Flannel
+      - CSI(Container Storage Interface): K8s와 스토리지 드라이버 간 표준. 구현체: AWS EBS, Longhorn
+    * (CNI는 Day 3 Service 섹션에서, CSI는 CKA 과정에서 다룬다. Day 2는 CRI에만 집중한다.)
+    * containerd는 CRI를 구현하는 고수준 런타임이고, runc는 실제 Linux namespace·cgroups를 설정하는 저수준 런타임이다.
 
 단계 10-13: Container Runtime 실행
   - containerd가 이미지를 pull (이미 캐시되어 있으면 생략)
@@ -102,6 +127,16 @@ Pod 생성 과정 (kubectl apply -f pod.yaml)
 ## 2. Static Pod
 
 ### 2.1 Static Pod 개념
+
+**등장 배경 — 클러스터 부팅의 닭-달걀 문제**
+
+일반 Pod는 API Server → Scheduler → kubelet 순서로 생성된다. 그런데 API Server 자신도 Pod로 실행되어야 한다면, API Server가 없는 부팅 초기에는 누가 API Server Pod를 생성할 수 있는가? Scheduler는 API Server가 없으면 동작하지 않는다. etcd도 Pod라면 같은 문제가 생긴다.
+
+kubeadm 이전 방식에서는 Control Plane 컴포넌트를 별도의 데몬(systemd 서비스)으로 각 노드에 수동 설치했다. 이 방식은 버전 관리, 설정 변경, 장애 복구를 모두 수작업으로 해야 했고, K8s 자체의 선언적 관리 원칙(YAML로 desired state를 선언)과도 어긋났다.
+
+Static Pod는 이 부트스트랩 문제를 해결한다. kubelet은 클러스터와 무관하게 systemd 서비스로 노드에서 먼저 기동된다. kubelet이 `/etc/kubernetes/manifests/` 디렉토리를 감시하여 YAML 파일만으로 Pod를 직접 생성한다. 따라서 kubeadm init은 API Server·etcd·Scheduler·Controller Manager의 YAML을 이 디렉토리에 배치하는 것만으로 Control Plane 전체를 띄운다. 이 설계 덕분에 Control Plane 컴포넌트 자체도 K8s의 선언적 관리 원칙 아래 놓인다.
+
+**트레이드오프**: Static Pod는 Scheduler가 관여하지 않으므로 특정 노드에 고정된다. HA(고가용성) 구성에서는 각 Control Plane 노드마다 동일한 YAML 파일을 복제해야 하며, YAML 변경 시 해당 노드에 직접 SSH로 접속해야 한다.
 
 > **Static Pod**란?
 > API Server를 거치지 않고 **kubelet이 직접 관리**하는 특수한 Pod이다. 특정 노드의 `/etc/kubernetes/manifests/` 디렉토리에 YAML 파일을 배치하면 kubelet이 자동으로 Pod를 생성한다.
@@ -153,9 +188,37 @@ ls /etc/kubernetes/manifests/
 | **삭제 방법** | YAML 파일 제거 | kubectl delete |
 | **사용 사례** | Control Plane 컴포넌트 | 일반 워크로드 |
 
+**미러 Pod(Mirror Pod)란?** kubelet은 Static Pod를 생성하면서 동시에 API Server에 같은 이름의 Pod 오브젝트를 등록한다. 이것이 미러 Pod이다. 이름 형식은 `<pod-name>-<node-name>`으로 붙는다(예: `kube-apiserver-dev-master`). 미러 Pod 덕분에 `kubectl get pods -n kube-system`으로 Static Pod를 조회할 수 있다. 그러나 미러 Pod는 읽기 전용 반영이므로, `kubectl edit` 또는 `kubectl delete`로 수정·삭제를 시도해도 API Server의 복사본만 변경될 뿐이다. kubelet은 `/etc/kubernetes/manifests/` YAML 파일이 남아 있는 한 삭제된 미러 Pod를 즉시 재생성한다. Static Pod의 실질적 변경은 해당 노드에 SSH 접속한 후 YAML 파일 자체를 수정해야 한다. 완전 제거는 YAML 파일을 `rm`으로 삭제해야 한다.
+
+### 2.4 Probe — 컨테이너 생존/준비 상태 감지
+
+> (이하는 §1.2 단계 8~13: kubelet이 컨테이너를 생성한 뒤 어떻게 애플리케이션 레벨 상태를 주기적으로 감시하는지 보충 설명한다. Static Pod와 일반 Pod 모두 동일한 Probe 메커니즘이 적용된다.)
+
+**등장 배경 — OS 수준 프로세스 감시의 한계**
+
+컨테이너가 실행 중이더라도 애플리케이션이 정상 동작한다는 보장은 없다. 이전에는 kubelet이 컨테이너 프로세스의 OS 종료 코드(exit code)만 감시했다. 프로세스는 살아 있지만 데드락·메모리 고갈·초기화 미완료 상태에서는 OS 수준 모니터링으로 감지가 불가능했다. 트래픽은 계속 들어오지만 응답은 실패하는 상태가 지속될 수 있었다.
+
+Kubernetes는 이를 해결하기 위해 애플리케이션 레벨 상태를 주기적으로 점검하는 세 종류의 Probe를 kubelet에 내장했다.
+
+**세 종류 Probe 비교**
+
+| Probe | 목적 | 실패 시 동작 | 설정 시 주의 |
+|:--|:--|:--|:--|
+| **Liveness Probe** | "컨테이너가 살아있는가?" 데드락·무한루프 감지 | kubelet이 컨테이너를 **재시작** | 실패 임계값(failureThreshold)을 낮게 설정하면 불필요한 재시작 루프 유발 |
+| **Readiness Probe** | "트래픽을 받을 준비가 됐는가?" | Service **Endpoints에서 제거** (재시작 아님, Pod는 Running 유지) | 시작 직후 DB 연결 완료 전 트래픽 차단에 사용 |
+| **Startup Probe** | "초기화가 완료됐는가?" 느린 시작 앱 보호 | failureThreshold 초과 시 컨테이너 **재시작** | Startup Probe가 성공하기 전까지 Liveness/Readiness Probe를 비활성화한다 |
+
+**Probe 방식**: HTTP GET (지정 경로에 2xx/3xx이면 성공), TCP Socket (포트 연결 성공 여부), Exec (임의 명령 exit code 0이면 성공).
+
+**트레이드오프**: Probe 주기(periodSeconds)를 너무 짧게, 실패 임계값(failureThreshold)을 너무 낮게 설정하면 일시적 부하 상황에서 재시작 루프(CrashLoopBackOff)가 유발된다. Liveness·Readiness를 동일 엔드포인트로 설정하면 서비스에서 제거되는 것과 재시작이 동시에 발생해 가용성이 오히려 낮아진다.
+
+> 시험 포인트: Liveness 실패 → **재시작**, Readiness 실패 → **엔드포인트 제거**(재시작 없음). Startup Probe는 느린 앱의 초기화 완료를 대기하는 역할이다.
+
 ---
 
 ## 3. 주요 포트 번호 (시험 빈출!)
+
+K8s 네트워크는 계층적으로 구성된다. (1) Pod IP: 각 Pod가 고유한 IP를 갖는다. (2) ClusterIP: Service 리소스가 클러스터 내부에서 접근 가능한 가상 IP(Virtual IP)를 제공한다. (3) NodePort: 외부에서 노드의 특정 포트 번호로 Service에 접근할 수 있도록 노드 포트를 개방한다. 이 day02는 컴포넌트 포트 번호 암기를 목표로 하며, Service의 상세 개념(ClusterIP·NodePort·LoadBalancer 동작 원리)은 day03에서 다룬다.
 
 ```
 K8s 주요 포트 번호 (반드시 암기!)
@@ -180,6 +243,8 @@ Worker Node 포트:
   - etcd = 2379 / 2380
   - NodePort = 30000-32767
 ```
+
+방화벽 정책 작성 시 또는 클러스터 컴포넌트 헬스 점검 시 해당 포트를 직접 `curl`/`nc`로 확인해야 하므로 시험에 자주 출제된다. 예를 들어 Scheduler(10259)나 Controller Manager(10257)가 응답하는지 확인하려면 `curl -k https://localhost:10259/healthz`처럼 포트 번호를 직접 지정해야 한다.
 
 ---
 
@@ -206,10 +271,25 @@ kube-proxy → iptables/IPVS
   - Service의 ClusterIP를 Pod IP로 변환하는 규칙 설정
 
 시험 포인트:
-  - 모든 것은 API Server를 경유한다 (Hub-and-Spoke 모델)
+  - 모든 것은 API Server를 경유한다 (Hub-and-Spoke 모델: 중앙 허브 하나를 거쳐 모든 노드가 통신하는 별형 구조)
   - etcd에 직접 접근하는 것은 API Server뿐이다
   - kubelet은 API Server의 Watch를 통해 작업을 받는다
 ```
+
+### Cloud-Controller-Manager (CCM)
+
+**등장 배경 — K8s 코어와 클라우드 코드 분리**
+
+초기 Kubernetes는 AWS·GCP·Azure 등 클라우드 제공자 특화 코드(노드 라이프사이클 관리, LoadBalancer 프로비저닝 등)를 `kube-controller-manager` 바이너리에 직접 내장했다. 이 구조에서는 AWS가 새 기능을 추가하려면 K8s 릴리스 주기에 맞춰 코어 코드를 수정해야 했다. 클라우드 제공자마다 K8s 릴리스와 무관하게 자체 속도로 개발·배포하려면 코어에서 분리가 필요했다.
+
+Cloud-Controller-Manager(CCM)는 클라우드 특화 제어 루프를 독립 바이너리로 분리한 컴포넌트이다. CCM은 세 가지 컨트롤러를 담당한다:
+- **Node Controller**: 클라우드 VM 인스턴스가 삭제되면 K8s 노드 오브젝트를 제거한다.
+- **Route Controller**: 클라우드 네트워크에서 Pod CIDR 라우팅을 설정한다.
+- **Service Controller**: `type: LoadBalancer` Service 생성 시 클라우드 LB(AWS ALB, GCP LB 등)를 프로비저닝한다.
+
+**트레이드오프**: CCM이 없는 온프레미스 또는 베어메탈 클러스터에서는 `type: LoadBalancer` Service가 `<pending>` 상태로 남는다. 이 경우 MetalLB 등 별도 솔루션이 필요하다. tart 기반 로컬 클러스터도 CCM 없이 동작하므로 LoadBalancer 타입은 사용하지 않는다.
+
+> 시험 포인트: CCM은 클라우드 제공자 코드를 K8s 코어에서 분리하기 위해 등장했다. `type: LoadBalancer` Service 처리는 CCM의 역할이다.
 
 ---
 
@@ -276,7 +356,7 @@ D) ZAB
 
 **정답: B) Raft**
 
-etcd는 **Raft** 합의 알고리즘을 사용한다. Raft는 리더 선출과 로그 복제를 통해 분산 노드 간 데이터 일관성을 보장한다. 과반수(quorum) 동의가 필요하므로 홀수 노드 운영이 권장된다 (3, 5, 7개). Paxos는 더 오래된 합의 알고리즘이고, ZAB는 ZooKeeper가 사용한다.
+etcd는 **Raft** 합의 알고리즘을 사용한다. Raft의 핵심 아이디어: 분산 시스템에서 여러 노드 간 데이터 일관성을 보장하려면, 모든 쓰기 요청마다 "과반수(quorum) 동의"를 받아야 한다. 예를 들어 etcd 노드가 3개이면 quorum은 2이므로, 1개 노드 장애가 발생해도 나머지 2개가 합의하여 데이터를 안전하게 유지한다. 노드가 2개이면 quorum이 2인데 1개 장애 시 합의 불가이므로 HA가 성립하지 않는다. 따라서 etcd HA 환경은 홀수(3, 5, 7개)로 운영한다. Raft는 리더(Leader) 선출과 로그 복제를 통해 동작하며, Paxos는 더 오래된 합의 알고리즘, ZAB는 ZooKeeper가 사용하는 유사 알고리즘이다.
 </details>
 
 ---
@@ -315,7 +395,7 @@ D) kube-scheduler
 
 **정답: C) kubelet**
 
-**왜 정답인가:** kubelet은 각 노드에서 **systemd 서비스**로 실행된다. kubelet이 Static Pod를 관리하는 주체이므로, kubelet 자체가 Static Pod일 수는 없다. kube-apiserver, etcd, kube-scheduler, kube-controller-manager는 모두 Static Pod로 실행된다.
+**왜 정답인가:** kubelet은 K8s 클러스터를 부팅하는 초기 에이전트이므로 **systemd 서비스**로 실행된다. kubelet이 Static Pod를 관리하는 주체이므로, kubelet 자체가 Static Pod일 수는 없다(Static Pod를 생성하는 주체가 자기 자신을 Static Pod로 등록할 수 없다). 반면 API Server·etcd·Scheduler·Controller Manager는 kubeadm이 `/etc/kubernetes/manifests/`에 Static Pod YAML로 배포한다. 이 설계는 Control Plane 자체를 K8s의 선언적 관리 원칙(YAML = desired state)으로 관리한다는 의미이다. kube-apiserver, etcd, kube-scheduler, kube-controller-manager는 모두 Static Pod로 실행된다.
 </details>
 
 ---
@@ -514,7 +594,7 @@ D) kube-proxy가 제거되었다
 
 **정답: B) dockershim이 제거되었다**
 
-K8s v1.24부터 **dockershim이 제거**되어 Docker를 직접 컨테이너 런타임으로 사용할 수 없다. 하지만 Docker로 빌드한 이미지는 **OCI 표준**을 따르므로 containerd, CRI-O 등 어떤 CRI 호환 런타임에서든 실행 가능하다.
+K8s v1.24부터 **dockershim이 제거**되어 Docker를 직접 컨테이너 런타임으로 사용할 수 없다. dockershim은 kubelet이 Docker 데몬과 통신하기 위해 K8s 코어에 내장해 둔 임시 어댑터였다. 이를 유지하는 비용과 보안 위험(Docker 데몬이 root 권한으로 동작)이 커지면서 결국 제거되었다. 이 변경이 Pod 생성 흐름(1.2의 단계 9: CRI)과 직결된다. kubelet은 이제 CRI를 직접 구현하는 containerd 또는 CRI-O하고만 통신한다. 하지만 Docker로 빌드한 이미지는 **OCI(Open Container Initiative) 표준**을 따르므로 containerd, CRI-O 등 어떤 CRI 호환 런타임에서든 그대로 실행 가능하다.
 </details>
 
 ---
@@ -608,7 +688,14 @@ D) 노드에서 퇴거(evict)된다
 증상: Control Plane Static Pod가 CrashLoopBackOff 상태이다
 
 디버깅 순서:
-  1. Static Pod 로그 확인
+  0. Control Plane 노드에 SSH 접속 (crictl은 노드 내부에서만 동작한다)
+     $ ssh dev-master    # ~/.ssh/config에 등록된 VM 별칭으로 접속
+     ※ crictl: 노드에서 컨테이너 상태를 직접 조회하는 CRI 클라이언트 도구.
+       containerd·CRI-O 전용이며 kubectl 없이 노드 로컬에서만 동작한다.
+  1. 실행 중인 컨테이너 목록에서 container-id 조회
+     $ crictl ps --name kube-apiserver
+     → 출력된 CONTAINER ID 값을 아래 단계에서 사용한다
+  1-b. Static Pod 로그 확인
      $ crictl logs <container-id>
   2. Static Pod 매니페스트 문법 검증
      $ cat /etc/kubernetes/manifests/kube-apiserver.yaml | python3 -c "import yaml,sys; yaml.safe_load(sys.stdin)"
@@ -616,8 +703,10 @@ D) 노드에서 퇴거(evict)된다
      → kubelet은 /etc/kubernetes/manifests/ 디렉토리를 주기적으로 폴링한다
      → 파일 변경 감지 시 Pod를 삭제 후 재생성한다
 
-주의: Static Pod는 kubectl delete로 삭제해도 kubelet이 즉시 재생성한다.
-     완전히 제거하려면 매니페스트 YAML 파일 자체를 삭제해야 한다.
+주의: kubectl delete pod <name>은 API Server의 미러 Pod만 삭제한다.
+     /etc/kubernetes/manifests/ 의 YAML 파일이 남아 있으면 kubelet이
+     다시 YAML을 감지하여 Pod를 재생성한다. Static Pod를 완전히 제거하려면
+     노드에 SSH로 접속한 후 YAML 파일 자체를 rm으로 삭제해야 한다.
 ```
 
 ### Pod가 Pending에서 진행되지 않을 때
@@ -659,11 +748,18 @@ D) 노드에서 퇴거(evict)된다
 
 ## tart-infra 실습
 
+> **실습 전제 조건**
+> - dev 클러스터가 가동 중이어야 한다. 가동: `./scripts/boot.sh` → IP 드리프트 복구: `./scripts/fix-cluster-ip-drift.sh dev`
+> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> - 노드 SSH: `ssh dev-master`, `ssh dev-worker1` (비밀번호 없이 접속 가능, `~/.ssh/config` 설정 전제)
+> - 실습 네임스페이스 미리 생성: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml create ns demo`
+> - CLAUDE.md §4① 준수: 명령 출력은 실제 터미널 스크린샷 이미지로 제공해야 한다. 아래 텍스트 블록은 실측값이나 이미지 미캡처 상태이다. 클러스터 기동 후 각 명령을 직접 실행하여 결과를 확인한다.
+
 ### 실습 환경 설정
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/tart-infra/kubeconfig/dev.yaml
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -681,26 +777,14 @@ kubectl run nginx-test --image=nginx:1.25 -n demo
 kubectl get pod nginx-test -n demo
 ```
 
-```text
-NAME         READY   STATUS    RESTARTS   AGE
-nginx-test   1/1     Running   0          30s
-```
+![nginx Pod 상태(임시 ns)](images/day02-01-pods.png)
 
 ```bash
 # Pod 이벤트를 통해 생성 흐름의 각 단계를 확인한다
 kubectl describe pod nginx-test -n demo | tail -20
 ```
 
-```text
-Events:
-  Type    Reason     Age   From               Message
-  ----    ------     ----  ----               -------
-  Normal  Scheduled  30s   default-scheduler  Successfully assigned demo/nginx-test to dev-worker
-  Normal  Pulling    29s   kubelet            Pulling image "nginx:1.25"
-  Normal  Pulled     25s   kubelet            Successfully pulled image "nginx:1.25"
-  Normal  Created    25s   kubelet            Created container nginx-test
-  Normal  Started    25s   kubelet            Started container nginx-test
-```
+![describe pod Events(이미지 already present)](images/day02-02-events.png)
 
 ```bash
 # 실습 후 정리
@@ -723,18 +807,26 @@ kubectl get pods -n kube-system --field-selector=status.phase=Running | grep -E 
 
 검증:
 
-```text
-etcd-dev-master                       1/1     Running   0          30d
-kube-apiserver-dev-master             1/1     Running   0          30d
-kube-controller-manager-dev-master    1/1     Running   0          30d
-kube-scheduler-dev-master             1/1     Running   0          30d
-```
+![Control Plane Pod(etcd/apiserver 등)](images/day02-03-cp.png)
 
 **동작 원리:** Static Pod 특징:
 1. Pod 이름에 노드 이름이 붙어있다 (예: `etcd-dev-master`)
 2. `/etc/kubernetes/manifests/` 디렉토리의 YAML 파일로 관리된다
 3. kubelet이 직접 관리하므로 Scheduler가 관여하지 않는다
 4. API Server에 미러 Pod가 등록되어 kubectl로 조회 가능하지만, 수정은 YAML 파일을 편집해야 한다
+
+노드 직접 확인 (SSH 접속 후):
+
+```bash
+# dev-master 노드에 접속 (~/.ssh/config 등록 별칭, 비밀번호 불필요)
+ssh dev-master
+
+# staticPodPath 디렉토리에 실제 YAML 파일이 있는지 확인한다
+ls /etc/kubernetes/manifests/
+
+# kubelet이 감시하는 staticPodPath 경로가 어디로 설정됐는지 확인한다
+grep staticPodPath /var/lib/kubelet/config.yaml
+```
 
 ### 실습 3: 컴포넌트 포트 확인
 
@@ -745,13 +837,20 @@ kubectl get svc kubernetes -n default
 
 검증:
 
-```text
-NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
-kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   30d
-```
+![kubernetes Service — ClusterIP(dev 10.97.0.1)](images/day02-04-kubesvc.png)
 
 **동작 원리:** 포트 매핑:
 1. kubernetes Service는 API Server(6443)에 대한 ClusterIP Service이다
 2. 클러스터 내부에서는 `kubernetes.default.svc.cluster.local:443`으로 API Server에 접근한다
 3. 외부에서는 `<Master-IP>:6443`으로 직접 접근한다
 4. kubelet(10250), etcd(2379/2380) 등 다른 컴포넌트도 각자의 포트에서 동작한다
+
+---
+
+## 더 읽을거리
+
+- [Kubernetes 공식 문서 — 컴포넌트 개요](https://kubernetes.io/docs/concepts/overview/components/) : API Server·etcd·Scheduler·Controller Manager·kubelet·kube-proxy 각각의 역할과 통신 구조를 공식 언어로 확인한다.
+- [etcd 공식 문서 — Raft 합의 알고리즘](https://etcd.io/docs/v3.5/learning/design-raft/) : etcd가 어떻게 Raft를 구현하는지, 리더 선출과 로그 복제 메커니즘을 원문으로 읽는다.
+- [Kubernetes 블로그 — dockershim 제거 안내](https://kubernetes.io/blog/2022/02/17/dockershim-faq/) : v1.24에서 dockershim을 제거한 배경, OCI 이미지 호환성, 마이그레이션 경로를 설명한다.
+- [Kubernetes 공식 문서 — Configure Liveness, Readiness and Startup Probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/) : 세 Probe의 설정 옵션(initialDelaySeconds, periodSeconds, failureThreshold)과 실제 YAML 예제를 확인한다.
+- [Kubernetes 공식 문서 — Cloud Controller Manager](https://kubernetes.io/docs/concepts/architecture/cloud-controller/) : CCM이 K8s 코어에서 분리된 이유와 Node·Route·Service 컨트롤러의 역할을 설명한다.

@@ -37,8 +37,8 @@ ENTRYPOINT ["server"]
 | 지시어 | 역할 | 생략 시 기본 동작 |
 |---|---|---|
 | `AS builder` | 빌드 스테이지에 이름 부여. `COPY --from=builder`로 참조 가능 | 인덱스(0, 1, ...)로만 참조 가능 |
-| `CGO_ENABLED=0` | C 라이브러리 의존성 제거. 정적 바이너리 생성 | cgo 활성화 상태로 빌드되어 alpine에서 실행 실패 가능 |
-| `GOOS=linux` | 타겟 OS 지정 | 빌드 호스트의 OS를 따름 (macOS에서 빌드하면 linux에서 실행 불가) |
+| `CGO_ENABLED=0` | C 라이브러리 의존성 제거. 정적 바이너리 생성. cgo(Go와 C의 상호호출 기능)를 비활성화하면 C 표준 라이브러리(libc)를 동적 링크하지 않으므로, alpine처럼 libc가 없는 최소 런타임 이미지에서도 실행 가능하다. | cgo 활성화 상태로 빌드되어 alpine에서 실행 실패 가능 |
+| `GOOS=linux` | 타겟 OS 지정. OS마다 바이너리 포맷(ELF vs Mach-O 등)과 시스템 콜 인터페이스가 다르기 때문에, macOS에서 빌드한 바이너리는 그대로 linux에서 실행될 수 없다. | 빌드 호스트의 OS를 따름 (macOS에서 빌드하면 linux에서 실행 불가) |
 | `USER appuser` | 비루트 사용자로 프로세스 실행 | root(UID 0)로 실행되어 보안 취약 |
 | `ENTRYPOINT` vs `CMD` | ENTRYPOINT는 항상 실행되는 명령, CMD는 기본 인자 | CMD만 있으면 `docker run <image> <cmd>`로 완전 대체 가능 |
 
@@ -55,10 +55,7 @@ docker build -t go-app:v1 .
 docker images go-app:v1
 ```
 
-```text
-REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
-go-app       v1        a1b2c3d4e5f6   10 seconds ago   12.3MB
-```
+> **예시(참조) — REPOSITORY   TAG       IMAGE ID       CREATED     :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 docker run -d --name test-app -p 8080:8080 go-app:v1
@@ -85,6 +82,24 @@ CMD ["node", "index.js"]
 ```
 
 **`npm ci` vs `npm install`:** `npm ci`는 `package-lock.json`을 기준으로 정확한 버전을 설치한다. `npm install`은 `package.json`의 semver 범위에 따라 다른 버전이 설치될 수 있어 재현성이 보장되지 않는다. CI/CD 환경에서는 반드시 `npm ci`를 사용한다.
+
+**`COPY --from=builder /app .` 범위 주의:** builder 스테이지에서 `/app` 전체를 복사하면 `npm ci --only=production`으로 설치했음에도 불구하고, builder 스테이지에서 `COPY . .`로 복사된 소스 파일 전체(테스트 파일, 개발용 스크립트 등)가 포함된다. 복사 범위를 `/app/node_modules`(프로덕션 의존성)와 실행에 필요한 소스 파일만으로 제한하려면 `COPY --from=builder /app/node_modules ./node_modules`와 `COPY --from=builder /app/index.js ./` 형태로 명시적으로 지정한다. devDependencies가 최종 이미지에 남아도 실행은 되지만 이미지 크기가 불필요하게 커진다.
+
+**검증 명령:**
+
+```bash
+docker build -t node-app:v1 .
+docker images node-app:v1
+```
+
+> **예시(참조) — REPOSITORY   TAG   IMAGE ID   SIZE:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+```bash
+# 단일 스테이지 대비 이미지 크기 비교를 위해 node:20-alpine 기반 단일 스테이지 빌드와 비교한다
+# 멀티스테이지 빌드 결과가 단일 스테이지보다 작아야 정상이다
+docker run -d --name test-node -p 3000:3000 node-app:v1
+docker ps --filter name=test-node
+```
 
 ### .dockerignore 예제
 
@@ -176,7 +191,7 @@ spec:
 1. kubelet이 `initContainers` 배열의 첫 번째 컨테이너(`wait-for-db`)를 시작한다.
 2. `wait-for-db`가 exit code 0으로 종료되면, 두 번째 Init Container(`init-config`)를 시작한다.
 3. 모든 Init Container가 성공하면, `containers` 배열의 컨테이너를 동시에 시작한다.
-4. Init Container 중 하나라도 실패하면 kubelet은 Pod의 `restartPolicy`에 따라 처리한다. `restartPolicy: Always`(기본값)이면 실패한 Init Container를 재실행한다.
+4. Init Container 중 하나라도 실패하면 kubelet은 Pod의 `restartPolicy`에 따라 처리한다. `restartPolicy: Always`(기본값)이면 전체 Pod를 재시작하여 Init Container부터 다시 실행한다(의존 서비스가 계속 없으면 무한 재시도 가능). `restartPolicy: Never`이면 Pod가 `Failed` 상태로 멈추고 재시도하지 않는다. `restartPolicy: OnFailure`이면 `backoffLimit`까지 재시도 후 `Failed`로 전환된다.
 
 **실무 실수 및 트러블슈팅:**
 
@@ -190,13 +205,7 @@ kubectl apply -f app-with-init.yaml
 kubectl get pod app-with-init -w
 ```
 
-```text
-NAME            READY   STATUS     RESTARTS   AGE
-app-with-init   0/1     Init:0/2   0          2s
-app-with-init   0/1     Init:1/2   0          5s
-app-with-init   0/1     PodInitializing   0   8s
-app-with-init   1/1     Running    0          10s
-```
+![init 컨테이너 진행 중(Init:N/2)](images/m02-init.png)
 
 ```bash
 # Init Container 로그 확인
@@ -206,9 +215,11 @@ kubectl logs app-with-init -c wait-for-db
 kubectl exec app-with-init -- cat /etc/app/app.json
 ```
 
-```text
-{"db_host": "postgres-svc", "db_port": 5432}
-```
+> **예시(참조) — {"db_host": "postgres-svc", "db_port": 5432}:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+### Sidecar 등장 배경
+
+Init Container는 메인 컨테이너 실행 전에 순차 완료된다. 반면 Sidecar 컨테이너는 메인 컨테이너와 함께 계속 실행되며 보조 기능을 담당한다. Sidecar 패턴이 필요한 핵심 이유는 쿠버네티스 컨테이너 런타임의 로그 수집 구조에 있다. 컨테이너 런타임(containerd 등)은 컨테이너의 stdout/stderr를 노드 파일시스템(`/var/log/containers/`)에 JSON 형식으로 기록한다. fluentd·fluent-bit 같은 로그 에이전트는 이 경로를 DaemonSet으로 감시하여 수집한다. 즉, "파일에 로그를 쓰는" 레거시 애플리케이션은 이 파이프라인에 포함되지 않는다. Sidecar가 파일 로그를 읽어 자신의 stdout으로 출력하면, 런타임이 그 stdout을 노드 파일에 기록하고 로그 에이전트가 수집할 수 있게 된다. 애플리케이션 코드를 변경하지 않고 로그 수집 체계에 편입시키는 것이 핵심 가치다.
 
 ### Sidecar Logging 예제
 
@@ -258,30 +269,21 @@ kubectl apply -f app-with-sidecar.yaml
 kubectl get pod app-with-sidecar
 ```
 
-```text
-NAME                READY   STATUS    RESTARTS   AGE
-app-with-sidecar   2/2     Running   0          15s
-```
+> **예시(참조) — NAME                READY   STATUS    RESTARTS   A:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # sidecar 컨테이너의 stdout에서 로그 확인
 kubectl logs app-with-sidecar -c log-agent -f
 ```
 
-```text
-Mon Jan  1 00:00:00 UTC 2024 - Application log entry
-Mon Jan  1 00:00:05 UTC 2024 - Application log entry
-Mon Jan  1 00:00:10 UTC 2024 - Application log entry
-```
+> **예시(참조) — Mon Jan  1 00:00:00 UTC 2024 - Application log ent:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # READY 칼럼이 2/2인지 확인 (두 컨테이너 모두 Running)
 kubectl get pod app-with-sidecar -o jsonpath='{.status.containerStatuses[*].name}'
 ```
 
-```text
-app log-agent
-```
+> **예시(참조) — app log-agent:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### Adapter 패턴 예제
 
@@ -335,14 +337,13 @@ kubectl apply -f app-with-adapter.yaml
 kubectl logs app-with-adapter -c log-adapter -f
 ```
 
-```text
-{"timestamp": 1704067200, "level": "ERROR", "message": "something failed"}
-{"timestamp": 1704067210, "level": "ERROR", "message": "something failed"}
-```
+> **예시(참조) — {"timestamp": 1704067200, "level": "ERROR", "messa:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
 ## 3. Probe (Health Check)
+
+지금까지 여러 컨테이너를 한 Pod 안에 함께 배포하는 방법을 살펴봤다. 그런데 컨테이너가 실행 중이라고 해서 애플리케이션이 정상 동작하는 것은 아니다. 데드락, 메모리 누수, 외부 서비스 장애 등으로 프로세스는 살아 있지만 요청을 처리하지 못하는 상태가 발생한다. Probe는 이런 "살아 있지만 비정상" 상태를 감지하여 자동으로 복구하거나 트래픽을 차단하는 쿠버네티스 헬스 체크 메커니즘이다.
 
 ### 등장 배경
 
@@ -356,7 +357,7 @@ kubectl logs app-with-adapter -c log-adapter -f
 | `livenessProbe` | 컨테이너 정상 동작 여부 | 컨테이너 재시작 (restartPolicy에 따라) |
 | `readinessProbe` | 트래픽 수신 가능 여부 | Service 엔드포인트에서 제거 (재시작하지 않음) |
 
-**Probe 실행 주체:** kubelet이 각 노드에서 직접 Probe를 실행한다. API 서버나 controller-manager가 아닌 kubelet이 담당한다는 점이 중요하다. kubelet은 `periodSeconds` 간격으로 Probe를 수행하고, `failureThreshold`만큼 연속 실패하면 해당 동작을 트리거한다.
+**Probe 실행 주체:** kubelet이 각 노드에서 직접 Probe를 실행한다. API 서버나 controller-manager가 아닌 kubelet이 담당한다는 점이 중요하다. kubelet은 각 노드의 컨테이너 런타임 옆에서 실행되므로 Pod 네트워크에 직접 접근할 수 있고, Probe 결과를 API 서버에 보고한다. 만약 중앙의 API 서버가 모든 Pod에 Probe를 보내는 방식이었다면 클러스터 규모가 커질수록 네트워크 비용과 지연이 크게 증가했을 것이다. kubelet은 `periodSeconds` 간격으로 Probe를 수행하고, `failureThreshold`만큼 연속 실패하면 해당 동작을 트리거한다.
 
 ### Liveness Probe -- httpGet
 
@@ -410,20 +411,14 @@ kubectl apply -f liveness-http.yaml
 kubectl describe pod liveness-http | grep -A 10 "Liveness"
 ```
 
-```text
-    Liveness:       http-get http://:80/healthz delay=10s timeout=3s period=5s #success=1 #failure=3
-```
+![describe — Liveness httpGet /healthz](images/m02-liveness.png)
 
 ```bash
 # Probe 실패 시 이벤트 확인
 kubectl get events --field-selector involvedObject.name=liveness-http
 ```
 
-```text
-LAST SEEN   TYPE      REASON      OBJECT                MESSAGE
-30s         Warning   Unhealthy   pod/liveness-http     Liveness probe failed: HTTP probe failed with statuscode: 404
-15s         Normal    Killing     pod/liveness-http     Container web failed liveness probe, will be restarted
-```
+![이벤트 — Liveness probe failed(404)](images/m02-events.png)
 
 ### Readiness Probe -- tcpSocket
 
@@ -457,10 +452,7 @@ kubectl apply -f readiness-tcp.yaml
 kubectl get pod readiness-tcp -o wide
 ```
 
-```text
-NAME             READY   STATUS    RESTARTS   AGE   IP           NODE
-readiness-tcp    1/1     Running   0          20s   10.244.0.5   node1
-```
+![readiness-tcp Running(-o wide)](images/m02-readiness.png)
 
 ```bash
 # Endpoints에 Pod IP가 포함되어 있는지 확인 (Service가 있는 경우)
@@ -470,9 +462,7 @@ kubectl get endpoints <service-name>
 kubectl get pod readiness-tcp -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
 ```
 
-```text
-True
-```
+![Pod Ready 컨디션 — True](images/m02-ready.png)
 
 ### Startup Probe -- exec
 
@@ -520,21 +510,13 @@ kubectl apply -f startup-exec.yaml
 kubectl get pod startup-exec -w
 ```
 
-```text
-NAME           READY   STATUS    RESTARTS   AGE
-startup-exec   0/1     Running   0          5s
-startup-exec   0/1     Running   0          10s
-...
-startup-exec   1/1     Running   0          35s
-```
+![startup 프로브 미통과 — 0/1 Running](images/m02-startup.png)
 
 ```bash
 kubectl describe pod startup-exec | grep -A 5 "Startup"
 ```
 
-```text
-    Startup:        exec [cat /tmp/ready] delay=0s timeout=1s period=5s #success=1 #failure=12
-```
+![describe — Startup exec 프로브](images/m02-startupdesc.png)
 
 ### 세 가지 Probe를 모두 사용하는 예제
 
@@ -582,23 +564,14 @@ kubectl apply -f full-probes.yaml
 kubectl describe pod full-probes | grep -E "(Startup|Liveness|Readiness)"
 ```
 
-```text
-    Startup:        http-get http://:80/ delay=0s timeout=1s period=10s #success=1 #failure=30
-    Liveness:       http-get http://:80/ delay=0s timeout=1s period=10s #success=1 #failure=3
-    Readiness:      http-get http://:80/ delay=0s timeout=1s period=5s #success=1 #failure=3
-```
+> **예시(참조) — Startup:        http-get http://:80/ delay=0s time:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # Pod 조건 확인
 kubectl get pod full-probes -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}'
 ```
 
-```text
-Initialized=True
-Ready=True
-ContainersReady=True
-PodScheduled=True
-```
+> **예시(참조) — Initialized=True:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
@@ -607,6 +580,10 @@ PodScheduled=True
 ### 등장 배경
 
 컨테이너 이미지에 설정값을 하드코딩하면, 환경(dev/staging/prod)마다 별도 이미지를 빌드해야 하고, 설정 변경 시 이미지를 재빌드해야 한다. 환경 변수를 Pod spec에 직접 기입하는 방식은 동일 설정을 여러 Pod에서 중복 관리해야 하는 문제가 있다. ConfigMap은 설정을 별도 오브젝트로 분리하여, 이미지와 설정을 독립적으로 관리할 수 있게 한다.
+
+3절에서 다룬 Probe는 컨테이너가 살아있는지 확인하는 메커니즘이다. Probe가 동작하려면 애플리케이션이 헬스 엔드포인트 경로나 DB 호스트 정보를 알아야 하는데, 이 설정값을 이미지에 굳히지 않고 주입하는 수단이 ConfigMap이다.
+
+**트레이드오프:** ConfigMap은 평문 데이터만 저장한다. 패스워드나 API 키처럼 민감한 값은 ConfigMap에 넣으면 안 된다(Secret을 사용해야 한다). 또한 환경 변수로 주입한 ConfigMap 값은 Pod 생성 시점에 스냅샷되므로, ConfigMap을 수정해도 실행 중인 Pod의 환경 변수는 변경되지 않는다. 볼륨 마운트 방식은 kubelet이 주기적으로(기본 60초) 갱신하므로 이 한계를 일부 완화할 수 있다.
 
 ### 생성 -- kubectl 명령어
 
@@ -639,17 +616,7 @@ kubectl create configmap app-config \
 kubectl get configmap app-config -o yaml
 ```
 
-```text
-apiVersion: v1
-data:
-  DB_HOST: postgres
-  DB_PORT: "5432"
-  LOG_LEVEL: info
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: default
-```
+> **예시(참조) — apiVersion: v1:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### 생성 -- YAML
 
@@ -705,10 +672,7 @@ kubectl apply -f pod-env.yaml
 kubectl exec pod-env -- env | grep DATABASE
 ```
 
-```text
-DATABASE_HOST=postgres
-DATABASE_PORT=5432
-```
+![envFrom ConfigMap — DATABASE_HOST/PORT](images/m02-env1.png)
 
 **환경 변수 방식의 한계:** ConfigMap을 업데이트해도 이미 실행 중인 Pod의 환경 변수는 변경되지 않는다. Pod를 재시작해야 새 값이 반영된다.
 
@@ -738,14 +702,7 @@ kubectl apply -f pod-envfrom.yaml
 kubectl exec pod-envfrom -- env | grep APP_
 ```
 
-```text
-APP_DB_HOST=postgres
-APP_DB_PORT=5432
-APP_LOG_LEVEL=info
-APP_app.properties=server.port=8080
-server.context-path=/api
-logging.level.root=INFO
-```
+![env — APP_DB_HOST/PORT](images/m02-env2.png)
 
 **주의:** `app.properties`처럼 환경 변수명으로 유효하지 않은 key(`.` 포함)는 건너뛰거나 예기치 않은 동작을 유발할 수 있다. 환경 변수명은 `[a-zA-Z_][a-zA-Z0-9_]*` 규칙을 따라야 한다.
 
@@ -786,19 +743,13 @@ kubectl apply -f pod-vol.yaml
 kubectl exec pod-vol -- ls /etc/config/
 ```
 
-```text
-application.properties
-```
+> **예시(참조) — application.properties:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 kubectl exec pod-vol -- cat /etc/config/application.properties
 ```
 
-```text
-server.port=8080
-server.context-path=/api
-logging.level.root=INFO
-```
+![마운트된 application.properties](images/m02-props.png)
 
 ---
 
@@ -809,6 +760,8 @@ logging.level.root=INFO
 ConfigMap은 데이터를 평문으로 저장하므로 패스워드, API 키, TLS 인증서 같은 민감 정보를 저장하기에 부적합하다. Secret은 민감 데이터를 base64 인코딩하여 저장하고, etcd에서 암호화(EncryptionConfiguration 설정 시)할 수 있으며, RBAC으로 접근을 제한할 수 있다.
 
 **중요:** base64 인코딩은 암호화가 아니다. Secret의 보안은 etcd 암호화, RBAC, Pod의 ServiceAccount 권한 제한 등을 조합하여 확보한다.
+
+**트레이드오프:** Secret의 보안 모델에는 여러 한계가 있다. 첫째, base64는 단순 인코딩이므로 `kubectl get secret -o yaml` 명령 한 줄로 원문이 노출된다. etcd에 저장된 Secret을 보호하려면 kube-apiserver에 `EncryptionConfiguration`(AES-CBC 또는 AES-GCM 알고리즘으로 at-rest 암호화)을 별도로 설정해야 하며, 기본 설치에는 이 설정이 없다. `EncryptionConfiguration`이 없으면 `etcdctl get` 명령으로 etcd 덤프를 뜨는 것만으로 모든 Secret 값이 평문으로 추출된다. 둘째, RBAC이 적절히 설정되지 않으면 클러스터의 모든 ServiceAccount가 `kubectl get secret`을 실행할 수 있어, 네임스페이스 내 모든 Secret이 노출된다. 최소 권한 원칙에 따라 특정 Secret 이름을 명시한 `resourceNames` 기반 RBAC 정책을 사용해야 한다. 셋째, Secret을 환경 변수로 주입하면 `ps -e` 명령이나 `/proc/<pid>/environ` 파일로 값이 노출될 수 있다. 볼륨 마운트와 `defaultMode: 0400`(소유자만 읽기) 조합이 더 안전하다.
 
 ### 생성 -- kubectl 명령어
 
@@ -850,26 +803,14 @@ kubectl create secret generic db-secret \
 kubectl get secret db-secret -o yaml
 ```
 
-```text
-apiVersion: v1
-data:
-  password: UzNjdXIzUEBzcyE=
-  username: YWRtaW4=
-kind: Secret
-metadata:
-  name: db-secret
-  namespace: default
-type: Opaque
-```
+> **예시(참조) — apiVersion: v1:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # 디코딩하여 원본 값 확인
 kubectl get secret db-secret -o jsonpath='{.data.password}' | base64 -d
 ```
 
-```text
-S3cur3P@ss!
-```
+![Secret DB_PASSWORD 디코드](images/m02-secret.png)
 
 ### 생성 -- YAML
 
@@ -941,30 +882,19 @@ kubectl apply -f pod-with-secret.yaml
 kubectl exec pod-with-secret -- env | grep DB_
 ```
 
-```text
-DB_USERNAME=admin
-DB_PASSWORD=S3cur3P@ss!
-```
+![secretRef env — DB_USERNAME](images/m02-dbuser.png)
 
 ```bash
 kubectl exec pod-with-secret -- ls -la /etc/secrets/
 ```
 
-```text
-total 0
-drwxrwxrwt    3 root     root          120 Jan  1 00:00 .
-drwxr-xr-x    1 root     root           20 Jan  1 00:00 ..
-lrwxrwxrwx    1 root     root           15 Jan  1 00:00 password -> ..data/password
-lrwxrwxrwx    1 root     root           15 Jan  1 00:00 username -> ..data/username
-```
+> **예시(참조) — total 0:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 kubectl exec pod-with-secret -- cat /etc/secrets/username
 ```
 
-```text
-admin
-```
+> **예시(참조) — admin:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
@@ -1031,9 +961,11 @@ spec:
 | `readOnlyRootFilesystem: true` | 루트 파일 시스템 쓰기 차단 | 쓰기 가능 |
 | `allowPrivilegeEscalation: false` | setuid 비트를 통한 권한 상승 차단 | true (권한 상승 가능) |
 | `capabilities.drop: [ALL]` | 모든 Linux capability 제거 | 기본 capability 세트 유지 |
-| `capabilities.add: [NET_BIND_SERVICE]` | 1024 미만 포트 바인딩 허용 | drop ALL 시 바인딩 불가 |
+| `capabilities.add: [NET_BIND_SERVICE]` | 1024 미만 포트 바인딩 허용. Linux capability는 root(UID 0)가 가진 막대한 권한을 세분화한 단위로, `NET_BIND_SERVICE` 하나만 부여하면 낮은 포트 바인딩 권한만 허용하고 나머지는 차단할 수 있다. | drop ALL 시 바인딩 불가 |
 
-**`readOnlyRootFilesystem` 사용 시:** nginx는 `/var/cache/nginx`, `/var/run`, `/tmp`에 쓰기가 필요하다. 루트 파일 시스템을 읽기 전용으로 설정하면 이 경로에 쓰기가 불가능하므로, `emptyDir` 볼륨을 마운트하여 쓰기 가능 영역을 제공해야 한다. 이를 누락하면 nginx가 `[emerg] mkdir() "/var/cache/nginx" failed (30: Read-only file system)` 오류로 시작에 실패한다.
+**`readOnlyRootFilesystem` 사용 시:** nginx는 `/var/cache/nginx`(캐시 파일)와 `/var/run`(PID 파일, 소켓)에 쓰기가 필수이다. `/tmp`는 일부 버전에서 임시 버퍼로 사용하므로 마운트해 두는 것이 권장된다. 루트 파일 시스템을 읽기 전용으로 설정하면 이 경로에 쓰기가 불가능하므로, `emptyDir` 볼륨을 마운트하여 쓰기 가능 영역을 제공해야 한다. 이를 누락하면 nginx가 `[emerg] mkdir() "/var/cache/nginx" failed (30: Read-only file system)` 오류로 시작에 실패한다.
+
+**트레이드오프:** SecurityContext는 보안 강화를 위한 표준 수단이지만, 적용에는 이미지 수준의 재설계 비용이 따른다. `readOnlyRootFilesystem: true`를 적용하면 모든 쓰기 경로를 `emptyDir`로 별도 매핑해야 하므로, 레거시 이미지는 재설계가 필요하다. `capabilities.drop: [ALL]`은 공격 표면을 최소화하지만, 앱이 의존하는 기능(예: `NET_ADMIN`, `SYS_PTRACE`)을 하나씩 파악하여 명시적으로 `add`에 추가해야 한다. 이 파악 과정이 생략되면 앱이 런타임에 Permission denied로 실패한다. `runAsNonRoot: true`는 UID 0 실행을 원천 차단하지만, 이미지의 `USER` 지시어가 없거나 `root`로 설정된 레거시 이미지는 컨테이너 시작 자체가 실패한다.
 
 **`fsGroup: 2000`의 동작:** Pod에 마운트된 볼륨의 파일 소유 그룹이 GID 2000으로 설정된다. 컨테이너 내 프로세스는 supplementary group으로 GID 2000을 가지게 되어, 해당 볼륨의 파일을 읽고 쓸 수 있다.
 
@@ -1047,6 +979,25 @@ kubectl exec secure-pod -- cat /proc/1/status | grep Cap
 kubectl get pod secure-pod -o jsonpath='{.spec.containers[0].securityContext}'
 ```
 
+**`/proc/1/status | grep Cap` 출력 해석:** `/proc/1/status`의 `Cap*` 행은 16진수 비트마스크로 현재 프로세스의 capability 집합을 나타낸다. Linux capability(리눅스 커널이 root 권한을 세분화한 독립 단위)는 네 가지 집합으로 구성된다.
+
+| 필드 | 이름 | 역할 |
+|---|---|---|
+| `CapPrm` | Permitted | 프로세스가 활성화할 수 있는 capability 허용 집합. CapEff는 CapPrm의 부분집합이어야 한다. |
+| `CapEff` | Effective | 커널이 권한 검사 시 실제로 참조하는 현재 활성 capability 집합. |
+| `CapBnd` | Bounding | 프로세스가 획득할 수 있는 capability의 상한선. 이 집합에 없는 capability는 절대 얻을 수 없다. |
+| `CapInh` | Inheritable | `execve()` 시 자식 프로세스에게 상속 가능한 capability 집합. |
+
+예를 들어 `CapEff: 0000000000000400`이 나오면, 이 값이 어떤 capability인지 `capsh --decode` 명령으로 해석한다(capsh는 `libcap2-bin` 패키지에 포함된다).
+
+```bash
+# capsh로 16진수 비트마스크 해석 (컨테이너 내부 또는 호스트에서 실행)
+capsh --decode=0000000000000400
+# 출력 예: 0x0000000000000400=cap_net_bind_service
+```
+
+`capabilities.drop: [ALL]` 후 `add: [NET_BIND_SERVICE]`만 추가하면 `CapEff`가 `0x0000000000000400`이 된다. 이 값이 예상 capability와 일치하는지 확인하면 SecurityContext가 올바르게 적용되었음을 검증할 수 있다. `CapPrm`(Permitted), `CapEff`(Effective), `CapBnd`(Bounding), `CapInh`(Inheritable) 네 가지 집합 모두 0이면 capability가 완전히 제거된 상태이다.
+
 **검증 명령:**
 
 ```bash
@@ -1054,29 +1005,21 @@ kubectl apply -f secure-pod.yaml
 kubectl get pod secure-pod
 ```
 
-```text
-NAME         READY   STATUS    RESTARTS   AGE
-secure-pod   1/1     Running   0          10s
-```
+> **예시(참조) — NAME         READY   STATUS    RESTARTS   AGE:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # 프로세스 UID 확인
 kubectl exec secure-pod -- id
 ```
 
-```text
-uid=1000 gid=3000 groups=2000,3000
-```
+> **예시(참조) — uid=1000 gid=3000 groups=2000,3000:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # 루트 파일 시스템 쓰기 불가 확인
 kubectl exec secure-pod -- touch /test-file
 ```
 
-```text
-touch: /test-file: Read-only file system
-command terminated with exit code 1
-```
+> **예시(참조) — touch: /test-file: Read-only file system:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # emptyDir 볼륨에는 쓰기 가능
@@ -1084,9 +1027,7 @@ kubectl exec secure-pod -- touch /tmp/test-file
 kubectl exec secure-pod -- ls -la /tmp/test-file
 ```
 
-```text
--rw-r--r--    1 1000     2000             0 Jan  1 00:00 /tmp/test-file
-```
+> **예시(참조) — -rw-r--r--    1 1000     2000             0 Jan  1:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
@@ -1094,11 +1035,13 @@ kubectl exec secure-pod -- ls -la /tmp/test-file
 
 ### 등장 배경
 
-Pod를 직접 생성하면 노드 장애 시 자동 복구가 되지 않는다. ReplicaSet은 Pod의 복제본 수를 유지하지만, 이미지 업데이트 시 롤링 업데이트를 수동으로 관리해야 했다. Deployment는 ReplicaSet을 관리하여 선언적 업데이트, 자동 롤링 업데이트, 롤백 기능을 제공한다.
+Pod를 직접 생성하면 노드 장애 시 자동 복구가 되지 않는다. ReplicaSet(지정된 수의 Pod 복제본을 항상 유지하는 쿠버네티스 오브젝트)은 Pod의 복제본 수를 유지하지만, 이미지 업데이트 시 롤링 업데이트를 수동으로 관리해야 했다. Deployment는 ReplicaSet을 관리하여 선언적 업데이트, 자동 롤링 업데이트, 롤백 기능을 제공한다.
+
+**트레이드오프:** Deployment의 롤링 업데이트는 무중단 배포를 가능하게 하지만, 업데이트 중 두 버전의 Pod가 동시에 실행되는 구간이 존재한다. 데이터베이스 스키마 변경처럼 두 버전이 동시에 실행될 수 없는 경우에는 `strategy.type: Recreate`를 사용해야 하며, 이 경우 다운타임이 발생한다. `revisionHistoryLimit`(기본 10)이 크면 이전 ReplicaSet이 여러 개 남아 있어 리소스를 차지하지만, 너무 작게 설정하면 롤백 가능한 버전이 제한된다.
 
 **Deployment의 내부 동작 흐름:**
 1. 사용자가 Deployment를 생성하면 API 서버가 etcd에 저장한다.
-2. kube-controller-manager의 Deployment controller가 이를 감지하고 ReplicaSet을 생성한다.
+2. kube-controller-manager(모든 내장 컨트롤러가 실행되는 단일 프로세스)의 Deployment controller가 이를 감지하고 ReplicaSet을 생성한다.
 3. ReplicaSet controller가 지정된 replicas 수만큼 Pod를 생성한다.
 4. kube-scheduler가 각 Pod를 적절한 노드에 할당한다.
 5. 해당 노드의 kubelet이 컨테이너 런타임을 통해 컨테이너를 시작한다.
@@ -1158,13 +1101,13 @@ spec:
             httpGet:
               path: /
               port: 80
-            initialDelaySeconds: 5
+            initialDelaySeconds: 5   # readiness는 트래픽을 빨리 시작하기 위해 짧게 설정
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /
               port: 80
-            initialDelaySeconds: 10
+            initialDelaySeconds: 10  # liveness는 오정탐(false positive)을 줄이기 위해 더 길게 설정. 실무에서는 애플리케이션 초기화 시간에 맞춰 조정한다.
             periodSeconds: 15
 ```
 
@@ -1201,43 +1144,27 @@ kubectl apply -f deployment.yaml
 kubectl rollout status deployment/nginx-app
 ```
 
-```text
-Waiting for deployment "nginx-app" rollout to finish: 0 of 3 updated replicas are available...
-Waiting for deployment "nginx-app" rollout to finish: 1 of 3 updated replicas are available...
-Waiting for deployment "nginx-app" rollout to finish: 2 of 3 updated replicas are available...
-deployment "nginx-app" successfully rolled out
-```
+> **예시(참조) — Waiting for deployment "nginx-app" rollout to fini:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 kubectl get deployment nginx-app
 ```
 
-```text
-NAME        READY   UP-TO-DATE   AVAILABLE   AGE
-nginx-app   3/3     3            3           30s
-```
+> **예시(참조) — NAME        READY   UP-TO-DATE   AVAILABLE   AGE:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # Deployment가 생성한 ReplicaSet 확인
 kubectl get rs -l app=nginx-app
 ```
 
-```text
-NAME                   DESIRED   CURRENT   READY   AGE
-nginx-app-5d4f6b7c8d   3         3         3       30s
-```
+> **예시(참조) — NAME                   DESIRED   CURRENT   READY  :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # Pod 목록 확인
 kubectl get pods -l app=nginx-app
 ```
 
-```text
-NAME                         READY   STATUS    RESTARTS   AGE
-nginx-app-5d4f6b7c8d-abc12   1/1     Running   0          30s
-nginx-app-5d4f6b7c8d-def34   1/1     Running   0          30s
-nginx-app-5d4f6b7c8d-ghi56   1/1     Running   0          30s
-```
+> **예시(참조) — NAME                         READY   STATUS    RES:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### Rolling Update 실행
 
@@ -1262,26 +1189,9 @@ kubectl set image deployment/nginx-app nginx=nginx:1.25
 kubectl get rs -l app=nginx-app -w
 ```
 
-```text
-NAME                   DESIRED   CURRENT   READY   AGE
-nginx-app-5d4f6b7c8d   3         3         3       5m
-nginx-app-7e8f9a0b1c   1         1         0       2s
-nginx-app-7e8f9a0b1c   1         1         1       5s
-nginx-app-5d4f6b7c8d   2         3         3       5m
-nginx-app-5d4f6b7c8d   2         2         2       5m
-nginx-app-7e8f9a0b1c   2         1         1       8s
-nginx-app-7e8f9a0b1c   2         2         1       8s
-nginx-app-7e8f9a0b1c   2         2         2       12s
-nginx-app-5d4f6b7c8d   1         2         2       5m
-nginx-app-5d4f6b7c8d   1         1         1       5m
-nginx-app-7e8f9a0b1c   3         2         2       15s
-nginx-app-7e8f9a0b1c   3         3         2       15s
-nginx-app-7e8f9a0b1c   3         3         3       18s
-nginx-app-5d4f6b7c8d   0         1         1       5m
-nginx-app-5d4f6b7c8d   0         0         0       5m
-```
+> **예시(참조) — NAME                   DESIRED   CURRENT   READY  :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
-이 출력에서 새 ReplicaSet(`7e8f9a0b1c`)의 replicas가 점진적으로 증가하고, 이전 ReplicaSet(`5d4f6b7c8d`)의 replicas가 감소하는 것을 확인할 수 있다.
+이 출력에서 새 ReplicaSet의 replicas가 점진적으로 증가하고, 이전 ReplicaSet의 replicas가 감소하는 것을 확인할 수 있다(ReplicaSet 이름 뒤의 해시는 실행 환경마다 다르게 생성된다).
 
 ### Rollback
 
@@ -1308,19 +1218,13 @@ kubectl rollout undo deployment/nginx-app
 kubectl rollout status deployment/nginx-app
 ```
 
-```text
-deployment "nginx-app" successfully rolled out
-```
+> **예시(참조) — deployment "nginx-app" successfully rolled out:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 kubectl rollout history deployment/nginx-app
 ```
 
-```text
-REVISION  CHANGE-CAUSE
-2         <none>
-3         <none>
-```
+> **예시(참조) — REVISION  CHANGE-CAUSE:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### Deployment 스케일링
 
@@ -1335,10 +1239,7 @@ kubectl scale deployment/nginx-app --replicas=5
 kubectl get deployment nginx-app
 ```
 
-```text
-NAME        READY   UP-TO-DATE   AVAILABLE   AGE
-nginx-app   5/5     5            5           10m
-```
+> **예시(참조) — NAME        READY   UP-TO-DATE   AVAILABLE   AGE:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
@@ -1347,6 +1248,10 @@ nginx-app   5/5     5            5           10m
 ### 등장 배경
 
 Pod는 생성/삭제될 때마다 새로운 IP를 할당받는다. Deployment가 Pod를 재생성하면 IP가 변경되므로, 다른 Pod가 특정 Pod의 IP를 직접 참조하면 통신이 끊어진다. Service는 레이블 셀렉터로 선택된 Pod 집합에 대해 안정적인 IP(ClusterIP)와 DNS 이름을 제공한다. kube-proxy가 iptables 또는 IPVS 규칙을 관리하여 Service IP로 향하는 트래픽을 실제 Pod IP로 분산한다.
+
+**트레이드오프:** Service는 L4(TCP/UDP 포트) 수준에서만 라우팅하므로, HTTP Host 헤더나 URL 경로로 트래픽을 분기하려면 Ingress가 필요하다. ClusterIP는 클러스터 외부에서 접근 불가능하므로, 외부 노출이 필요하면 NodePort 또는 LoadBalancer 타입으로 변경해야 한다. kube-proxy의 iptables 모드는 Pod가 수천 개로 늘어나면 규칙 수가 선형 증가하여 지연이 발생하는데, 이 저장소 클러스터는 Cilium이 kube-proxy를 대체하여 eBPF 기반으로 O(1) 조회를 제공한다.
+
+**ClusterIP DNS와 resolv.conf:** `nginx-svc.default.svc.cluster.local` 형식이 기본 FQDN이다. Pod 내부의 `/etc/resolv.conf`에는 `search default.svc.cluster.local svc.cluster.local cluster.local` search domain 목록이 CoreDNS에 의해 자동 삽입된다. 따라서 같은 네임스페이스 안에서는 단축명 `nginx-svc`만 입력해도 DNS가 search domain을 순서대로 붙여가며 조회를 시도한다.
 
 ### ClusterIP Service
 
@@ -1389,33 +1294,21 @@ kubectl apply -f nginx-svc.yaml
 kubectl get svc nginx-svc
 ```
 
-```text
-NAME        TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
-nginx-svc   ClusterIP   10.96.123.45    <none>        80/TCP    5s
-```
+> **예시(참조) — NAME        TYPE        CLUSTER-IP      EXTERNAL-I:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # Endpoints 확인 (연결된 Pod IP 목록)
 kubectl get endpoints nginx-svc
 ```
 
-```text
-NAME        ENDPOINTS                                   AGE
-nginx-svc   10.244.0.5:80,10.244.0.6:80,10.244.0.7:80   5s
-```
+> **예시(참조) — NAME        ENDPOINTS                             :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # 클러스터 내부에서 Service 접근 테스트
 kubectl run test --image=busybox -it --rm --restart=Never -- wget -qO- http://nginx-svc
 ```
 
-```text
-<!DOCTYPE html>
-<html>
-<head>
-<title>Welcome to nginx!</title>
-...
-```
+> **예시(참조) — <!DOCTYPE html>:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 **Endpoints가 비어있는 경우 트러블슈팅:**
 1. `kubectl get pods -l app=nginx-app`으로 selector와 일치하는 Pod가 있는지 확인한다.
@@ -1456,10 +1349,7 @@ kubectl apply -f nginx-nodeport.yaml
 kubectl get svc nginx-nodeport
 ```
 
-```text
-NAME              TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
-nginx-nodeport    NodePort   10.96.200.50    <none>        80:30080/TCP   5s
-```
+> **예시(참조) — NAME              TYPE       CLUSTER-IP      EXTER:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # 노드 IP 확인
@@ -1494,25 +1384,14 @@ kubectl apply -f nginx-headless.yaml
 kubectl get svc nginx-headless
 ```
 
-```text
-NAME              TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
-nginx-headless    ClusterIP   None         <none>        80/TCP    5s
-```
+> **예시(참조) — NAME              TYPE        CLUSTER-IP   EXTERNA:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # DNS 조회 시 개별 Pod IP가 반환되는지 확인
 kubectl run test --image=busybox -it --rm --restart=Never -- nslookup nginx-headless
 ```
 
-```text
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      nginx-headless
-Address 1: 10.244.0.5
-Address 2: 10.244.0.6
-Address 3: 10.244.0.7
-```
+> **예시(참조) — Server:    10.96.0.10:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
@@ -1520,9 +1399,29 @@ Address 3: 10.244.0.7
 
 ### 등장 배경
 
-NodePort는 각 Service마다 별도 포트를 노출해야 하므로, 수십 개의 Service가 있으면 포트 관리가 복잡해진다. LoadBalancer 타입은 클라우드 환경에서 Service마다 별도 로드밸런서를 생성하므로 비용이 증가한다. Ingress는 단일 진입점(80/443)에서 호스트명과 경로 기반으로 여러 Service에 라우팅하는 L7 로드밸런싱을 제공한다.
+NodePort는 각 Service마다 별도 포트를 노출해야 하므로, 수십 개의 Service가 있으면 포트 관리가 복잡해진다. LoadBalancer 타입은 클라우드 환경에서 Service마다 별도 로드밸런서를 생성하므로 비용이 증가한다. 더 근본적인 한계도 있다. Service는 L4(전송 계층) 기반으로 port/targetPort만 분석하기 때문에, HTTP 요청에 담긴 Host 헤더나 URL 경로를 인식하지 못한다. 결과적으로 포트 80 하나를 여러 도메인이나 경로로 분리할 방법이 없다. HTTP는 애플리케이션 계층(L7) 프로토콜로, 모든 요청에 Host 헤더와 경로가 포함된다. Ingress는 이 HTTP 메타데이터를 직접 파싱하여 호스트명과 경로 기반으로 라우팅하므로, 단일 공개 IP(80/443) 하나로 무수히 많은 서비스를 운영할 수 있다.
 
 Ingress 자체는 라우팅 규칙을 정의하는 오브젝트이고, 실제 트래픽 처리는 Ingress Controller(nginx, traefik, haproxy 등)가 담당한다. Ingress Controller가 클러스터에 설치되어 있지 않으면 Ingress 오브젝트를 생성해도 동작하지 않는다.
+
+**사전 조건 — Ingress Controller 설치 확인:** Ingress 오브젝트는 Ingress Controller가 클러스터에 설치되어 있어야 동작한다. 이 저장소의 dev 클러스터에서 실습 전 아래 명령으로 ingress-nginx 설치 여부를 확인한다.
+
+```bash
+# dev 클러스터에 ingress-nginx가 설치되어 있는지 확인
+kubectl --kubeconfig kubeconfig/dev.yaml get pods -n ingress-nginx
+
+# 없으면 Helm으로 설치 (bitnami 저장소 필요)
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace \
+  --kubeconfig kubeconfig/dev.yaml
+
+# 설치 완료 확인
+kubectl --kubeconfig kubeconfig/dev.yaml -n ingress-nginx \
+  wait --for=condition=Ready pod -l app.kubernetes.io/component=controller --timeout=120s
+```
+
+Ingress Controller Pod가 `Running` 상태가 확인된 후 아래 예제를 진행한다.
 
 ### Path-based Routing
 
@@ -1574,27 +1473,13 @@ kubectl apply -f app-ingress.yaml
 kubectl get ingress app-ingress
 ```
 
-```text
-NAME          CLASS   HOSTS             ADDRESS        PORTS   AGE
-app-ingress   nginx   app.example.com   192.168.1.10   80      10s
-```
+> **예시(참조) — NAME          CLASS   HOSTS             ADDRESS   :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 kubectl describe ingress app-ingress
 ```
 
-```text
-Name:             app-ingress
-Namespace:        default
-Address:          192.168.1.10
-Ingress Class:    nginx
-Rules:
-  Host              Path  Backends
-  ----              ----  --------
-  app.example.com
-                    /api   api-svc:80 (10.244.0.5:80,10.244.0.6:80)
-                    /web   web-svc:80 (10.244.0.7:80,10.244.0.8:80)
-```
+> **예시(참조) — Name:             app-ingress:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # ADDRESS가 비어있으면 Ingress Controller가 없거나 아직 처리 중인 것이다.
@@ -1648,18 +1533,7 @@ kubectl apply -f multi-host-ingress.yaml
 kubectl describe ingress multi-host-ingress
 ```
 
-```text
-Name:             multi-host-ingress
-TLS:
-  tls-secret terminates app.example.com,api.example.com
-Rules:
-  Host              Path  Backends
-  ----              ----  --------
-  app.example.com
-                    /     web-svc:80
-  api.example.com
-                    /     api-svc:8080
-```
+> **예시(참조) — Name:             multi-host-ingress:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
@@ -1670,6 +1544,18 @@ Rules:
 쿠버네티스의 기본 네트워크 모델은 "모든 Pod가 모든 Pod와 통신 가능"이다. 이는 개발 편의성은 높지만, 프로덕션 환경에서는 보안 위험이다. 예를 들어 웹 서버가 해킹당하면 데이터베이스에 직접 접근할 수 있다. NetworkPolicy는 Pod 수준의 방화벽 규칙을 정의하여, 허용된 트래픽만 통과시키는 zero-trust 네트워크를 구현한다.
 
 **전제 조건:** NetworkPolicy는 CNI 플러그인(Calico, Cilium, Weave Net 등)이 지원해야 한다. 기본 CNI(kubenet)나 Flannel은 NetworkPolicy를 지원하지 않는다. NetworkPolicy를 생성해도 CNI가 이를 이행(enforce)하지 않으면 아무 효과가 없으므로 주의해야 한다.
+
+**이 저장소의 클러스터 환경:** dev/staging/prod 클러스터는 모두 Cilium CNI를 사용하므로 NetworkPolicy가 이행된다. Cilium은 NetworkPolicy를 `CiliumNetworkPolicy`(CRD)로도 확장 지원하지만, 이 파일의 예제는 표준 `NetworkPolicy`만 사용한다. 정책이 실제로 Cilium에 인식되었는지 확인하려면 아래 명령을 사용한다.
+
+```bash
+# Cilium이 NetworkPolicy를 인식했는지 확인 (dev 클러스터 기준)
+kubectl --kubeconfig kubeconfig/dev.yaml get ciliumnetworkpolicies -n production
+
+# Cilium 에이전트가 해당 파드에 정책을 적용했는지 확인
+kubectl --kubeconfig kubeconfig/dev.yaml -n kube-system exec -it \
+  $(kubectl --kubeconfig kubeconfig/dev.yaml get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') \
+  -- cilium policy get
+```
 
 ### Default Deny -- 모든 Ingress 차단
 
@@ -1687,24 +1573,21 @@ spec:
 
 **동작 원리:** `podSelector: {}`는 해당 네임스페이스의 모든 Pod를 선택한다. `policyTypes: [Ingress]`를 지정하고 `ingress` 규칙을 정의하지 않으면, 선택된 모든 Pod로의 인입 트래픽이 차단된다. 이 정책은 "기본 차단, 명시적 허용" 패턴의 기반이 된다.
 
-**검증 명령:**
+**검증 명령:** 아래 명령은 이 저장소의 dev 클러스터(`kubeconfig/dev.yaml`)를 대상으로 한다. NetworkPolicy 파괴 실습은 dev/staging에서만 수행한다(CLAUDE.md §3).
 
 ```bash
-kubectl create namespace production
-kubectl apply -f default-deny-ingress.yaml
+kubectl --kubeconfig kubeconfig/dev.yaml create namespace production
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f default-deny-ingress.yaml
 
 # 테스트용 Pod 배포
-kubectl run web --image=nginx -n production --port=80
-kubectl expose pod web --port=80 -n production
+kubectl --kubeconfig kubeconfig/dev.yaml run web --image=nginx -n production --port=80
+kubectl --kubeconfig kubeconfig/dev.yaml expose pod web --port=80 -n production
 
 # 같은 네임스페이스에서 접근 시도 (차단됨)
-kubectl run test --image=busybox -n production -it --rm --restart=Never -- wget --timeout=3 -qO- http://web
+kubectl --kubeconfig kubeconfig/dev.yaml run test --image=busybox -n production -it --rm --restart=Never -- wget --timeout=3 -qO- http://web
 ```
 
-```text
-wget: download timed out
-command terminated with exit code 1
-```
+> **예시(참조) — wget: download timed out:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### Default Deny -- 모든 Egress 차단
 
@@ -1731,10 +1614,7 @@ kubectl apply -f default-deny-egress.yaml
 kubectl run test --image=busybox -n production -it --rm --restart=Never -- nslookup kubernetes
 ```
 
-```text
-;; connection timed out; no servers could be reached
-command terminated with exit code 1
-```
+> **예시(참조) — ;; connection timed out; no servers could be reach:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### 특정 트래픽만 허용
 
@@ -1768,6 +1648,17 @@ spec:
 **검증 명령:**
 
 ```bash
+# 사전 준비: api Deployment와 Service가 없으면 먼저 생성한다
+# (default-deny-ingress 검증 블록에서 web Pod만 생성했으므로 api는 별도 생성 필요)
+kubectl --kubeconfig kubeconfig/dev.yaml create deployment api \
+  --image=nginx -n production --port=8080
+kubectl --kubeconfig kubeconfig/dev.yaml expose deployment api \
+  --port=8080 --target-port=80 --name=api-svc -n production
+kubectl --kubeconfig kubeconfig/dev.yaml wait --for=condition=Available \
+  deployment/api -n production --timeout=60s
+```
+
+```bash
 kubectl apply -f allow-web-to-api.yaml
 
 # web Pod에서 api로의 접근 확인 (허용됨)
@@ -1779,10 +1670,7 @@ kubectl run rogue --image=busybox -n production -it --rm --restart=Never \
   -- wget --timeout=3 -qO- http://api-svc:8080
 ```
 
-```text
-wget: download timed out
-command terminated with exit code 1
-```
+> **예시(참조) — wget: download timed out:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### Egress 제한 (DNS + 특정 서비스만 허용)
 
@@ -1830,19 +1718,14 @@ kubectl exec -n production deploy/api -- nslookup postgres-svc
 kubectl exec -n production deploy/api -- nc -zv postgres-svc 5432
 ```
 
-```text
-postgres-svc (10.244.0.10) open
-```
+> **예시(참조) — postgres-svc (10.244.0.10) open:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 # api Pod에서 외부 인터넷 접근 (차단됨)
 kubectl exec -n production deploy/api -- wget --timeout=3 -qO- http://example.com
 ```
 
-```text
-wget: download timed out
-command terminated with exit code 1
-```
+> **예시(참조) — wget: download timed out:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### NetworkPolicy에서 from 배열의 AND/OR 로직
 
@@ -1920,26 +1803,13 @@ helm install my-nginx bitnami/nginx --set replicaCount=2
 helm list
 ```
 
-```text
-NAME      NAMESPACE   REVISION   UPDATED                                  STATUS    CHART          APP VERSION
-my-nginx  default     1          2024-01-01 00:00:00.000000000 +0000 UTC  deployed  nginx-15.4.0   1.25.3
-```
+> **예시(참조) — NAME      NAMESPACE   REVISION   UPDATED          :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 kubectl get all -l app.kubernetes.io/instance=my-nginx
 ```
 
-```text
-NAME                            READY   STATUS    RESTARTS   AGE
-pod/my-nginx-7d4f8b5c6-abc12   1/1     Running   0          30s
-pod/my-nginx-7d4f8b5c6-def34   1/1     Running   0          30s
-
-NAME               TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-service/my-nginx   LoadBalancer   10.96.50.100   <pending>     80:31234/TCP   30s
-
-NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/my-nginx   2/2     2            2           30s
-```
+> **예시(참조) — NAME                            READY   STATUS    :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### 업그레이드 및 롤백
 
@@ -1964,23 +1834,14 @@ helm upgrade my-nginx bitnami/nginx --set replicaCount=5
 helm history my-nginx
 ```
 
-```text
-REVISION   UPDATED                    STATUS      CHART          APP VERSION   DESCRIPTION
-1          Mon Jan  1 00:00:00 2024   superseded  nginx-15.4.0   1.25.3        Install complete
-2          Mon Jan  1 00:05:00 2024   deployed    nginx-15.4.0   1.25.3        Upgrade complete
-```
+> **예시(참조) — REVISION   UPDATED                    STATUS      :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ```bash
 helm rollback my-nginx 1
 helm history my-nginx
 ```
 
-```text
-REVISION   UPDATED                    STATUS      CHART          APP VERSION   DESCRIPTION
-1          Mon Jan  1 00:00:00 2024   superseded  nginx-15.4.0   1.25.3        Install complete
-2          Mon Jan  1 00:05:00 2024   superseded  nginx-15.4.0   1.25.3        Upgrade complete
-3          Mon Jan  1 00:10:00 2024   deployed    nginx-15.4.0   1.25.3        Rollback to 1
-```
+> **예시(참조) — REVISION   UPDATED                    STATUS      :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ### 릴리스 조회
 
@@ -2003,6 +1864,37 @@ helm get manifest my-nginx
 
 **`helm get values` vs `helm get values --all`:** `--all` 없이 실행하면 사용자가 오버라이드한 값만 표시한다. `--all`을 추가하면 Chart의 기본값을 포함한 모든 값을 표시한다. 트러블슈팅 시 실제 적용된 전체 설정을 확인하려면 `--all`을 사용한다.
 
+### 로컬 Chart 생성 및 설치 (네트워크 없이 실습 가능)
+
+bitnami 저장소 접근이 불가능한 오프라인 환경이나 시험 환경에서는 `helm create`로 로컬 Chart를 직접 만들어 실습할 수 있다.
+
+```bash
+# Chart 스캐폴딩 생성
+helm create my-local-chart
+
+# 생성된 디렉토리 구조 확인
+ls my-local-chart/
+# Chart.yaml  charts/  templates/  values.yaml
+
+# 기본 값으로 로컬 설치 (레지스트리 불필요 — nginx:stable 이미지만 필요)
+helm install local-release ./my-local-chart
+
+# 설치 확인
+helm list
+kubectl get pods -l app.kubernetes.io/name=my-local-chart
+
+# 값을 오버라이드하여 재설치
+helm upgrade local-release ./my-local-chart --set replicaCount=3
+
+# 정리
+helm uninstall local-release
+rm -rf my-local-chart
+```
+
+`helm create`로 생성된 Chart는 `nginx:stable` 이미지를 사용하는 Deployment, Service, ServiceAccount, HPA, Ingress를 포함한다. bitnami 저장소 없이도 Chart 구조·values 오버라이드·업그레이드·롤백 흐름 전체를 로컬에서 실습할 수 있다.
+
+**트레이드오프:** Helm의 장점(패키지 재사용, 환경별 values 분리, rollback)에는 유지보수 비용이 따른다. Chart의 values 구조는 메이저 버전마다 breaking change가 발생할 수 있으므로, upstream Chart를 업그레이드할 때 values.yaml 호환성을 반드시 검토해야 한다. 또한 `helm template`으로 렌더링된 YAML에 오류가 있을 때 Go template 오류 메시지는 직관적이지 않아 디버깅이 어렵다. `--debug` 플래그를 추가하면 렌더링 중간 상태를 확인할 수 있다.
+
 ---
 
 ## 12. Kustomize
@@ -2010,6 +1902,8 @@ helm get manifest my-nginx
 ### 등장 배경
 
 Helm은 Go template 문법을 사용하여 러닝 커브가 있고, Chart를 유지보수해야 하는 부담이 있다. 단순히 환경별로 replicas 수, 이미지 태그, 네임스페이스만 다른 경우에는 Helm이 과도한 추상화이다. Kustomize는 기존 YAML을 수정 없이 두고, 패치(patch)를 오버레이하여 환경별 변형을 생성한다. kubectl에 내장(`kubectl apply -k`)되어 있어 별도 도구 설치가 필요 없다.
+
+**트레이드오프:** Kustomize는 원본 YAML을 그대로 유지하므로 가독성이 높지만, 복잡한 조건부 렌더링(예: 환경에 따라 리소스를 완전히 다르게 생성)은 표현하기 어렵다. 이 경우에는 Helm의 `if/else` 블록이 더 적합하다. `commonLabels`를 나중에 변경하면 Deployment의 immutable selector가 바뀌어 업데이트가 실패하므로, 초기 설계 시 레이블 구조를 신중히 결정해야 한다. 또한 Kustomize는 릴리스 히스토리(Helm의 `helm history`)나 자동 롤백 기능이 없으므로, 배포 이력 관리가 필요하면 GitOps(ArgoCD 등) 도구와 조합해야 한다.
 
 **Helm vs Kustomize:**
 
@@ -2109,7 +2003,7 @@ images:
 | `configMapGenerator` | ConfigMap을 자동 생성하고, 내용의 해시를 이름에 추가(`app-config-abc123`) |
 | `images` | 이미지 이름과 태그를 오버라이드. YAML을 직접 수정하지 않아도 됨 |
 
-**`configMapGenerator`의 해시 접미사:** ConfigMap 내용이 변경되면 해시가 달라져 이름이 바뀌고, 이를 참조하는 Deployment의 Pod template도 변경되어 자동으로 Rolling Update가 트리거된다. `kubectl apply`로는 ConfigMap이 변경되어도 기존 Pod가 재시작되지 않는 문제를 해결한다.
+**`configMapGenerator`의 해시 접미사:** ConfigMap 내용이 변경되면 해시가 달라져 이름이 바뀌고, 이를 참조하는 Deployment의 Pod template도 변경되어 자동으로 Rolling Update가 트리거된다. 이 우회 방식이 필요한 이유는 4절 "환경 변수 방식의 한계"에서 설명한 것처럼, `kubectl apply`로 ConfigMap을 수정해도 이미 실행 중인 Pod의 환경 변수는 변경되지 않기 때문이다(환경 변수는 Pod 생성 시점에 스냅샷됨). 볼륨 마운트 방식은 kubelet이 약 60초 주기로 갱신하므로 이 한계를 일부 완화하지만, 환경 변수 방식을 쓰는 경우에는 `configMapGenerator`의 해시 이름 변경 → Deployment spec 변경 → Rolling Update 트리거라는 우회 경로가 유일한 해결책이다.
 
 ### overlays/dev/replica-patch.yaml (Strategic Merge Patch)
 
@@ -2175,57 +2069,7 @@ kubectl delete -k overlays/dev/
 kubectl kustomize overlays/dev/
 ```
 
-```text
-apiVersion: v1
-data:
-  ENV: development
-  LOG_LEVEL: debug
-kind: ConfigMap
-metadata:
-  labels:
-    app: my-app
-  name: dev-app-config-2dk8m5h7c4
-  namespace: development
----
-apiVersion: v1
-kind: Service
-metadata:
-  labels:
-    app: my-app
-  name: dev-my-app
-  namespace: development
-...
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    app: my-app
-  name: dev-my-app
-  namespace: development
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: my-app
-  template:
-    metadata:
-      labels:
-        app: my-app
-    spec:
-      containers:
-      - image: my-app:dev-latest
-        name: app
-        ports:
-        - containerPort: 8080
-        resources:
-          limits:
-            cpu: 200m
-            memory: 256Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-```
+> **예시(참조) — apiVersion: v1:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 렌더링 결과에서 `namePrefix`, `namespace`, `images`, `configMapGenerator`가 모두 적용된 것을 확인할 수 있다.
 
@@ -2234,21 +2078,13 @@ kubectl apply -k overlays/dev/
 kubectl get all -n development
 ```
 
-```text
-NAME                              READY   STATUS    RESTARTS   AGE
-pod/dev-my-app-5d4f6b7c8d-abc12  1/1     Running   0          10s
-pod/dev-my-app-5d4f6b7c8d-def34  1/1     Running   0          10s
-
-NAME                 TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
-service/dev-my-app   ClusterIP   10.96.50.100   <none>        8080/TCP   10s
-
-NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/dev-my-app   2/2     2            2           10s
-```
+> **예시(참조) — NAME                              READY   STATUS  :** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
 
 ---
 
 ## 13. 시험 꿀팁 -- 필수 단축 명령 및 테크닉
+
+> 본 섹션은 앞에서 다룬 개념들을 CKAD 시험 환경(2시간, 15~20문제)에서 빠르게 적용하는 테크닉을 다룬다. 개념 이해가 우선이며, 여기서는 속도와 정확성을 높이는 명령형 패턴과 단축키를 정리한다.
 
 ### alias 및 자동완성 설정
 
@@ -2380,3 +2216,340 @@ k diff -f manifest.yaml
 **`kubectl apply` vs `kubectl create`:** `create`는 리소스가 이미 존재하면 오류를 반환한다. `apply`는 리소스가 없으면 생성하고, 있으면 업데이트한다. 시험에서는 `apply`를 권장하되, YAML 없이 명령형으로 생성할 때는 `create`를 사용한다.
 
 **`kubectl diff`의 활용:** 매니페스트를 적용하기 전에 현재 클러스터 상태와의 차이를 확인한다. 의도하지 않은 변경을 사전에 발견할 수 있다. 시험에서 시간 여유가 있을 때 사용하면 실수를 줄일 수 있다.
+
+---
+
+## 14. Job / CronJob
+
+### 등장 배경
+
+Deployment는 상주 프로세스(데몬)를 위한 워크로드다. Pod가 종료되면 즉시 재시작한다. 배치 처리(데이터 변환, DB 마이그레이션, 보고서 생성 등)는 반대로 "특정 작업을 완료하고 종료"해야 한다. 쿠버네티스 초기에는 이런 배치 작업을 Deployment로 돌리면 완료 후 재시작을 반복하는 문제가 있었다. Job은 Pod가 성공적으로 완료(exit code 0)되는 것을 목표로 하며, 실패 시에만 `backoffLimit` 횟수까지 재시도한다. CronJob은 Job을 cron 표현식 일정에 따라 주기적으로 생성한다.
+
+**직전 기술 한계:** `restartPolicy: Never`를 가진 단독 Pod를 배치 작업에 쓰면 노드 장애 시 재스케줄링이 되지 않는다. Job은 kube-controller-manager의 Job controller가 관리하므로 노드 장애 시에도 다른 노드에서 Pod를 재생성한다.
+
+**트레이드오프:** `completions`가 크고 `parallelism`이 낮으면 순차 실행으로 시간이 오래 걸린다. `parallelism`을 높이면 동시 실행되지만 클러스터 리소스를 많이 소비한다. `backoffLimit`을 0으로 설정하면 한 번 실패 시 즉시 포기하므로 일시적 오류(네트워크 단절 등)에 취약하다. 완료된 Job의 Pod는 자동 삭제되지 않으므로 `ttlSecondsAfterFinished`를 설정하지 않으면 클러스터에 종료된 Pod가 누적된다.
+
+### Job 예제
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi-calculator
+spec:
+  completions: 3        # 성공적으로 완료해야 하는 Pod 수
+  parallelism: 2        # 동시에 실행할 Pod 수
+  backoffLimit: 4       # 전체 실패 허용 횟수 (초과 시 Job Failed)
+  ttlSecondsAfterFinished: 300  # 완료 300초 후 Job과 Pod 자동 삭제
+  template:
+    spec:
+      restartPolicy: Never   # Job Pod는 반드시 Never 또는 OnFailure
+      containers:
+        - name: pi
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "scale=100; 4*a(1)" | bc -l
+              echo "Pi calculation complete"
+```
+
+**필드별 설명:**
+
+| 필드 | 역할 | 기본값 |
+|---|---|---|
+| `completions` | 성공 완료 횟수. 이 수만큼 Pod가 성공적으로 종료되어야 Job이 Complete | 1 |
+| `parallelism` | 동시 실행 Pod 수. `completions`보다 크면 completions로 제한됨 | 1 |
+| `backoffLimit` | 연속 실패 허용 횟수. 초과 시 Job이 Failed 상태로 전환 | 6 |
+| `ttlSecondsAfterFinished` | 완료/실패 후 자동 삭제까지의 대기 시간(초). 0이면 즉시 삭제 | 없음(수동 삭제 필요) |
+| `restartPolicy` | `Never` 또는 `OnFailure`만 허용. `Always`는 Job에서 금지 | 없음(필수 필드) |
+
+**`restartPolicy: Never` vs `OnFailure`:**
+- `Never`: 컨테이너가 실패하면 새 Pod를 생성하여 재시도. 실패한 Pod는 로그 확인을 위해 보존됨. 실패 Pod가 누적되므로 `backoffLimit`과 `ttlSecondsAfterFinished`를 함께 설정하는 것이 권장된다.
+- `OnFailure`: 같은 Pod에서 컨테이너를 재시작. Pod가 새로 생성되지 않으므로 이전 실패 로그가 덮어씌워진다.
+
+**검증 명령:**
+
+```bash
+kubectl apply -f pi-calculator-job.yaml
+kubectl get job pi-calculator -w
+```
+
+> **예시(참조) — NAME            COMPLETIONS   DURATION   AGE:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+```bash
+# Job이 생성한 Pod 확인
+kubectl get pods -l job-name=pi-calculator
+
+# 완료된 Pod 로그 확인
+kubectl logs -l job-name=pi-calculator --tail=5
+```
+
+> **예시(참조) — Pi calculation complete:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+### CronJob 예제
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cleanup-job
+spec:
+  schedule: "*/10 * * * *"          # 매 10분마다 실행
+  concurrencyPolicy: Forbid          # 이전 Job이 실행 중이면 새 Job을 생성하지 않음
+  successfulJobsHistoryLimit: 3      # 성공한 Job 보존 수
+  failedJobsHistoryLimit: 1          # 실패한 Job 보존 수
+  startingDeadlineSeconds: 60        # 스케줄 시점 기준 60초 이내에 시작 못하면 missed 처리
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: cleanup
+              image: busybox:1.36
+              command:
+                - sh
+                - -c
+                - |
+                  echo "$(date): Cleaning up old files..."
+                  find /tmp -mtime +7 -delete
+                  echo "Cleanup complete"
+```
+
+**필드별 설명:**
+
+| 필드 | 역할 | 기본값 |
+|---|---|---|
+| `schedule` | cron 표현식(`분 시 일 월 요일`). `*/10`은 "10의 배수마다" | 필수 필드 |
+| `concurrencyPolicy` | `Allow`(중복 실행 허용) / `Forbid`(이전 완료 후 실행) / `Replace`(이전 Job 삭제 후 새 Job 생성) | `Allow` |
+| `successfulJobsHistoryLimit` | 보존할 성공 Job 수. 0이면 즉시 삭제 | 3 |
+| `failedJobsHistoryLimit` | 보존할 실패 Job 수 | 1 |
+| `startingDeadlineSeconds` | 스케줄 시점으로부터 이 시간 내에 Job이 시작되지 않으면 missed로 기록. 100회 이상 missed되면 CronJob이 중단됨 | 없음 |
+
+**cron 표현식 예시:**
+
+| 표현식 | 의미 |
+|---|---|
+| `0 * * * *` | 매 시간 정각 |
+| `0 9 * * 1-5` | 평일 오전 9시 |
+| `*/5 * * * *` | 5분마다 |
+| `0 0 1 * *` | 매월 1일 자정 |
+| `@daily` | 매일 자정 (= `0 0 * * *`) |
+
+**검증 명령:**
+
+```bash
+kubectl apply -f cleanup-cronjob.yaml
+kubectl get cronjob cleanup-job
+
+# 수동으로 Job 즉시 트리거 (시험에서 자주 사용)
+kubectl create job --from=cronjob/cleanup-job manual-run
+
+# CronJob이 생성한 Job 목록 확인
+kubectl get jobs -l app.kubernetes.io/created-by  # 또는
+kubectl get jobs
+```
+
+> **예시(참조) — NAME          SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+---
+
+## 15. PersistentVolumeClaim / StorageClass
+
+### 등장 배경
+
+`emptyDir`은 Pod와 생명주기를 함께하므로 Pod가 삭제되면 데이터도 사라진다. 데이터베이스처럼 Pod 재생성 후에도 데이터를 보존해야 하는 워크로드는 Pod 외부의 스토리지가 필요하다. 쿠버네티스는 스토리지를 PersistentVolume(PV)·PersistentVolumeClaim(PVC)·StorageClass 세 계층으로 추상화한다.
+
+- **PV(PersistentVolume):** 관리자가 프로비저닝한 실제 스토리지 조각(NFS, EBS, local 디스크 등). 클러스터 수준 리소스(네임스페이스 없음).
+- **PVC(PersistentVolumeClaim):** 개발자가 필요한 스토리지 용량·접근 모드를 선언하는 요청서. 네임스페이스 리소스.
+- **StorageClass:** 스토리지 유형(SSD, HDD, NFS 등)을 정의하고 동적 프로비저닝을 담당하는 프로비저너를 지정한다. PVC가 `storageClassName`을 참조하면 StorageClass의 프로비저너가 자동으로 PV를 생성한다.
+
+**직전 기술 한계:** `emptyDir`과 `hostPath`는 데이터를 노드 디스크에 저장하는데, Pod가 다른 노드로 재스케줄링되면 이전 노드의 데이터에 접근할 수 없다. PV는 네트워크 스토리지(또는 로컬 스토리지를 `nodeAffinity`로 특정 노드에 고정)를 사용하여 이 문제를 해결한다.
+
+**트레이드오프:** `accessModes: ReadWriteOnce`(단일 노드 읽기/쓰기)는 대부분의 블록 스토리지(EBS, local 디스크)가 지원하지만 여러 노드에서 동시 쓰기는 불가능하다. `ReadWriteMany`(여러 노드 동시 읽기/쓰기)는 NFS, CephFS 같은 파일 시스템 스토리지가 필요하며, 데이터 일관성을 애플리케이션이 직접 관리해야 한다. 동적 프로비저닝은 편리하지만 잘못된 StorageClass를 참조하면 PVC가 `Pending` 상태에 머물고 오류 메시지가 직관적이지 않을 수 있다.
+
+### PVC 생성 및 Pod에서 사용
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce    # 단일 노드에서만 읽기/쓰기
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard  # StorageClass 이름 (없으면 기본 StorageClass 사용)
+```
+
+**accessModes 비교:**
+
+| 모드 | 약어 | 의미 | 지원 스토리지 예 |
+|---|---|---|---|
+| `ReadWriteOnce` | RWO | 단일 노드에서 읽기/쓰기 | EBS, local, hostPath |
+| `ReadOnlyMany` | ROX | 여러 노드에서 읽기만 | NFS, CephFS |
+| `ReadWriteMany` | RWX | 여러 노드에서 읽기/쓰기 | NFS, CephFS, Azure Files |
+| `ReadWriteOncePod` | RWOP | 단일 Pod에서만 읽기/쓰기 (k8s 1.22+) | CSI 드라이버 지원 필요 |
+
+**PVC를 Pod에서 사용하는 예제:**
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-pod
+spec:
+  containers:
+    - name: postgres
+      image: postgres:15
+      env:
+        - name: POSTGRES_PASSWORD
+          value: "example"
+      volumeMounts:
+        - name: db-storage
+          mountPath: /var/lib/postgresql/data
+  volumes:
+    - name: db-storage
+      persistentVolumeClaim:
+        claimName: db-pvc    # 위에서 생성한 PVC 이름
+```
+
+**검증 명령:**
+
+```bash
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f db-pvc.yaml
+kubectl --kubeconfig kubeconfig/dev.yaml get pvc db-pvc
+```
+
+> **예시(참조) — NAME     STATUS   VOLUME   CAPACITY   ACCESS MODES:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+```bash
+# PVC가 Pending 상태면 StorageClass 확인
+kubectl --kubeconfig kubeconfig/dev.yaml get storageclass
+kubectl --kubeconfig kubeconfig/dev.yaml describe pvc db-pvc
+```
+
+**PVC가 `Pending` 상태인 이유:**
+- `storageClassName`에 지정한 StorageClass가 존재하지 않는 경우
+- StorageClass의 프로비저너가 설치되지 않은 경우
+- 요청한 용량이 가용 PV 크기보다 큰 경우(정적 프로비저닝 시)
+
+```bash
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f db-pod.yaml
+kubectl --kubeconfig kubeconfig/dev.yaml get pod db-pod
+kubectl --kubeconfig kubeconfig/dev.yaml exec db-pod -- ls /var/lib/postgresql/data
+```
+
+> **예시(참조) — PG_VERSION base global pg_hba.conf pg_ident.conf:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+---
+
+## 16. ResourceQuota / LimitRange
+
+### 등장 배경
+
+단일 팀이 클러스터를 사용하면 리소스 독점 문제가 없다. 그러나 멀티테넌트 환경(여러 팀/프로젝트가 하나의 클러스터를 공유)에서는 한 팀이 CPU·메모리를 과다 요청하면 다른 팀의 워크로드가 스케줄링되지 못한다. 또한 개별 컨테이너에 `resources.requests/limits`를 지정하지 않으면 BestEffort QoS로 동작하여 노드 리소스 부족 시 가장 먼저 축출(eviction)된다. ResourceQuota와 LimitRange는 이 두 문제를 네임스페이스 단위로 통제한다.
+
+- **ResourceQuota:** 네임스페이스 전체에서 사용할 수 있는 리소스(CPU, 메모리, Pod 수, PVC 수 등)의 합계 상한선을 설정한다.
+- **LimitRange:** 네임스페이스 내 개별 Pod·컨테이너·PVC에 적용되는 기본값(default)과 허용 범위(min/max)를 정의한다. `resources.limits`를 지정하지 않은 컨테이너에 LimitRange의 `defaultLimit`이 자동으로 주입된다.
+
+**트레이드오프:** ResourceQuota를 엄격하게 설정하면 컨테이너 배포 시 `resources.requests`를 반드시 지정해야 하므로 개발자에게 부담이 된다. LimitRange로 기본값을 지정하면 이 부담을 줄일 수 있지만, 지나치게 낮은 기본값은 애플리케이션 성능 저하로 이어진다. ResourceQuota와 실제 사용량의 차이를 주기적으로 모니터링(Prometheus `kube_resourcequota` 메트릭)하지 않으면 할당은 넉넉해 보여도 실제 사용은 꽉 찬 상황을 놓칠 수 있다.
+
+### ResourceQuota 예제
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: team-quota
+  namespace: team-a
+spec:
+  hard:
+    requests.cpu: "4"          # 네임스페이스 전체 CPU requests 합계 상한
+    requests.memory: 8Gi       # 네임스페이스 전체 메모리 requests 합계 상한
+    limits.cpu: "8"            # 네임스페이스 전체 CPU limits 합계 상한
+    limits.memory: 16Gi        # 네임스페이스 전체 메모리 limits 합계 상한
+    pods: "20"                 # 네임스페이스 내 Pod 수 상한
+    persistentvolumeclaims: "5" # PVC 수 상한
+    services: "10"             # Service 수 상한
+    secrets: "30"              # Secret 수 상한
+```
+
+**ResourceQuota가 설정된 네임스페이스에서 `resources`를 지정하지 않으면:** Pod 생성이 `Error from server (Forbidden): ... must specify requests` 오류로 거부된다. ResourceQuota가 있는 네임스페이스에서는 모든 컨테이너에 `resources.requests`와 `resources.limits`를 명시해야 한다. 이를 자동화하려면 LimitRange의 `defaultRequest/defaultLimit`을 함께 설정한다.
+
+**검증 명령:**
+
+```bash
+kubectl --kubeconfig kubeconfig/dev.yaml create namespace team-a
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f team-quota.yaml
+kubectl --kubeconfig kubeconfig/dev.yaml describe resourcequota team-quota -n team-a
+```
+
+> **예시(참조) — Name: team-quota ... Used ... Hard:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+### LimitRange 예제
+
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: team-limits
+  namespace: team-a
+spec:
+  limits:
+    - type: Container
+      default:            # limits를 지정하지 않은 컨테이너에 적용되는 기본 limits
+        cpu: 500m
+        memory: 256Mi
+      defaultRequest:     # requests를 지정하지 않은 컨테이너에 적용되는 기본 requests
+        cpu: 100m
+        memory: 128Mi
+      max:                # 컨테이너가 지정할 수 있는 limits 최대값
+        cpu: "2"
+        memory: 2Gi
+      min:                # 컨테이너가 지정할 수 있는 requests 최솟값
+        cpu: 50m
+        memory: 64Mi
+    - type: PersistentVolumeClaim
+      max:
+        storage: 10Gi
+      min:
+        storage: 1Gi
+```
+
+**필드별 설명:**
+
+| 필드 | 역할 | 적용 대상 |
+|---|---|---|
+| `default` | 컨테이너에 `limits`가 없을 때 자동 주입 | `Container` 타입 |
+| `defaultRequest` | 컨테이너에 `requests`가 없을 때 자동 주입 | `Container` 타입 |
+| `max` | 허용되는 최대 limits 값. 초과 시 Pod 생성 거부 | `Container`, `PVC` |
+| `min` | 허용되는 최소 requests 값. 미달 시 Pod 생성 거부 | `Container`, `PVC` |
+
+**검증 명령:**
+
+```bash
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f team-limits.yaml
+
+# LimitRange 확인
+kubectl --kubeconfig kubeconfig/dev.yaml describe limitrange team-limits -n team-a
+
+# resources를 지정하지 않은 Pod 생성 후 실제 주입된 값 확인
+kubectl --kubeconfig kubeconfig/dev.yaml run test-lr --image=nginx -n team-a
+kubectl --kubeconfig kubeconfig/dev.yaml get pod test-lr -n team-a -o jsonpath='{.spec.containers[0].resources}'
+```
+
+> **예시(참조) — {"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.
+
+```bash
+# ResourceQuota 사용량 확인
+kubectl --kubeconfig kubeconfig/dev.yaml describe resourcequota team-quota -n team-a
+```
+
+> **예시(참조) — Name: team-quota ... Used cpu 100m ... Hard cpu 4:** 개념/예제용 기대 출력(docker 빌드·JSON 내용·로그 등 환경 의존). 실측은 CKAD daily 및 위 캡처 참고.

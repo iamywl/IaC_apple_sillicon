@@ -11,9 +11,21 @@
 - Application Environment, Configuration and Security: 10문제 (23~32)
 - Services and Networking: 8문제 (33~40)
 
+> 각 대도메인 시작에 `학습 목표 | 예상 소요 | 전제 지식`을 한 줄로 명시한다. 도메인 사이의 학습 순서와 기술 간 관계도 함께 표기하므로, 문제를 고립된 토막으로 풀지 말고 "왜 이 기술이 이 자리에 오는가"를 의식하며 진행한다.
+
 ---
 
 ## Application Design and Build
+
+> 학습 목표: 컨테이너 이미지 최적화, 멀티 컨테이너 패턴(Init/Sidecar/Ambassador/Adapter), 볼륨·배치 작업 기초 이해 | 예상 소요: 120분 | 전제 지식: Docker Dockerfile 기본 문법, Pod/컨테이너 개념, YAML 들여쓰기
+>
+> 학습 순서와 관계: 1(이미지 빌드) → 2~3, 5(멀티 컨테이너 패턴) → 4, 6~7(볼륨과 설정 주입) → 8(배치 작업). Pod는 "여러 컨테이너를 한 묶음으로 스케줄링하는 최소 단위"이고, 이 도메인은 그 묶음을 어떻게 구성하는지를 다룬다.
+
+### 등장 배경 -- 왜 이 묶음의 기술들이 생겼나
+
+직전 시대(Docker 단독 시대)에는 컨테이너 하나에 빌드 도구·런타임·앱이 전부 들어가 이미지가 수백 MB로 비대했고, 컨테이너 하나가 곧 하나의 호스트처럼 다뤄져 로그 수집·프록시·초기화 같은 횡단 관심사(cross-cutting concern, 여러 서비스에 공통으로 끼어드는 부가 기능)를 앱 코드 안에 직접 넣어야 했다. Kubernetes의 Pod는 이 한계를 "여러 컨테이너가 네트워크·볼륨을 공유하는 한 묶음"으로 해결한다. 멀티스테이지 빌드(문제 1)는 빌드 도구를 최종 이미지에서 떼어내고, Init Container(문제 2)는 시작 순서 의존성을, Sidecar/Ambassador/Adapter(문제 3·5)는 횡단 관심사를 앱과 분리한다. 트레이드오프는 Pod 단위의 복잡도 증가다. 컨테이너가 늘면 네임스페이스 공유 규칙(네트워크는 공유, 파일시스템은 격리)을 정확히 이해하지 않으면 디버깅이 어려워진다.
+
+> 실습 전제: 아래 모든 문제는 가동 중인 클러스터에서 직접 풀어 손에 익히는 것을 전제로 한다. dev 클러스터를 쓴다(파괴 실습 허용, platform/prod 금지). kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`이다. **터미널을 새로 열면 가장 먼저 `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 실행한다.** 이 환경변수를 설정하지 않으면 아래 풀이의 `kubectl` 명령들이 기본 컨텍스트(다른 클러스터)나 비어 있는 kubeconfig를 바라보아 `The connection to the server ... was refused`나 엉뚱한 클러스터 조작이 발생한다. 풀이의 검증 코드블록에는 지면상 `--kubeconfig`를 매번 붙이지 않으므로, 이 export가 선행되어 있다는 전제로 따라 친다. 더 명시적으로 가려면 셋업에 `alias k='kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml'`을 선언해 모든 명령에 클러스터가 박히게 한다. 재부팅 후 네트워킹이 깨졌으면 `./scripts/fix-cluster-ip-drift.sh dev`로 복구한 뒤 시작한다. 시험 셋업을 흉내 내려면 `alias k=kubectl`, `export do='--dry-run=client -o yaml'`을 먼저 선언한다. 노드에 직접 들어가야 하는 작업은 `ssh dev-master` 같은 VM 이름 별칭으로 접속한다(별칭은 `~/.ssh/config`에 등록돼 있다).
 
 ### 문제 1. [Design & Build] Dockerfile 멀티스테이지 빌드
 
@@ -45,6 +57,32 @@ EXPOSE 8080
 ENTRYPOINT ["server"]
 ```
 
+**검증 전 선결 파일:** 위 Dockerfile은 `COPY go.mod go.sum ./`와 `go build`를 수행하므로, 빌드 컨텍스트(Dockerfile과 같은 디렉터리)에 최소한 `go.mod`와 `main.go`가 있어야 빌드가 끝까지 진행된다. 두 파일이 없으면 `COPY go.mod go.sum ./` 단계에서 "no such file or directory"로 빌드가 즉시 실패한다. 아래는 빌드만 통과시키기 위한 최소 예시다. 외부 의존성이 없으므로 `go.sum`은 비어 있어도 되고, `RUN go mod download`도 받을 것이 없어 그냥 통과한다(`go.sum`이 없으면 빈 파일로 `touch go.sum`을 만들어 둔다).
+
+main.go:
+```go
+package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "Hello, World")
+	})
+	http.ListenAndServe(":8080", nil)
+}
+```
+
+go.mod:
+```go
+module myapp
+
+go 1.21
+```
+
 **검증:**
 
 ```bash
@@ -54,12 +92,7 @@ docker inspect myapp:test --format '{{.Config.ExposedPorts}}'
 docker history myapp:test
 ```
 
-```text
-# 기대 출력
-1000
-map[8080/tcp:{}]
-# history에서 alpine:3.18 기반 레이어만 존재 (golang 레이어 없음)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** 컨테이너 이미지 최적화 능력을 검증한다. 멀티스테이지 빌드로 최종 이미지 크기를 최소화하고, 비루트 사용자 실행으로 보안을 강화하는 실무 역량을 평가한다.
 
@@ -127,17 +160,11 @@ kubectl get pod app-pod -n exam -o jsonpath='{.status.initContainerStatuses[0].s
 kubectl get pod app-pod -n exam
 ```
 
-```text
-# Service가 없는 경우: Init 컨테이너가 대기 중
-NAME      READY   STATUS     RESTARTS   AGE
-app-pod   0/1     Init:0/1   0          10s
-
-# Service 생성 후: Init 완료, 메인 컨테이너 Running
-NAME      READY   STATUS    RESTARTS   AGE
-app-pod   1/1     Running   0          30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Pod 초기화 패턴에 대한 이해를 검증한다. 마이크로서비스 환경에서 의존 서비스가 준비될 때까지 대기하는 실무 패턴을 구현하는 능력을 평가한다.
+
+**개념 입문:** 마이크로서비스는 여러 서비스가 서로를 호출하는 구조이고, 의존성은 "A가 동작하려면 B가 먼저 준비돼 있어야 한다"는 관계다. 예전에는 앱 코드 안에 "DB가 뜰 때까지 재시도하는" 로직을 직접 넣었는데, 이는 앱마다 중복되고 실패 처리가 제각각이었다. Init Container는 메인 컨테이너가 뜨기 전에 실행되는 "환경 체크용 임시 컨테이너"로, 의존 서비스가 준비될 때까지 대기하는 일을 앱 코드 밖으로 분리한다. nslookup으로 Service의 DNS(도메인 이름 -> IP 변환) 조회가 성공할 때까지 기다리는 패턴이 대표적이다.
 
 **핵심 원리:** Init container는 Pod의 메인 컨테이너 시작 전에 순차적으로 실행된다. 모든 init container가 성공(exit 0)해야 메인 컨테이너가 시작된다. init container가 실패하면 kubelet은 `restartPolicy`에 따라 재시도한다. init container는 메인 컨테이너와 동일한 볼륨을 공유할 수 있지만, probe는 지원하지 않는다.
 
@@ -206,16 +233,7 @@ kubectl logs logging-pod -c log-collector --tail=5
 kubectl exec logging-pod -c app -- ls -la /var/log/app.log
 ```
 
-```text
-NAME          READY   STATUS    RESTARTS   AGE
-logging-pod   2/2     Running   0          15s
-
-Mon Jan  1 00:00:05 UTC 2024 - Log entry
-Mon Jan  1 00:00:10 UTC 2024 - Log entry
-Mon Jan  1 00:00:15 UTC 2024 - Log entry
-Mon Jan  1 00:00:20 UTC 2024 - Log entry
-Mon Jan  1 00:00:25 UTC 2024 - Log entry
-```
+![사이드카 로깅 Pod 2/2](images/m03-logging.png)
 
 **출제 의도:** 사이드카 패턴의 이해와 emptyDir 볼륨을 통한 컨테이너 간 데이터 공유 능력을 검증한다. 로그 수집 아키텍처(Fluentd/Filebeat 패턴)의 기초가 되는 실무 역량을 평가한다.
 
@@ -284,24 +302,14 @@ kubectl exec data-pod -- df -h /usr/share/nginx/html
 kubectl exec data-pod -- touch /usr/share/nginx/html/test.txt && echo "write OK"
 ```
 
-```text
-NAME       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-data-pvc   Bound    pvc-abc12345-6789-...                      1Gi        RWO            standard       10s
-
-NAME       READY   STATUS    RESTARTS   AGE
-data-pod   1/1     Running   0          10s
-
-Filesystem      Size  Used Avail Use% Mounted on
-/dev/sdb        976M   24K  960M   1% /usr/share/nginx/html
-
-write OK
-```
+![PVC Bound(local-path 동적)](images/m03-pvc.png)
 
 **출제 의도:** 영구 스토리지 관리 능력을 검증한다. PVC와 Pod의 연결 관계, StorageClass를 통한 동적 프로비저닝 이해도를 평가한다.
 
 **핵심 원리:** PVC는 스토리지 요청서이고, PV는 실제 스토리지 자원이다. StorageClass가 지정되면 동적 프로비저닝으로 PV가 자동 생성된다. PVC 상태가 `Bound`가 되어야 Pod에서 사용 가능하다. AccessMode `ReadWriteOnce`는 단일 노드에서만 읽기/쓰기가 가능하다는 의미이다. Pod가 삭제되어도 PVC와 PV는 유지되므로 데이터가 보존된다.
 
 **함정과 주의사항:**
+- **이 저장소의 dev 클러스터(tart + rancher local-path-provisioner)에는 `standard`라는 StorageClass가 없다.** 위 YAML을 그대로 적용하면 동적 프로비저닝 대상 StorageClass를 찾지 못해 PVC가 `Pending`에 머물고 Pod도 영원히 `ContainerCreating`이 된다. 먼저 `kubectl get storageclass`로 실제 이름을 확인하라. dev 클러스터의 이름은 `local-path`이므로, 직접 실습할 때는 `storageClassName` 값을 `local-path`로 바꾸거나 해당 줄을 삭제해 default StorageClass를 쓴다(실제 시험 환경은 보통 `standard`가 존재하므로 시험에서는 문제 지시대로 둔다).
 - `storageClassName`을 생략하면 클러스터의 default StorageClass가 사용된다. 시험에서 명시적으로 지정하라고 하면 반드시 포함해야 한다.
 - `volumes[].persistentVolumeClaim.claimName`에서 PVC 이름을 정확히 지정해야 한다. 오타가 나면 Pod가 `Pending` 상태에 머문다.
 - PVC의 `accessModes`는 리스트 형태(`- ReadWriteOnce`)이다. 문자열로 쓰면 파싱 오류가 발생한다.
@@ -363,18 +371,11 @@ kubectl describe pod ambassador-pod | grep -A 3 "Containers:"
 kubectl exec ambassador-pod -c app -- wget -qO- http://localhost:8080 2>&1 || echo "ambassador port reachable"
 ```
 
-```text
-NAME             READY   STATUS    RESTARTS   AGE
-ambassador-pod   2/2     Running   0          10s
-
-Containers:
-  app:
-    Image: nginx:1.25
-  ambassador:
-    Image: haproxy:2.8
-```
+![앰배서더 패턴 Pod 2/2](images/m03-ambassador.png)
 
 **출제 의도:** 멀티 컨테이너 디자인 패턴 중 Ambassador 패턴의 이해를 검증한다. ConfigMap 볼륨 공유와 Pod 내부 컨테이너 간 네트워크 통신 구조를 평가한다.
+
+**개념 입문:** 프록시는 클라이언트와 서버 사이에 끼어 요청을 대신 주고받는 중개자다. 두 가지를 구분하면 패턴이 명확해진다. 로드밸런싱은 같은 역할을 하는 여러 대상에 요청을 골고루 나눠 보내는 것(부하 분산)이고, 라우팅은 요청의 경로·내용에 따라 서로 다른 대상으로 보내는 것(길 안내)이다. Ambassador 패턴은 앱이 항상 `localhost`의 프록시(haproxy 등)에만 말하게 하고, 그 프록시가 실제 외부 엔드포인트로의 연결·재시도·암호화·로드밸런싱을 떠맡는 구조다. 앱은 외부 주소가 바뀌어도 코드 수정 없이 그대로 둘 수 있다.
 
 **핵심 원리:** Ambassador 패턴에서 프록시 컨테이너는 메인 앱 대신 외부 서비스와의 통신을 중개한다. 동일 Pod 내 컨테이너는 동일한 네트워크 네임스페이스를 공유하므로 `localhost`로 상호 접근 가능하다. 메인 앱은 `localhost:8080`으로 ambassador에 요청하고, ambassador가 실제 외부 엔드포인트로 라우팅한다. ConfigMap을 공유 볼륨으로 마운트하면 두 컨테이너가 동일한 설정 파일을 참조할 수 있다.
 
@@ -430,17 +431,11 @@ kubectl exec cache-pod -- df -h /data
 kubectl exec cache-pod -- mount | grep /data
 ```
 
-```text
-NAME        READY   STATUS    RESTARTS   AGE
-cache-pod   1/1     Running   0          5s
-
-Filesystem      Size  Used Avail Use% Mounted on
-tmpfs           256M     0  256M   0% /data
-
-tmpfs on /data type tmpfs (rw,relatime,size=262144k)
-```
+![redis cache-pod Running](images/m03-cache.png)
 
 **출제 의도:** emptyDir 볼륨의 고급 옵션인 메모리 기반 스토리지 설정 능력을 검증한다. 캐시 레이어 구성 시 디스크 vs 메모리 성능 차이를 이해하는 실무 역량을 평가한다.
+
+**개념 입문:** 일반 파일은 디스크(SSD/HDD)에 저장되어 전원이 꺼져도 남지만, 읽고 쓸 때 디스크 I/O 지연(수십 마이크로초~밀리초)이 든다. tmpfs는 디스크가 아니라 RAM 위에 만들어지는 임시 파일시스템이다. 파일처럼 보이지만 실제 데이터는 메모리에 있으므로 접근 지연이 RAM 수준(나노초~수 마이크로초)으로 짧고, 대신 전원이 꺼지거나 Pod가 사라지면 내용이 함께 소멸한다. 캐시(redis 등)처럼 "빠르되 잃어도 되는" 데이터에 적합하다. emptyDir에 `medium: Memory`를 주면 이 tmpfs로 마운트된다.
 
 **핵심 원리:** `medium: Memory`를 설정하면 emptyDir이 tmpfs(메모리 파일시스템)로 마운트된다. 디스크 I/O가 아닌 RAM 접근이므로 지연 시간이 마이크로초 단위로 감소한다. `sizeLimit`을 초과하면 Pod가 eviction 대상이 된다. tmpfs에 저장된 데이터는 Pod 재시작 시 소멸된다. 메모리 기반 emptyDir은 컨테이너의 메모리 사용량에 합산되어 cgroup 제한에 포함된다.
 
@@ -494,17 +489,7 @@ kubectl exec subpath-pod -- cat /etc/app/application.yaml
 kubectl exec subpath-pod -- ls /etc/app/
 ```
 
-```text
-# application.yaml의 내용이 출력됨
-server:
-  port: 8080
-
-# /etc/app 디렉토리의 기존 파일이 보존됨
-application.yaml
-mime.types
-nginx.conf
-... (기존 파일들이 그대로 존재)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** ConfigMap 볼륨 마운트의 고급 옵션인 subPath 사용법을 검증한다. 기존 디렉토리를 덮어쓰지 않고 특정 설정 파일만 주입하는 실무 패턴을 평가한다.
 
@@ -591,18 +576,7 @@ kubectl logs job/pi-job
 kubectl get cronjob pi-cron
 ```
 
-```text
-NAME     COMPLETIONS   DURATION   AGE
-pi-job   1/1           8s         15s
-
-NAME           READY   STATUS      RESTARTS   AGE
-pi-job-abc12   0/1     Completed   0          15s
-
-3.14159265358979323846264338327950288419716939937510...
-
-NAME      SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
-pi-cron   */5 * * * *   False     0        <none>          5s
-```
+![pi-job Complete](images/m03-pijob.png)
 
 **출제 의도:** 배치 작업(Job)과 스케줄링(CronJob)의 생성 및 설정 능력을 검증한다. `ttlSecondsAfterFinished`, `backoffLimit`, `restartPolicy` 등 세부 옵션의 이해도를 평가한다.
 
@@ -618,9 +592,21 @@ pi-cron   */5 * * * *   False     0        <none>          5s
 
 </details>
 
+> 도메인 전환: 여기까지가 **Application Design and Build(문제 1~8)** 이다. 다음은 **Application Deployment(문제 9~16)** -- 만든 앱을 무중단으로 배포·갱신·롤백하는 전략과 도구를 다룬다.
+
 ---
 
 ## Application Deployment
+
+> 학습 목표: 무중단 배포 전략(Rolling/Canary/Blue-Green) 비교, 롤백, 패키지·설정 도구(Helm/Kustomize) 활용, HPA 자동 스케일링 이해 | 예상 소요: 120분 | 전제 지식: Deployment/ReplicaSet/Pod 관계, label/selector 개념
+>
+> 학습 순서와 관계: 9~12는 업데이트 전략의 스펙트럼이다 -- Rolling(점진 교체) → Canary(소수에 먼저 노출) → Blue-Green(통째로 전환). 13~16은 그 위에 얹는 운영 도구다 -- Helm/Kustomize(매니페스트 패키징), HPA(부하 기반 자동 증감), annotation(변경 이력 기록).
+
+### 등장 배경 -- 무중단 배포는 왜 여러 전략으로 갈라지나
+
+배포의 근본 문제는 "구버전을 끄고 새버전을 켜는 그 순간"이다. 가장 단순한 방식(전부 끄고 새로 켜기, Recreate)은 그 사이 서비스가 멈춘다. Rolling Update는 새 Pod를 조금씩 늘리고 구 Pod를 조금씩 줄여 멈춤을 없앴지만, 새버전에 버그가 있으면 점진적으로 모든 트래픽이 그 버그에 노출되고 교체 속도에 따라 순간적으로 특정 버전에 트래픽이 몰릴 수 있다. Canary는 이 한계를 "전체 교체 전에 일부 Pod(예 10%)만 새버전으로 먼저 띄워 실제 트래픽으로 검증"하는 방식으로 보완한다. Blue-Green은 신·구 두 환경을 통째로 동시에 띄워 두고 Service의 selector만 바꿔 100%를 한 번에 전환·롤백한다. 트레이드오프는 비용이다. Canary는 버전 관리(label)가 늘고, Blue-Green은 두 배의 리소스를 잠시 점유한다. 9~12번은 이 스펙트럼을 손으로 구현하며 차이를 체득하는 묶음이다.
+
+등장 배경 -- Helm/Kustomize는 왜 생겼나(13~14번 전제): 앱 하나를 배포하려면 Deployment·Service·ConfigMap·Secret·Ingress·HPA 등 매니페스트(manifest, 클러스터에 적용하는 선언 YAML 파일)가 금세 수십 개로 늘어난다. 여기에 dev·staging·prod 환경별로 replicas·이미지 태그·도메인만 다른 거의 같은 YAML을 세 벌씩 복사해 두면, 공통 부분을 한 곳 고칠 때 모든 사본을 똑같이 손봐야 해서 버전 관리와 변경 추적이 어려워진다. 두 도구가 이 중복 문제를 서로 다른 방식으로 푼다. Helm은 매니페스트를 변수가 들어간 템플릿으로 만들고(Chart = 템플릿+기본값 패키지), `values.yaml`로 환경별 값만 주입해 설치 단위(Release)로 관리한다 -- 즉 "패키지 매니저"처럼 install/upgrade/rollback이 한 명령으로 된다. Kustomize는 템플릿 문법 없이 원본(base) YAML을 그대로 두고, 환경별 차이(overlay)를 patch로 덧씌워 합성한다 -- 즉 "YAML을 YAML로 덧칠"한다. 선택 기준: 외부에서 받은 패키지를 값만 바꿔 설치하거나 install/rollback 라이프사이클·의존성 관리가 필요하면 Helm, 내가 가진 YAML을 환경별로 약간씩만 변형하고 템플릿 문법 학습 비용을 피하고 싶으면 Kustomize(kubectl 내장이라 별도 설치 불필요)가 적합하다. 트레이드오프: Helm은 Go 템플릿 문법과 Chart 의존성·릴리스 상태(Secret 저장) 같은 학습·운영 비용이 추가되고, Kustomize는 템플릿이 없어 단순한 대신 조건문·반복 같은 동적 생성은 못 한다.
 
 ### 문제 9. [Deployment] Rolling Update 전략 설정
 
@@ -689,19 +675,7 @@ kubectl rollout status deployment/web-deploy
 kubectl get rs -l app=web-deploy
 ```
 
-```text
-NAME         READY   UP-TO-DATE   AVAILABLE   AGE
-web-deploy   4/4     4            4           30s
-
-StrategyType:           RollingUpdate
-RollingUpdateStrategy:  1 max unavailable, 2 max surge
-
-deployment "web-deploy" successfully rolled out
-
-NAME                            DESIRED   CURRENT   READY   AGE
-web-deploy-abc123               0         0         0       60s
-web-deploy-def456               4         4         4       30s
-```
+![web-deploy 4/4](images/m03-webdeploy.png)
 
 **출제 의도:** Rolling Update 전략의 세부 파라미터(maxSurge, maxUnavailable) 설정 능력과 롤아웃 관리 명령어 숙련도를 검증한다. 무중단 배포의 핵심 메커니즘을 이해하는 실무 역량을 평가한다.
 
@@ -724,6 +698,8 @@ web-deploy-def456               4         4         4       30s
 Deployment `web-deploy`를 리비전 1로 롤백하라. 롤백 전후의 이미지를 확인하라.
 
 <details><summary>풀이 확인</summary>
+
+**선결: 문제 9 완료가 전제다.** 이 문제는 문제 9에서 만든 `web-deploy`(nginx:1.24 -> nginx:1.25로 업데이트해 리비전이 2개 이상 쌓인 상태)를 대상으로 한다. 문제 9를 건너뛰면 `web-deploy`가 없어 `Error from server (NotFound)`가 나거나, 리비전이 1개뿐이라 롤백할 대상이 없다. 문제 9를 먼저 끝낸 뒤 같은 네임스페이스에서 진행한다.
 
 **풀이:**
 
@@ -754,13 +730,7 @@ kubectl rollout history deployment/web-deploy
 kubectl describe deployment web-deploy | grep Image
 ```
 
-```text
-REVISION  CHANGE-CAUSE
-2         <none>
-3         <none>
-
-Image: nginx:1.24
-```
+![web-deploy rollout history(REVISION 2)](images/m03-history.png)
 
 **출제 의도:** Deployment 롤백 능력과 리비전 관리 이해도를 검증한다. 프로덕션 환경에서 문제 발생 시 신속하게 이전 버전으로 복원하는 실무 역량을 평가한다.
 
@@ -851,20 +821,11 @@ kubectl get endpoints myapp-svc
 kubectl get svc myapp-svc
 ```
 
-```text
-NAME                          READY   STATUS    LABELS
-myapp-stable-abc12-xxxxx      1/1     Running   app=myapp,version=stable
-... (9개)
-myapp-canary-def34-yyyyy      1/1     Running   app=myapp,version=canary
-
-NAME        ENDPOINTS                                      AGE
-myapp-svc   10.244.0.5:80,10.244.0.6:80,...(총 10개)       10s
-
-NAME        TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-myapp-svc   ClusterIP   10.96.100.50   <none>        80/TCP    10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Kubernetes 네이티브 방식의 Canary 배포 구현 능력을 검증한다. Service selector를 활용한 트래픽 분배와 replica 비율 기반 가중치 조절을 이해하는 실무 역량을 평가한다.
+
+**개념 입문:** 직전 문제(9)의 Rolling Update는 새버전으로 "전부" 교체하므로, 새버전에 숨은 버그가 있으면 교체가 진행될수록 점점 더 많은 트래픽이 그 버그를 맞는다. Canary(탄광의 카나리아 새에서 유래)는 이 위험을 줄이려고 새버전을 소수의 Pod에만 먼저 띄워 전체 트래픽의 일부만 흘려보내고, 지표(에러율·지연)를 관찰한 뒤 문제가 없으면 비중을 늘린다. 즉 Rolling이 "속도로 안전을 산다면" Canary는 "노출 범위를 좁혀 안전을 산다". Kubernetes 네이티브 방식에서는 stable과 canary 두 Deployment가 같은 `app` label을 공유하게 만들고, replica 개수 비율(예 9:1)로 트래픽 비중을 근사한다.
 
 **핵심 원리:** Kubernetes Service는 selector에 매칭되는 모든 Pod에 균등하게 트래픽을 분배한다. 두 Deployment가 동일한 `app: myapp` label을 가지면, Service의 Endpoints에 모든 Pod가 포함된다. replica 비율 9:1은 약 10%의 트래픽이 canary로 향하는 것을 의미한다. 이는 iptables/ipvs의 라운드로빈 방식으로 동작하므로 정확한 10%는 아니지만 근사치이다.
 
@@ -966,14 +927,7 @@ kubectl get endpoints myapp-svc
 kubectl run test --image=busybox:1.36 --rm -it --restart=Never -- wget -qO- http://myapp-svc
 ```
 
-```text
-{"app":"myapp","version":"green"}
-
-NAME        ENDPOINTS                                AGE
-myapp-svc   10.244.0.10:80,10.244.0.11:80,10.244.0.12:80   30s
-
-# nginx:1.25의 기본 페이지가 출력됨
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Blue-Green 배포 전략의 구현 능력과 즉각적 트래픽 전환 메커니즘을 검증한다. 서비스 중단 없이 배포하고, 문제 발생 시 즉시 롤백하는 실무 역량을 평가한다.
 
@@ -1044,24 +998,14 @@ kubectl get pods -n web
 helm get values my-web -n web
 ```
 
-```text
-NAME    NAMESPACE  REVISION  STATUS    CHART         APP VERSION
-my-web  web        2         deployed  nginx-x.y.z   1.25.x
-
-REVISION  STATUS      CHART         DESCRIPTION
-1         superseded  nginx-x.y.z   Install complete
-2         deployed    nginx-x.y.z   Rollback to 1
-
-NAME                          READY   STATUS    RESTARTS   AGE
-my-web-nginx-abc12-xxxxx      1/1     Running   0          10s
-my-web-nginx-abc12-yyyyy      1/1     Running   0          10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Helm 패키지 매니저의 전체 라이프사이클(install, upgrade, rollback) 관리 능력을 검증한다. values 오버라이드와 릴리스 버전 관리를 이해하는 실무 역량을 평가한다.
 
 **핵심 원리:** Helm은 Chart(패키지)를 릴리스(인스턴스)로 설치한다. 각 install/upgrade는 새 리비전을 생성하고, Secret 기반 스토리지에 릴리스 상태를 저장한다. `--set`으로 전달한 값은 Chart의 `values.yaml`을 오버라이드한다. `helm rollback`은 지정된 리비전의 values와 Chart 버전으로 새 리비전을 생성한다. `--create-namespace`는 네임스페이스가 없으면 자동 생성한다.
 
 **함정과 주의사항:**
+- **`helm repo add bitnami`는 인터넷(charts.bitnami.com)에 접근 가능해야 동작한다.** 오프라인 실습 환경이나 방화벽 뒤에서는 `helm repo add`/`helm install bitnami/nginx`가 timeout 또는 `could not find protocol handler`로 실패한다. 인터넷이 되는 환경에서 미리 차트를 내려받아 두면 오프라인에서도 로컬 설치가 가능하다: `helm pull bitnami/nginx --untar`로 현재 디렉터리에 `nginx/` 차트를 풀어 둔 뒤, `helm install my-web ./nginx --namespace web --create-namespace --set replicaCount=2`처럼 로컬 경로로 설치한다(이후 upgrade/rollback 명령의 차트 인자도 `./nginx`로 바꾼다).
 - `helm upgrade` 시 이전에 `--set`으로 지정한 값이 초기화된다. `--reuse-values`를 사용하거나 모든 값을 다시 지정해야 한다. 이것이 가장 흔한 실수이다.
 - `helm repo add` 후 반드시 `helm repo update`를 실행해야 최신 차트 목록을 받는다.
 - `helm rollback my-web 1 -n web`에서 네임스페이스(`-n web`)를 누락하면 default 네임스페이스에서 릴리스를 찾아 실패한다.
@@ -1084,7 +1028,57 @@ base 디렉토리에 Deployment와 Service가 있다. dev 오버레이를 만들
 
 <details><summary>풀이 확인</summary>
 
+**선결조건(base 디렉터리 구성):** 이 문제는 `base/`에 `my-app` 이름의 Deployment·Service가 이미 있다고 가정한다. 직접 실습하려면 먼저 아래 세 파일을 만들어 둔다(`base/kustomization.yaml`이 두 리소스를 묶는다). overlay의 `images[].name`·`patches[].target.name`이 base의 `my-app`을 가리키므로 이름이 정확히 일치해야 한다.
+
+base/deployment.yaml:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: my-app:latest
+          ports:
+            - containerPort: 80
+```
+
+base/service.yaml:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+spec:
+  selector:
+    app: my-app
+  ports:
+    - port: 80
+      targetPort: 80
+```
+
+base/kustomization.yaml:
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+```
+
 **풀이:**
+
+아래 `patches`는 JSON Patch(RFC 6902) 형식을 쓴다. 세 필드로 한 줄 변경을 표현한다 -- `op`는 연산 종류(`replace` 교체 / `add` 추가 / `remove` 삭제), `path`는 변경할 YAML 위치를 슬래시(`/`)로 구분해 적은 경로(`/spec/replicas`는 `spec.replicas`를 뜻함), `value`는 새로 넣을 값이다. 즉 아래 patch는 "Deployment my-app의 `spec.replicas`를 3으로 교체하라"는 의미다.
 
 overlays/dev/kustomization.yaml:
 ```yaml
@@ -1123,24 +1117,7 @@ kubectl apply -k overlays/dev/ --dry-run=client
 kubectl get deployment -n development
 ```
 
-```text
-# kustomize 렌더링 결과에서 확인할 항목:
-# 1. namespace: development
-# 2. name: dev-my-app (namePrefix 적용)
-# 3. replicas: 3
-# 4. image: my-app:dev-latest
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: dev-my-app
-  namespace: development
-spec:
-  replicas: 3
-  ...
-    containers:
-    - image: my-app:dev-latest
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Kustomize를 사용한 환경별(dev/staging/prod) 오버레이 관리 능력을 검증한다. base/overlay 구조에서 원본을 수정하지 않고 환경별 차이점만 오버라이드하는 실무 역량을 평가한다.
 
@@ -1209,23 +1186,11 @@ kubectl describe hpa cpu-app
 kubectl get deployment cpu-app
 ```
 
-```text
-NAME      REFERENCE            TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-cpu-app   Deployment/cpu-app   10%/50%   2         10        2          30s
-
-Name:                                                  cpu-app
-Metrics:                                               ( current / target )
-  resource cpu on pods  (as a percentage of request):  10% (10m) / 50%
-Min replicas:                                          2
-Max replicas:                                          10
-
-NAME      READY   UP-TO-DATE   AVAILABLE   AGE
-cpu-app   2/2     2            2           30s
-```
+![HPA cpu-app(metrics 기반)](images/m03-hpa.png)
 
 **출제 의도:** HPA(Horizontal Pod Autoscaler)의 설정과 동작 원리를 검증한다. 리소스 기반 자동 스케일링 메커니즘과 사전 조건(metrics-server, resource requests)을 이해하는 실무 역량을 평가한다.
 
-**핵심 원리:** HPA는 주기적으로(기본 15초) metrics-server에서 현재 CPU/메모리 사용량을 조회하고, 목표 사용률과 비교하여 replica 수를 조정한다. 계산 공식은 `desiredReplicas = ceil(currentReplicas * (currentMetricValue / targetMetricValue))`이다. CPU 사용률은 `resources.requests.cpu` 대비 실제 사용량의 백분율이다. 따라서 requests가 없으면 백분율 계산이 불가능하여 HPA가 동작하지 않는다.
+**핵심 원리:** HPA는 별도 컨트롤러가 아니라 kube-controller-manager 안의 루프이며, 다음 단계로 동작한다. (1) metrics-server가 약 15초마다 각 노드 kubelet의 cAdvisor(컨테이너 리소스 사용량을 수집하는 kubelet 내장 컴포넌트)에서 CPU/메모리 실사용량을 긁어 `metrics.k8s.io` API로 노출한다. (2) HPA 컨트롤러가 약 15초 주기로 이 API를 조회해 대상 Deployment에 속한 Pod들의 현재 사용량을 모은다. (3) 공식 `desiredReplicas = ceil(currentReplicas * (currentMetricValue / targetMetricValue))`로 목표 replica를 계산한다. 예: 현재 4개 Pod의 평균 CPU가 80%, 목표가 50%면 ceil(4 * 80/50) = ceil(6.4) = 7개. (4) Deployment의 `spec.replicas`를 7로 패치하면 ReplicaSet이 Pod를 추가하고 스케줄러·kubelet이 새 Pod를 띄운다. 여기서 사용률은 항상 `resources.requests.cpu` 대비 실사용량의 백분율로 계산되므로(requests가 분모), requests가 없으면 분모가 없어 `<unknown>`이 뜨고 스케일링이 멈춘다.
 
 **함정과 주의사항:**
 - `resources.requests.cpu`가 반드시 설정되어 있어야 한다. 누락하면 HPA가 `<unknown>/50%`를 표시하며 스케일링이 동작하지 않는다.
@@ -1245,6 +1210,8 @@ cpu-app   2/2     2            2           30s
 Deployment `web-deploy`의 이미지를 `nginx:1.25`로 업데이트하면서 변경 사유를 annotation에 기록하라.
 
 <details><summary>풀이 확인</summary>
+
+**선결: 문제 9 완료가 전제다.** 대상 `web-deploy`는 문제 9에서 생성한 Deployment이다. 없으면 `kubectl set image`가 `Error from server (NotFound)`로 실패하므로 문제 9를 먼저 끝내고 같은 네임스페이스에서 진행한다.
 
 **풀이:**
 
@@ -1267,15 +1234,7 @@ kubectl describe deployment web-deploy | grep change-cause
 kubectl get deployment web-deploy -o jsonpath='{.metadata.annotations}'
 ```
 
-```text
-REVISION  CHANGE-CAUSE
-1         <none>
-2         Update nginx to 1.25 for security patch
-
-kubernetes.io/change-cause: Update nginx to 1.25 for security patch
-
-{"kubernetes.io/change-cause":"Update nginx to 1.25 for security patch"}
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Deployment 변경 이력 관리 능력을 검증한다. `--record`가 deprecated된 이후의 올바른 변경 사유 기록 방식을 이해하는 실무 역량을 평가한다.
 
@@ -1291,9 +1250,19 @@ kubernetes.io/change-cause: Update nginx to 1.25 for security patch
 
 </details>
 
+> 도메인 전환: 여기까지가 **Application Deployment(문제 9~16)** 이다. 다음은 **Application Observability and Maintenance(문제 17~22)** -- 배포한 앱이 살아 있는지·준비됐는지 관측하고(probe·로그·메트릭) 장애를 디버깅하는 영역을 다룬다.
+
 ---
 
 ## Application Observability and Maintenance
+
+> 학습 목표: Probe(Liveness/Readiness/Startup)로 상태를 알리는 법, 로그·리소스 사용량 조회, 실패 Pod 디버깅 워크플로우 숙련 | 예상 소요: 90분 | 전제 지식: Pod 라이프사이클, Service-Endpoints 관계, 컨테이너 stdout 로그 개념
+>
+> 학습 순서와 관계: 17~18은 "내가 살아있고 준비됐음을 어떻게 알리는가"(Probe), 19~22는 "문제가 생겼을 때 어떻게 들여다보는가"(logs, top, debug, 실패 분석)이다. 앞 도메인의 무중단 배포(Rolling/Canary)는 Readiness Probe가 정확해야 의도대로 동작하므로, 이 도메인은 9~16의 전제이기도 하다.
+
+### 등장 배경 -- 컨테이너의 "살아있음"과 "준비됨"을 왜 따로 보나
+
+초기 오케스트레이션은 프로세스가 떠 있으면 "정상"으로 봤다. 그러나 프로세스는 떠 있어도 내부적으로 교착(deadlock)에 빠져 응답을 못 하거나, 떠 있긴 한데 아직 캐시 로딩 중이라 요청을 받으면 안 되는 상태가 있다. 단순 "프로세스 생존" 판정으로는 이 둘을 구분할 수 없어, 죽지도 않았는데 트래픽을 받아 에러를 내거나 멀쩡한데 재시작당하는 일이 잦았다. Kubernetes는 이를 두 질문으로 분리했다. Liveness("되살려야 하나?" -> 실패 시 컨테이너 재시작)와 Readiness("트래픽을 줘도 되나?" -> 실패 시 Service Endpoints에서만 제외, 재시작은 안 함)다. Startup Probe는 느린 레거시 앱이 시작 도중 Liveness에 걸려 무한 재시작되는 문제를 풀기 위해 나중에 추가됐다(시작이 끝날 때까지 다른 Probe를 잠재운다). 트레이드오프는 Probe 설정 오류 자체가 장애 원인이 된다는 점이다. delay·threshold를 잘못 잡으면 정상 앱이 재시작 루프에 빠진다.
 
 ### 문제 17. [Observability] Liveness/Readiness Probe 설정
 
@@ -1342,13 +1311,7 @@ kubectl describe pod probe-pod | grep -A 10 "Liveness"
 kubectl describe pod probe-pod | grep -A 10 "Readiness"
 ```
 
-```text
-NAME        READY   STATUS    RESTARTS   AGE
-probe-pod   1/1     Running   0          30s
-
-Liveness:       http-get http://:80/healthz delay=10s timeout=1s period=5s #success=1 #failure=3
-Readiness:      http-get http://:80/ready delay=5s timeout=1s period=3s #success=1 #failure=2
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Pod 상태 관리의 핵심인 Probe 설정 능력을 검증한다. Liveness와 Readiness의 동작 차이, 각 파라미터의 의미를 정확히 이해하는 실무 역량을 평가한다.
 
@@ -1412,21 +1375,14 @@ kubectl describe pod slow-start-pod | grep -A 5 "Liveness"
 kubectl get pod slow-start-pod -w  # 시작 과정 실시간 관찰
 ```
 
-```text
-Startup:        http-get http://:8080/started delay=0s timeout=1s period=10s #success=1 #failure=30
-Liveness:       http-get http://:8080/healthz delay=0s timeout=1s period=5s #success=1 #failure=3
-
-NAME              READY   STATUS    RESTARTS   AGE
-slow-start-pod    0/1     Running   0          10s
-slow-start-pod    1/1     Running   0          120s   # Startup Probe 성공 후 Ready
-```
+![probe-pod — Startup/Liveness 프로브](images/m03-probe.png)
 
 **출제 의도:** 느리게 시작하는 애플리케이션에 대한 Startup Probe 설정 능력을 검증한다. Startup, Liveness, Readiness 세 가지 Probe의 상호 관계를 이해하는 실무 역량을 평가한다.
 
 **핵심 원리:** Startup Probe가 설정되면 Liveness와 Readiness Probe는 Startup Probe가 성공할 때까지 비활성화된다. 이는 느리게 시작하는 레거시 앱이 Liveness Probe에 의해 불필요하게 재시작되는 것을 방지한다. 최대 대기 시간은 `periodSeconds * failureThreshold`로 계산된다. 10초 * 30회 = 300초(5분)이다. Startup Probe가 한 번 성공하면 이후 Liveness/Readiness Probe가 활성화되고, Startup Probe는 더 이상 실행되지 않는다.
 
 **함정과 주의사항:**
-- Startup Probe에는 `initialDelaySeconds`를 설정하지 않는 것이 일반적이다. Startup Probe 자체가 시작 대기 역할을 하기 때문이다.
+- Startup Probe에는 `initialDelaySeconds`를 설정하지 않는 것이 일반적이다. Startup Probe 자체가 시작 대기 역할을 하기 때문이다. 생략하면 `initialDelaySeconds`의 기본값은 0이므로(검증 출력의 `delay=0s`가 이것이다) 컨테이너 시작 직후 첫 probe가 곧바로 실행되고, 이후 `periodSeconds` 간격으로 `failureThreshold`회까지 재시도하며 대기 창을 만든다. 따라서 최대 대기 시간은 `initialDelaySeconds(=0) + periodSeconds * failureThreshold = 0 + 10 * 30 = 300초`이다.
 - `failureThreshold * periodSeconds`의 곱이 앱의 최대 시작 시간보다 커야 한다. 부족하면 앱이 시작되기 전에 Pod가 재시작된다.
 - Startup Probe가 실패하면 Liveness와 동일하게 컨테이너가 재시작된다 (종료 코드 137).
 - Startup Probe를 사용하면 Liveness의 `initialDelaySeconds`를 0으로 설정해도 안전하다.
@@ -1468,16 +1424,7 @@ kubectl logs -l app=nginx -n web --tail=50
 kubectl logs $POD -c nginx -n web --previous
 ```
 
-```text
-# 마지막 50줄 로그 (nginx access log 형식)
-10.244.0.1 - - [01/Jan/2024:00:00:01 +0000] "GET / HTTP/1.1" 200 615
-10.244.0.1 - - [01/Jan/2024:00:00:02 +0000] "GET /favicon.ico HTTP/1.1" 404 153
-...
-
-# 이전 컨테이너 로그 (크래시 원인 확인)
-2024/01/01 00:00:00 [emerg] 1#1: bind() to 0.0.0.0:80 failed (13: Permission denied)
-nginx: [emerg] bind() to 0.0.0.0:80 failed (13: Permission denied)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Pod 로그 분석 능력을 검증한다. 멀티 컨테이너 환경에서 특정 컨테이너의 로그를 선택적으로 조회하고, 크래시된 컨테이너의 이전 로그를 복원하는 실무 역량을 평가한다.
 
@@ -1528,19 +1475,11 @@ kubectl describe pod distroless-pod | grep -A 5 "Ephemeral Containers"
 kubectl get pod distroless-pod -o jsonpath='{.spec.ephemeralContainers[*].name}'
 ```
 
-```text
-Ephemeral Containers:
-  debugger-abc12:
-    Image:         busybox:1.36
-    State:         Running
-    Target:        app
-
-debugger-abc12
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** 프로덕션 환경에서 실행 중인 Pod를 디버깅하는 능력을 검증한다. Ephemeral container를 사용하여 디버그 도구가 없는 컨테이너를 진단하는 실무 역량을 평가한다.
 
-**핵심 원리:** Ephemeral container는 기존 Pod에 임시로 추가되는 컨테이너이다. `--target` 옵션으로 대상 컨테이너의 프로세스 네임스페이스를 공유하면, 대상 컨테이너의 프로세스를 `ps`로 볼 수 있고, `/proc/1/root/`를 통해 파일시스템에 접근할 수 있다. Ephemeral container는 Pod spec에서 제거할 수 없으며, Pod가 삭제될 때 함께 제거된다. restart되지 않으며, probe나 port를 가질 수 없다.
+**핵심 원리:** Ephemeral container는 기존 Pod에 임시로 추가되는 컨테이너이다. `--container`로 이름을 직접 주지 않으면 `kubectl debug`가 `debugger-XXXXX`(끝 5자리는 임의 문자) 형식의 이름을 자동 생성한다. 위 검증 출력의 `debugger-abc12`가 그 예이며, 실제 값은 실행할 때마다 달라진다. 이 컨테이너는 Pod의 `spec.ephemeralContainers`에 추가되고 `describe pod`의 Ephemeral Containers 섹션에서 확인된다. `--target` 옵션으로 대상 컨테이너의 프로세스 네임스페이스를 공유하면, 대상 컨테이너의 프로세스를 `ps`로 볼 수 있고, `/proc/1/root/`를 통해 파일시스템에 접근할 수 있다. Ephemeral container는 Pod spec에서 제거할 수 없으며, Pod가 삭제될 때 함께 제거된다. restart되지 않으며, probe나 port를 가질 수 없다.
 
 **함정과 주의사항:**
 - `kubectl debug`는 Kubernetes v1.25 이상에서 stable 기능이다. 이전 버전에서는 `--feature-gates=EphemeralContainers=true`가 필요하다.
@@ -1584,16 +1523,7 @@ kubectl top pods -n demo --sort-by=cpu
 kubectl top nodes
 ```
 
-```text
-NAME            CPU(cores)   MEMORY(bytes)
-heavy-app-pod   450m         256Mi
-web-pod-1       120m         128Mi
-web-pod-2       80m          96Mi
-
-NAME          CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
-node-1        1200m        60%    4096Mi          50%
-node-2        800m         40%    3072Mi          38%
-```
+![top pod — CPU/메모리 사용량](images/m03-top.png)
 
 **출제 의도:** 클러스터 리소스 모니터링 능력을 검증한다. Pod와 노드의 CPU/메모리 사용량을 빠르게 파악하여 병목 지점을 식별하는 실무 역량을 평가한다.
 
@@ -1652,28 +1582,14 @@ kubectl describe pod failing-pod | tail -20
 kubectl logs failing-pod --previous
 ```
 
-```text
-NAME          READY   STATUS             RESTARTS      AGE
-failing-pod   0/1     CrashLoopBackOff   5 (30s ago)   3m
-
-Events:
-  Type     Reason     Age   From               Message
-  ----     ------     ----  ----               -------
-  Normal   Pulled     60s   kubelet            Container image pulled
-  Normal   Created    60s   kubelet            Created container app
-  Normal   Started    60s   kubelet            Started container app
-  Warning  BackOff    30s   kubelet            Back-off restarting failed container
-
-# --previous 로그에서 크래시 원인 확인
-Error: cannot connect to database at postgres:5432
-```
+![failing-pod CrashLoopBackOff](images/m03-failing.png)
 
 **출제 의도:** 실패하는 Pod의 근본 원인을 체계적으로 분석하는 능력을 검증한다. 프로덕션 환경에서 장애 대응 시 필요한 디버깅 워크플로우를 평가한다.
 
 **핵심 원리:** CrashLoopBackOff는 컨테이너가 반복적으로 시작 후 종료되는 상태이다. kubelet은 지수 백오프(10s, 20s, 40s, ... 최대 5분)로 재시작 간격을 늘린다. 디버깅 순서는 (1) `get pod`으로 상태/재시작 횟수 확인, (2) `describe pod`로 이벤트(이미지 풀 실패, 스케줄링 실패 등) 확인, (3) `logs`로 앱 로그 확인, (4) `logs --previous`로 이전 크래시 로그 확인이다. 이벤트에는 kubelet, scheduler, controller-manager 등의 메시지가 시간순으로 기록된다.
 
 **함정과 주의사항:**
-- `CrashLoopBackOff`는 상태(Status)가 아니라 이유(Reason)이다. 컨테이너가 정상 시작 후 비정상 종료되는 것이다.
+- `CrashLoopBackOff`는 `kubectl get pod`의 STATUS 열에 표시되지만, 엄밀히는 Pod의 phase(상태)가 아니라 컨테이너의 재시작 대기 상태를 나타내는 값이다. Pod 자체의 `status.phase`는 `Running`이고, 문제가 있는 것은 그 안의 컨테이너로, `status.containerStatuses[].lastState.terminated.reason`(직전 종료 이유)과 함께 컨테이너가 종료->백오프 대기->재시작을 반복하는 중이다. kubectl이 이 컨테이너 상태를 Pod의 STATUS 열에 요약해 보여주기 때문에 "상태 열에 뜨는데 Pod 상태는 아니다"라는 혼동이 생긴다. 즉 컨테이너가 정상 시작 후 비정상 종료되기를 반복하는 상황이다.
 - `logs --previous`는 이전 컨테이너 인스턴스가 있어야 동작한다. RESTARTS가 0이면 사용할 수 없다.
 - `ImagePullBackOff`와 `CrashLoopBackOff`는 다른 문제이다. 전자는 이미지 다운로드 실패, 후자는 컨테이너 실행 실패이다.
 - `describe` 출력의 Events 섹션은 시간 역순으로 표시된다. 최근 이벤트가 가장 아래에 있다.
@@ -1683,9 +1599,19 @@ Error: cannot connect to database at postgres:5432
 
 </details>
 
+> 도메인 전환: 여기까지가 **Application Observability and Maintenance(문제 17~22)** 이다. 다음은 **Application Environment, Configuration and Security(문제 23~32)** -- ConfigMap·Secret으로 설정을 주입하고 SecurityContext·ServiceAccount로 권한을 제한하는, 가장 문항이 많은(10문제) 영역을 다룬다.
+
 ---
 
 ## Application Environment, Configuration and Security
+
+> 학습 목표: 설정·비밀의 분리 주입(ConfigMap/Secret/Downward API), 컨테이너·API 권한 최소화(SecurityContext/ServiceAccount), 자원 통제(QoS/LimitRange/ResourceQuota) 이해 | 예상 소요: 150분 | 전제 지식: 환경 변수·볼륨 마운트, Linux 사용자/권한 개념, 네임스페이스
+>
+> 학습 순서와 관계: 23~24, 30~32는 "설정과 비밀을 코드 밖으로 빼 주입"(ConfigMap/Secret/Immutable), 25~26은 "권한을 최소로"(컨테이너 보안 + API 권한), 27~29는 "자원을 공정하게 통제"(QoS/LimitRange/ResourceQuota), 31은 Pod 자기 정보 참조(Downward API)다. 특히 25(컨테이너가 무엇을 할 수 있나)와 26(Pod가 API 서버에 무엇을 요청할 수 있나)은 같은 최소 권한 원칙(least privilege, "필요한 만큼만 권한을 준다")의 두 면이다.
+
+### 등장 배경 -- 설정을 코드에서 떼고, 권한을 최소로
+
+직전 시대에는 DB 비밀번호·환경 플래그가 이미지 안에 하드코딩되거나 앱 코드에 박혀 있었다. 그러면 dev/prod마다 이미지를 다시 빌드해야 했고, 비밀이 이미지 레이어에 남아 유출 위험이 컸다. ConfigMap/Secret은 설정과 비밀을 리소스로 분리해 같은 이미지를 환경별로 재사용하게 했다. 또한 컨테이너를 root로 돌리는 관행은 컨테이너 탈출 시 노드 전체를 위협했고, 모든 Pod에 API 토큰을 무조건 마운트하던 기본값은 공격 표면을 넓혔다. SecurityContext(UID/GID/capability/읽기전용 루트)와 ServiceAccount 토큰 비활성화는 이 위험을 "기본은 거부, 필요한 것만 허용"으로 좁힌다. 트레이드오프는 깐깐함이다. root 가정으로 만든 이미지는 비루트 전환 시 쓰기 디렉토리(예 nginx의 `/var/cache/nginx`)를 별도 볼륨으로 열어줘야 하는 등 손이 더 간다.
 
 ### 문제 23. [Config & Security] ConfigMap 생성 및 사용
 
@@ -1733,20 +1659,7 @@ kubectl exec webapp -- env | grep APP_
 kubectl get configmap webapp-config -o yaml
 ```
 
-```text
-APP_ENV=production
-APP_PORT=8080
-APP_LOG_LEVEL=warn
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: webapp-config
-data:
-  APP_ENV: production
-  APP_PORT: "8080"
-  APP_LOG_LEVEL: warn
-```
+![환경변수 APP_ENV/APP_PORT](images/m03-env.png)
 
 **출제 의도:** ConfigMap 생성과 Pod에 환경 변수로 주입하는 능력을 검증한다. `envFrom`과 `env`의 차이를 이해하고, 상황에 맞게 선택하는 실무 역량을 평가한다.
 
@@ -1773,10 +1686,17 @@ data:
 
 <details><summary>풀이 확인</summary>
 
+**선결조건(인증서 파일 생성):** `kubectl create secret tls`는 `--cert`/`--key`로 실제 PEM 파일을 읽어 Secret을 만든다. 시험에서는 보통 이 파일이 제공되지만, 직접 실습할 때는 자체 서명 인증서를 먼저 만들어 둔다(아래 한 줄이면 `tls.crt`와 `tls.key`가 현재 디렉터리에 생성된다).
+
+```bash
+# 자체 서명 인증서/키 생성 (직접 실습 시 선행)
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=test"
+```
+
 **풀이:**
 
 ```bash
-# TLS Secret 생성 (인증서 파일이 있다고 가정)
+# TLS Secret 생성 (위에서 만든 인증서 파일 사용)
 kubectl create secret tls app-tls --cert=tls.crt --key=tls.key
 ```
 
@@ -1809,18 +1729,7 @@ kubectl exec tls-pod -- stat -c '%a %n' /etc/tls/tls.crt
 kubectl exec tls-pod -- mount | grep tls
 ```
 
-```text
-NAME      READY   STATUS    RESTARTS   AGE
-tls-pod   1/1     Running   0          10s
-
-total 0
-lrwxrwxrwx 1 root root 14 Jan  1 00:00 tls.crt -> ..data/tls.crt
-lrwxrwxrwx 1 root root 14 Jan  1 00:00 tls.key -> ..data/tls.key
-
-400 /etc/tls/..data/tls.crt
-
-tmpfs on /etc/tls type tmpfs (ro,relatime)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** TLS Secret의 생성과 안전한 볼륨 마운트 능력을 검증한다. 파일 권한 설정과 읽기 전용 마운트를 통한 보안 강화 실무 역량을 평가한다.
 
@@ -1902,21 +1811,11 @@ kubectl exec secure-app -- touch /test.txt 2>&1
 kubectl exec secure-app -- touch /tmp/test.txt && echo "tmp write OK"
 ```
 
-```text
-NAME         READY   STATUS    RESTARTS   AGE
-secure-app   1/1     Running   0          10s
-
-uid=1000 gid=3000 groups=3000
-
-CapBnd:  0000000000000400
-# 0x400 = NET_BIND_SERVICE만 활성화
-
-touch: /test.txt: Read-only file system
-
-tmp write OK
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** 컨테이너 보안 설정(SecurityContext)의 종합적인 구성 능력을 검증한다. Pod 레벨과 컨테이너 레벨의 보안 설정 차이, Linux capabilities 관리, 읽기 전용 파일시스템 운용 능력을 평가한다.
+
+**개념 입문:** Linux는 모든 사용자를 숫자 UID(user ID), 모든 그룹을 숫자 GID(group ID)로 식별하며 UID 0이 root(전권)다. capability는 root의 전권을 잘게 쪼갠 권한 조각으로, "root냐 아니냐"의 이분법 대신 "1024 미만 포트에 바인딩만 허용(NET_BIND_SERVICE)" 같은 식으로 필요한 조각만 켤 수 있다. SecurityContext는 컨테이너가 어떤 UID/GID로 돌고 어떤 capability를 갖는지를 매니페스트로 지정한다. `drop: ["ALL"]`로 전부 떼고 `add`로 꼭 필요한 한두 개만 다시 붙이는 것이 최소 권한 원칙의 전형이다.
 
 **핵심 원리:** SecurityContext는 Pod 레벨과 컨테이너 레벨 두 곳에서 설정 가능하다. Pod 레벨의 `runAsUser`, `runAsGroup`, `fsGroup`은 모든 컨테이너에 적용된다. 컨테이너 레벨의 `runAsNonRoot`는 UID 0 실행을 차단한다. `readOnlyRootFilesystem`은 컨테이너의 루트 파일시스템을 읽기 전용으로 만든다. `capabilities.drop: ["ALL"]`은 모든 Linux capability를 제거하고, `add`로 필요한 것만 추가한다. `fsGroup`은 마운트된 볼륨의 그룹 소유권을 설정한다.
 
@@ -1926,6 +1825,7 @@ tmp write OK
 - `capabilities`는 컨테이너 레벨에서만 설정 가능하다. Pod 레벨에서는 설정할 수 없다.
 - `allowPrivilegeEscalation: false`는 `setuid` 비트를 무시하여 권한 상승을 방지한다. 보안 강화를 위해 항상 설정하는 것이 좋다.
 - `fsGroup`을 설정하면 Pod가 시작될 때 볼륨의 모든 파일 소유 그룹이 변경된다. 대용량 볼륨에서는 시작 시간이 길어질 수 있다.
+- 검증 출력의 `CapBnd: 0000000000000400` 해석법: capability는 0번부터 번호가 매겨진 비트 마스크다(0=CAP_CHOWN, 1=CAP_DAC_OVERRIDE, ..., 10=CAP_NET_BIND_SERVICE). 16진수 `0x400`은 10진수 1024 = 2^10, 즉 "10번째 비트만 켜짐"을 뜻하고 그 10번이 NET_BIND_SERVICE다. 따라서 `drop: ALL` 후 `add: NET_BIND_SERVICE`만 한 결과가 정확히 `0x400`으로 나온다. 다른 capability가 섞이면 비트가 더 켜져 값이 커진다.
 
 **시간 절약 팁:** SecurityContext 문제는 declarative(YAML)로만 풀 수 있다. `kubectl run`으로 기본 Pod를 생성하고, `securityContext`, `volumeMounts`, `volumes` 세 섹션을 수동으로 추가한다. Pod 레벨 vs 컨테이너 레벨 필드 위치를 정확히 기억하는 것이 핵심이다. kubernetes.io/docs에서 "security context" 검색으로 예제를 빠르게 찾을 수 있다.
 
@@ -1977,16 +1877,11 @@ kubectl get pod sa-pod -n app -o jsonpath='{.spec.serviceAccountName}'
 kubectl exec sa-pod -n app -- ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>&1
 ```
 
-```text
-NAME     SECRETS   AGE
-app-sa   0         10s
-
-app-sa
-
-ls: /var/run/secrets/kubernetes.io/serviceaccount/: No such file or directory
-```
+![ServiceAccount app-sa](images/m03-sa.png)
 
 **출제 의도:** ServiceAccount 관리와 토큰 자동 마운트 비활성화 능력을 검증한다. 최소 권한 원칙(Least Privilege)에 따른 보안 구성 실무 역량을 평가한다.
+
+**개념 입문:** 직전 문제(25)가 "컨테이너가 OS 안에서 무엇을 할 수 있나"를 좁혔다면, 이 문제는 "Pod가 Kubernetes API 서버에 무엇을 요청할 수 있나"를 좁힌다. 둘 다 같은 최소 권한 원칙의 적용이다. 기본값으로 모든 Pod에는 API 토큰(API 서버에 자신을 증명하는 출입증)이 자동으로 마운트되는데, API를 쓸 일이 없는 앱(단순 nginx 등)에 이 토큰이 들어 있으면 컨테이너가 탈취당했을 때 클러스터 API로 가는 통로가 그냥 열려 있는 셈이다. `automountServiceAccountToken: false`는 그 통로를 애초에 막는다.
 
 **핵심 원리:** ServiceAccount는 Pod가 API 서버와 통신할 때 사용하는 ID이다. 기본적으로 모든 Pod에 `default` ServiceAccount가 할당되고, API 토큰이 `/var/run/secrets/kubernetes.io/serviceaccount/token`에 자동 마운트된다. `automountServiceAccountToken: false`를 설정하면 이 토큰 마운트가 비활성화되어, Pod에서 `kubectl`이나 API 호출이 불가능해진다. Kubernetes 1.24부터 ServiceAccount 토큰은 `TokenRequest API`로 시간 제한 토큰이 자동 생성된다.
 
@@ -2072,15 +1967,13 @@ kubectl get pod qos-burstable -o jsonpath='{.status.qosClass}'
 kubectl get pod qos-besteffort -o jsonpath='{.status.qosClass}'
 ```
 
-```text
-Guaranteed
-Burstable
-BestEffort
-```
+![QoS 클래스 — Guaranteed/Burstable](images/m03-qos.png)
 
 **출제 의도:** Kubernetes QoS(Quality of Service) 클래스의 결정 조건과 의미를 검증한다. 리소스 설정에 따른 Pod 스케줄링 우선순위와 eviction 순서를 이해하는 실무 역량을 평가한다.
 
-**핵심 원리:** QoS 클래스는 Pod의 리소스 설정에 의해 자동으로 결정된다. Guaranteed는 모든 컨테이너의 CPU/메모리 requests와 limits가 동일할 때 부여된다. BestEffort는 어떤 컨테이너에도 requests/limits가 설정되지 않았을 때 부여된다. 그 외는 모두 Burstable이다. 노드 메모리 부족(memory pressure) 시 kubelet은 BestEffort → Burstable → Guaranteed 순서로 Pod를 축출(eviction)한다. 같은 QoS 내에서는 메모리 사용량/requests 비율이 높은 Pod가 먼저 축출된다.
+**핵심 원리:** QoS 클래스는 Pod의 리소스 설정에 의해 자동으로 결정된다. Guaranteed는 모든 컨테이너의 CPU/메모리 requests와 limits가 동일할 때 부여된다. BestEffort는 어떤 컨테이너에도 requests/limits가 설정되지 않았을 때 부여된다. 그 외는 모두 Burstable이다.
+
+QoS가 왜 중요한지는 축출(eviction) 순서로 드러난다. 노드 메모리가 부족해지면(memory pressure) kubelet은 노드를 살리려고 일부 Pod를 강제로 내쫓는데, 이때 우선순위는 "약속을 얼마나 했는가"로 정해진다. BestEffort는 requests로 아무것도 약속하지 않았으니 가장 먼저, Burstable은 requests만큼만 약속했으니 그다음, Guaranteed는 requests=limits로 정확히 약속하고 그만큼만 쓰니 가장 나중에 쫓겨난다. 내부적으로 kubelet은 각 Pod에 oom_score_adj(리눅스 커널 OOM 킬러가 참고하는 점수)를 QoS에 따라 다르게 매겨, 커널 차원에서도 BestEffort가 먼저 죽도록 만든다. 같은 QoS 안에서는 "requests 대비 실제 메모리 초과량"이 큰 Pod, 즉 약속보다 많이 쓰는 Pod가 먼저 축출된다. 즉 QoS는 단순 라벨이 아니라 자원 경합 시 생존 우선순위를 결정하는 스케줄링/축출 정책이다.
 
 **함정과 주의사항:**
 - Guaranteed 조건: 모든 컨테이너에 CPU와 메모리의 requests와 limits가 설정되어야 하고, 각각 같은 값이어야 한다. CPU만 설정하고 메모리를 누락하면 Burstable이 된다.
@@ -2151,18 +2044,7 @@ kubectl run test-lr --image=nginx:1.25 -n restricted
 kubectl get pod test-lr -n restricted -o jsonpath='{.spec.containers[0].resources}'
 ```
 
-```text
-Name:       default-limits
-Namespace:  restricted
-Type        Resource  Min   Max  Default Request  Default Limit
-----        --------  ---   ---  ---------------  -------------
-Container   cpu       50m   1    100m             500m
-Container   memory    64Mi  1Gi  128Mi            512Mi
-
-pod/test-lr created
-
-{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}
-```
+![LimitRange default-limits](images/m03-limitrange.png)
 
 **출제 의도:** LimitRange를 사용한 네임스페이스 수준의 리소스 제어 능력을 검증한다. 기본값 자동 적용과 최소/최대 범위 제한을 통한 클러스터 자원 관리 실무 역량을 평가한다.
 
@@ -2226,19 +2108,7 @@ kubectl describe resourcequota team-a-quota -n team-a
 kubectl describe resourcequota team-a-quota -n team-a
 ```
 
-```text
-Name:            team-a-quota
-Namespace:       team-a
-Resource         Used  Hard
---------         ----  ----
-configmaps       1     10
-limits.cpu       0     8
-limits.memory    0     8Gi
-pods             0     20
-requests.cpu     0     4
-requests.memory  0     4Gi
-secrets          1     10
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** ResourceQuota를 사용한 네임스페이스 수준의 총량 제한 능력을 검증한다. 멀티테넌트 클러스터에서 팀별 리소스 할당량을 관리하는 실무 역량을 평가한다.
 
@@ -2305,12 +2175,7 @@ kubectl exec selective-env-pod -- env | grep DATABASE
 kubectl exec selective-env-pod -- env | grep DB_
 ```
 
-```text
-DATABASE_HOST=postgres.default.svc.cluster.local
-DATABASE_PORT=5432
-
-# DB_NAME, DB_MAX_CONN 등은 출력되지 않음 (선택적 주입)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** ConfigMap에서 특정 key만 선택적으로 환경 변수에 매핑하고, 이름을 변경하는 능력을 검증한다. `envFrom`과 `env[].valueFrom`의 차이를 이해하는 실무 역량을 평가한다.
 
@@ -2379,17 +2244,11 @@ spec:
 kubectl logs downward-pod | grep -E "POD_NAME|POD_NAMESPACE|NODE_NAME|POD_IP"
 ```
 
-```text
-POD_NAME=downward-pod
-POD_NAMESPACE=default
-NODE_NAME=worker-1
-POD_IP=10.244.1.15
-CPU_REQUEST=1
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Downward API를 사용하여 Pod 메타데이터와 리소스 정보를 컨테이너에 전달하는 능력을 검증한다. 애플리케이션이 자신의 실행 환경을 인식해야 하는 실무 시나리오를 평가한다.
 
-**핵심 원리:** Downward API는 Pod의 메타데이터와 spec 정보를 환경 변수 또는 파일로 컨테이너에 전달하는 메커니즘이다. `fieldRef`는 `metadata.name`, `metadata.namespace`, `spec.nodeName`, `status.podIP` 등 Pod 수준 정보를 참조한다. `resourceFieldRef`는 `requests.cpu`, `limits.memory` 등 컨테이너의 리소스 설정값을 참조한다. 이 정보는 Pod 시작 시점에 확정되며, 런타임 중 변경되지 않는다.
+**핵심 원리:** Downward API는 Pod의 메타데이터와 spec 정보를 환경 변수 또는 파일로 컨테이너에 전달하는 메커니즘이다. 참조원이 두 종류라는 점이 핵심이다. `fieldRef`는 Pod 오브젝트 자체의 필드(`metadata.name`, `metadata.namespace`, `spec.nodeName`, `status.podIP` 등 Pod 수준 정보)를 `fieldPath`로 가리킨다. `resourceFieldRef`는 컨테이너의 리소스 설정값(`requests.cpu`, `limits.memory` 등)을 가리키며, 어느 컨테이너의 값인지 `containerName`으로 지정하고 `resource`로 항목을 고른다. 한 문장으로 구분하면 "fieldRef = Pod의 정체성/위치 정보, resourceFieldRef = 컨테이너에 할당된 자원 수치"다. 이 정보는 Pod 시작 시점에 확정되며, 런타임 중 변경되지 않는다.
 
 **함정과 주의사항:**
 - `fieldRef`로 참조 가능한 필드는 제한되어 있다. `metadata.name`, `metadata.namespace`, `metadata.uid`, `metadata.labels`, `metadata.annotations`, `spec.nodeName`, `spec.serviceAccountName`, `status.podIP`, `status.hostIP` 등이다.
@@ -2451,14 +2310,7 @@ kubectl get secret immutable-secret -o yaml | grep immutable
 kubectl patch configmap immutable-config -p '{"data":{"APP_MODE":"staging"}}' 2>&1
 ```
 
-```text
-immutable: true
-
-immutable: true
-
-Error from server (Forbidden): configmaps "immutable-config" is invalid:
-data: Forbidden: field is immutable when `immutable` is set
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Immutable ConfigMap/Secret의 생성과 동작 원리를 검증한다. 대규모 클러스터에서 성능 최적화를 위한 불변 설정 패턴을 이해하는 실무 역량을 평가한다.
 
@@ -2474,9 +2326,19 @@ data: Forbidden: field is immutable when `immutable` is set
 
 </details>
 
+> 도메인 전환: 여기까지가 **Application Environment, Configuration and Security(문제 23~32)** 이다. 다음은 마지막 영역 **Services and Networking(문제 33~40)** -- Service·Ingress로 트래픽을 받고 NetworkPolicy로 통제하며 DNS/Headless로 찾는 네트워킹을 다룬다.
+
 ---
 
 ## Services and Networking
+
+> 학습 목표: 트래픽 수신(Service/Ingress)과 트래픽 제어(NetworkPolicy), 서비스 디스커버리(DNS/Headless) 이해 | 예상 소요: 120분 | 전제 지식: TCP/UDP·포트 개념, label/selector, Pod IP가 임시(ephemeral)라는 점
+>
+> 학습 순서와 관계: 33~35는 "트래픽을 어떻게 받아 안으로 보내는가"(Service로 Pod 묶기 -> Ingress로 HTTP 라우팅/TLS), 36~37은 "그 트래픽을 누가 누구에게 보내도 되는가"(NetworkPolicy로 허용/차단), 38~40은 "이름으로 어떻게 찾는가"(DNS, Headless/StatefulSet, Endpoints)이다. 33의 Service가 만드는 트래픽 경로와 36의 NetworkPolicy가 막는 트래픽 경로는 같은 길이다. Service는 "어디로 보낼지"를, NetworkPolicy는 "보내도 되는지"를 정한다.
+
+### 등장 배경 -- Pod IP가 자꾸 바뀌는데 어떻게 연결하나
+
+Pod는 죽고 다시 뜨면 IP가 바뀐다(ephemeral). 그래서 앱이 다른 앱의 Pod IP를 직접 박아 두면 재배포 때마다 연결이 끊긴다. Service는 변하지 않는 가상 IP(ClusterIP)와 이름을 앞에 세워 이 문제를 푼다. 뒤에서 어떤 Pod가 죽고 살든 Service는 현재 살아있는 Pod 집합(Endpoints)으로 트래픽을 넘긴다. 트래픽이 클러스터 안에서 어느 노드의 어느 Pod로 가야 하는지는 예전엔 kube-proxy가 호스트의 iptables(리눅스 커널 패킷 필터/NAT 규칙) 또는 ipvs 규칙을 갱신해 처리했고, 이 저장소처럼 Cilium을 쓰면 eBPF(커널에 안전하게 코드를 주입해 패킷을 처리하는 기술)로 같은 일을 더 효율적으로 한다. CNI(Container Network Interface, Pod에 IP와 네트워크를 붙여주는 플러그인 규격)가 이 네트워킹을 구현하며, NetworkPolicy도 CNI가 지원해야 동작한다. Ingress는 Service들 앞에 L7(애플리케이션 계층, HTTP) 라우터를 두어 도메인·경로별로 트래픽을 나눈다. 트레이드오프는 추상화 계층이 늘면서 "왜 연결이 안 되나"의 원인이 Service selector·Endpoints·NetworkPolicy·DNS 중 어디인지 추적할 지점이 많아진다는 점이다.
 
 ### 문제 33. [Networking] Service 생성 -- ClusterIP, NodePort
 
@@ -2486,6 +2348,8 @@ Deployment `backend`에 대해 다음 Service를 생성하라.
 2. NodePort Service: `backend-external` (포트 80 -> 대상 포트 8080, nodePort: 30088)
 
 <details><summary>풀이 확인</summary>
+
+**선결조건:** `kubectl expose`는 대상 Deployment가 없으면 `Error from server (NotFound)`로 즉시 실패한다. 이 문제를 직접 실습하려면 먼저 대상이 될 `backend` Deployment를 만들어 둔다. `kubectl create deployment backend --image=nginx:1.25 --replicas=2`로 생성한 뒤 풀이를 진행한다(nginx는 8080이 아니라 80을 듣지만, 여기서는 Service 생성과 selector 매핑 연습이 목적이므로 무방하다. Endpoints가 채워지는지까지 확인하려면 8080을 듣는 이미지로 바꾸거나 `--target-port=80`으로 맞춘다).
 
 **풀이:**
 
@@ -2533,17 +2397,7 @@ kubectl get endpoints backend-internal backend-external
 kubectl run test --image=busybox:1.36 --rm -it --restart=Never -- wget -qO- http://backend-internal
 ```
 
-```text
-NAME               TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
-backend-internal   ClusterIP   10.96.50.100    <none>        80/TCP         10s
-backend-external   NodePort    10.96.50.200    <none>        80:30088/TCP   10s
-
-NAME               ENDPOINTS                                AGE
-backend-internal   10.244.0.5:8080,10.244.0.6:8080          10s
-backend-external   10.244.0.5:8080,10.244.0.6:8080          10s
-
-# nginx 기본 페이지 출력
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Service 유형(ClusterIP, NodePort)의 차이와 생성 방법을 검증한다. port, targetPort, nodePort의 관계를 이해하는 실무 역량을 평가한다.
 
@@ -2573,6 +2427,8 @@ backend-external   10.244.0.5:8080,10.244.0.6:8080          10s
 - IngressClass: `nginx`
 
 <details><summary>풀이 확인</summary>
+
+**선결조건:** Ingress 규칙이 가리키는 백엔드 Service(`api-svc`, `web-svc`)가 먼저 존재해야 한다. 없으면 Ingress는 생성되지만 요청이 들어왔을 때 `503 Service Temporarily Unavailable`이 반환된다. 직접 실습할 때는 두 Deployment와 Service를 미리 만든다: `kubectl create deployment api --image=nginx:1.25 && kubectl expose deployment api --name=api-svc --port=8080 --target-port=80` 그리고 `kubectl create deployment web --image=nginx:1.25 && kubectl expose deployment web --name=web-svc --port=80`. 또한 dev 클러스터에 nginx Ingress Controller가 설치돼 있어야 ADDRESS가 채워진다(없으면 규칙만 등록되고 실제 라우팅은 동작하지 않는다).
 
 **풀이:**
 
@@ -2620,18 +2476,7 @@ kubectl get ingress app-ingress
 kubectl describe ingress app-ingress
 ```
 
-```text
-NAME          CLASS   HOSTS               ADDRESS        PORTS   AGE
-app-ingress   nginx   myapp.example.com   192.168.1.10   80      10s
-
-Name:             app-ingress
-Rules:
-  Host                Path  Backends
-  ----                ----  --------
-  myapp.example.com
-                      /api   api-svc:8080
-                      /web   web-svc:80
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Ingress를 사용한 HTTP 라우팅 설정 능력을 검증한다. Path-based routing과 IngressClass 설정을 이해하는 실무 역량을 평가한다.
 
@@ -2658,6 +2503,8 @@ Rules:
 - `myapp.example.com` 호스트에 TLS를 적용한다.
 
 <details><summary>풀이 확인</summary>
+
+**선결조건:** 문제 34의 백엔드 Service(`api-svc`, `web-svc`)와 Ingress가 이미 있다는 전제다(문제 34 선결조건 참조). 그리고 아래 `kubectl create secret tls`는 `tls.crt`·`tls.key` 파일이 현재 디렉터리에 있어야 한다. 시험·실습용 자체 서명 인증서는 `openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=myapp.example.com"` 한 줄로 미리 만들어 둔다.
 
 **풀이:**
 
@@ -2705,15 +2552,7 @@ kubectl describe ingress app-ingress | grep -A 3 "TLS"
 kubectl get secret myapp-tls -o jsonpath='{.type}'
 ```
 
-```text
-NAME          CLASS   HOSTS               ADDRESS        PORTS     AGE
-app-ingress   nginx   myapp.example.com   192.168.1.10   80, 443   10s
-
-TLS:
-  myapp-tls terminates myapp.example.com
-
-kubernetes.io/tls
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Ingress에 TLS를 설정하여 HTTPS 트래픽을 처리하는 능력을 검증한다. TLS Secret 생성과 Ingress 통합을 이해하는 실무 역량을 평가한다.
 
@@ -2814,40 +2653,19 @@ kubectl describe networkpolicy allow-frontend-to-backend -n production
 kubectl describe networkpolicy backend-egress -n production
 ```
 
-```text
-NAME                          POD-SELECTOR   AGE
-default-deny-all              <none>         10s
-allow-frontend-to-backend     app=backend    10s
-backend-egress                app=backend    10s
-
-Name:         default-deny-all
-Namespace:    production
-PodSelector:  <none> (Coverage: all pods in the namespace)
-PolicyTypes:  Ingress, Egress
-
-Name:         allow-frontend-to-backend
-Allowing ingress traffic:
-  To Port: 8080/TCP
-  From:
-    PodSelector: app=frontend
-
-Name:         backend-egress
-Allowing egress traffic:
-  To Port: 53/UDP, 53/TCP
-  To: <any>
-  ----------
-  To Port: 5432/TCP
-  To:
-    PodSelector: app=database
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** NetworkPolicy를 사용한 마이크로서비스 간 통신 제어 능력을 검증한다. Default deny + 선택적 허용 패턴과 DNS egress 처리를 이해하는 실무 역량을 평가한다.
 
-**핵심 원리:** NetworkPolicy는 Pod의 ingress/egress 트래픽을 제어한다. `podSelector: {}`는 네임스페이스의 모든 Pod를 선택한다. `policyTypes`에 Ingress/Egress를 명시하면서 규칙을 비워두면 default deny가 된다. NetworkPolicy는 허용(whitelist) 방식으로 동작한다. 여러 NetworkPolicy가 적용되면 합집합(OR)으로 동작한다. 같은 규칙 내의 `from`/`to` 항목은 OR이고, `from`과 `ports`는 AND이다. CNI 플러그인(Calico, Cilium 등)이 NetworkPolicy를 지원해야 한다.
+**개념 입문:** 기본 상태의 Kubernetes는 모든 Pod가 서로 자유롭게 통신한다(flat network). 이는 편하지만, 침해당한 한 Pod가 같은 네트워크의 DB·다른 서비스로 곧장 옆걸음질(lateral movement)할 수 있어 위험하다. NetworkPolicy는 방화벽 규칙(ACL, Access Control List = 누가 어디에 접근 가능한지 허용 목록)을 Pod 단위로 거는 장치다. 다만 NetworkPolicy 오브젝트 자체는 "의도 선언"일 뿐이고, 실제 패킷 차단은 CNI 플러그인(이 저장소는 Cilium)이 노드의 eBPF/iptables 규칙으로 집행한다. 그래서 NetworkPolicy를 지원하지 않는 CNI에서는 만들어도 무시된다.
+
+ingress는 "들어오는" 트래픽, egress는 "나가는" 트래픽이다. L3/L4는 OSI 계층 구분으로 L3은 IP 주소 수준, L4는 TCP/UDP 포트 수준을 뜻하며, NetworkPolicy는 이 L3/L4까지만 다룬다(HTTP 경로 같은 L7은 못 본다).
+
+**핵심 원리:** NetworkPolicy는 Pod의 ingress/egress 트래픽을 제어한다. `podSelector: {}`는 네임스페이스의 모든 Pod를 선택한다. `policyTypes`에 Ingress/Egress를 명시하면서 규칙을 비워두면 default deny가 된다. NetworkPolicy는 허용(whitelist) 방식으로 동작한다. 여러 정책이 한 Pod에 함께 걸리면 그 합집합(OR)이 허용 범위가 된다(한 정책이라도 허용하면 통과). AND/OR 규칙은 한 단계 더 들어가야 정확하다. (1) 한 ingress 규칙 안에서 `from` 리스트의 여러 항목(서로 다른 `- podSelector`/`- namespaceSelector`)은 OR이다 -- "이 중 누구든 출발지면 허용". (2) 같은 `from` 항목 안에 `podSelector`와 `namespaceSelector`를 함께 쓰면 AND이다 -- "그 네임스페이스에 속하면서 동시에 그 label인 Pod만". (3) 한 규칙의 `from`(누가)과 `ports`(어디로)는 AND이다 -- "허용된 출발지가 + 허용된 포트로" 와야 통과. egress의 `to`/`ports`도 대칭으로 같다. CNI 플러그인(Calico, Cilium 등)이 NetworkPolicy를 지원해야 한다.
 
 **함정과 주의사항:**
 - DNS egress(UDP/TCP 53)를 허용하지 않으면 Pod에서 Service 이름으로 접근이 불가능하다. IP 주소로만 접근 가능하다. 이것이 가장 흔히 빠뜨리는 규칙이다.
-- DNS egress의 `to: []`는 모든 대상에 대해 허용한다는 의미이다. CoreDNS Pod의 IP가 변경될 수 있으므로 대상을 제한하지 않는 것이 일반적이다.
+- DNS egress의 `to: []`(빈 리스트)는 "목적지를 제한하지 않음 = 모든 대상 허용"이라는 의미이다. 처음 보면 빈 리스트를 "아무 것도 허용 안 함"으로 오해하기 쉬우나 정반대다. 이 규칙에서는 `to` 필드를 아예 생략한 것과 동일하게 동작한다(즉 위 YAML의 `- to: []` 줄을 지우고 `ports`만 남겨도 결과가 같다). 빈 리스트가 헷갈리면 `to` 필드를 생략하는 쪽이 의도가 더 분명하다. 단 `to: [{}]`(빈 객체를 담은 리스트)와는 다르고, 일부 CNI는 `to` 생략과 `to: []`를 동일하게 처리하므로 표현을 섞지 말고 한 가지로 통일한다. CoreDNS Pod의 IP가 변경될 수 있으므로 DNS 목적지는 이렇게 제한하지 않는 것이 일반적이다.
 - 같은 `from` 항목에 `podSelector`와 `namespaceSelector`를 넣으면 AND 조건이다. 별도 항목(리스트의 다른 요소)으로 넣으면 OR 조건이다.
 - default deny를 적용하면 같은 네임스페이스 내 Pod 간 통신도 차단된다. 필요한 통신을 모두 명시적으로 허용해야 한다.
 - Flannel과 같은 일부 CNI는 NetworkPolicy를 지원하지 않는다. 시험 환경에서는 지원된다고 가정한다.
@@ -2899,22 +2717,7 @@ kubectl describe networkpolicy allow-monitoring-metrics -n production
 kubectl get namespace monitoring --show-labels
 ```
 
-```text
-NAME                       POD-SELECTOR   AGE
-allow-monitoring-metrics   <none>         10s
-
-Name:         allow-monitoring-metrics
-Namespace:    production
-PodSelector:  <none> (Coverage: all pods in the namespace)
-PolicyTypes:  Ingress
-Allowing ingress traffic:
-  To Port: 9090/TCP
-  From:
-    NamespaceSelector: name=monitoring
-
-NAME         STATUS   AGE   LABELS
-monitoring   Active   10s   name=monitoring
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** 네임스페이스 간 NetworkPolicy 설정 능력을 검증한다. `namespaceSelector`를 사용한 크로스 네임스페이스 트래픽 제어와 네임스페이스 label 관리를 평가한다.
 
@@ -2965,18 +2768,7 @@ cat /etc/resolv.conf
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup kubernetes.default.svc.cluster.local
 ```
 
-```text
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      kubernetes.default.svc.cluster.local
-Address 1: 10.96.0.1 kubernetes.default.svc.cluster.local
-
-# resolv.conf 내용
-nameserver 10.96.0.10
-search default.svc.cluster.local svc.cluster.local cluster.local
-options ndots:5
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Kubernetes 클러스터 내부 DNS 동작 원리와 서비스 디스커버리 능력을 검증한다. DNS 이름 해석 규칙과 resolv.conf 설정을 이해하는 실무 역량을 평가한다.
 
@@ -3003,6 +2795,8 @@ Headless Service와 StatefulSet을 생성하고, 각 Pod의 고유 DNS 이름을
 - StatefulSet 이름: `web`, replicas: 3, 이미지: `nginx:1.25`
 
 <details><summary>풀이 확인</summary>
+
+**등장 배경 -- StatefulSet은 왜 필요한가:** Deployment가 만드는 Pod는 이름이 무작위 해시(`web-7d8f...`)라 매번 바뀌고 서로 구분되지 않으며, 모두 같은 볼륨을 공유하거나 임시 볼륨을 쓴다. 이는 stateless 웹 서버에는 문제없지만, DB·메시지 큐·etcd처럼 멤버끼리 서로를 고정된 이름으로 찾아야 하고(예 `mysql-0`은 primary, `mysql-1`은 replica) 각자 자기만의 디스크를 영구히 가져야 하는 앱에는 쓸 수 없다. StatefulSet은 이 한계를 두 가지로 푼다. (1) 순번이 붙은 고정 이름(`web-0`/`web-1`/`web-2`)과 그에 묶인 고유 DNS 이름을 부여해 멤버를 안정적으로 식별하게 하고, (2) Pod마다 별도 PVC를 만들어 재시작·재스케줄 후에도 같은 디스크가 같은 순번에 다시 붙게 한다. 또 0번부터 순차 생성·역순 삭제해 클러스터형 앱의 부팅·종료 순서를 보장한다. 트레이드오프는 운영 복잡도다 -- 순차 생성 탓에 롤아웃이 느리고, PVC가 Pod와 함께 자동 삭제되지 않아 정리를 따로 해야 한다.
 
 **풀이:**
 
@@ -3065,28 +2859,7 @@ nslookup web-headless.default.svc.cluster.local
 '
 ```
 
-```text
-NAME   READY   AGE
-web    3/3     30s
-
-NAME    READY   STATUS    RESTARTS   AGE
-web-0   1/1     Running   0          30s
-web-1   1/1     Running   0          25s
-web-2   1/1     Running   0          20s
-
-# 개별 Pod DNS (A 레코드)
-Name:      web-0.web-headless.default.svc.cluster.local
-Address 1: 10.244.0.5
-
-Name:      web-1.web-headless.default.svc.cluster.local
-Address 1: 10.244.0.6
-
-# Headless Service DNS (모든 Pod IP 반환)
-Name:      web-headless.default.svc.cluster.local
-Address 1: 10.244.0.5 web-0.web-headless.default.svc.cluster.local
-Address 2: 10.244.0.6 web-1.web-headless.default.svc.cluster.local
-Address 3: 10.244.0.7 web-2.web-headless.default.svc.cluster.local
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Headless Service와 StatefulSet의 연동, 그리고 개별 Pod의 고유 DNS 이름 구조를 검증한다. 상태를 유지하는 애플리케이션(데이터베이스, 메시지 큐 등)의 배포 패턴을 평가한다.
 
@@ -3153,22 +2926,7 @@ kubectl get endpoints web-svc
 kubectl run curl-test --image=busybox:1.36 --rm -it --restart=Never -- wget -qO- http://web-svc
 ```
 
-```text
-NAME      READY   UP-TO-DATE   AVAILABLE   AGE
-web-app   3/3     3            3           15s
-
-NAME      TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-web-svc   ClusterIP   10.96.100.50   <none>        80/TCP    10s
-
-NAME      ENDPOINTS                                         AGE
-web-svc   10.244.0.5:80,10.244.0.6:80,10.244.0.7:80        10s
-
-<!DOCTYPE html>
-<html>
-<head>
-<title>Welcome to nginx!</title>
-...
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **출제 의도:** Service와 Endpoints의 관계를 이해하고, 트래픽 흐름을 검증하는 능력을 평가한다. Deployment-Service-Endpoints-Pod의 전체 연결 구조를 파악하는 실무 역량을 검증한다.
 

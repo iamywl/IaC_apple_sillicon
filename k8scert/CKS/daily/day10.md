@@ -4,6 +4,8 @@
 
 ---
 
+> 이 문서에서 반복 등장하는 **tart-infra**는 본 저장소가 로컬 Apple Silicon 위에 띄운 멀티클러스터 실습 환경(dev/staging/platform/prod 4개)을 가리킨다. 이 과정은 클라우드 SaaS가 아니라 로컬에 실제로 떠 있는 K8s 클러스터에서 직접 손으로 명령을 실행하며 배운다. 실습을 시작하기 전에 `./scripts/boot.sh`로 VM을 기동하고, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh`로 IP 드리프트를 복구해 두어야 한다(CLAUDE.md §3 참조). kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`에 있으며, 파괴 실습은 dev/staging 에서만 수행한다.
+
 ## 오늘의 학습 목표
 
 - Supply Chain Security 도메인의 CKS 시험 출제 패턴을 분석한다
@@ -11,7 +13,11 @@
 - tart-infra 환경에서 이미지 보안 실습을 수행한다
 - 심화 주제를 학습하여 이해를 깊게 한다
 
-### 내부 동작 원리: ImagePolicyWebhook의 Admission 체인
+> **전제:** 이 파일은 Day 9(Supply Chain Security 1/2)에서 다룬 Trivy 설치·기본 스캔(§1~6)을 전제한다. Day 9를 먼저 학습한 뒤 이 파일을 읽는다. 이 파일은 §7부터 시작한다.
+
+> **구성:** 아래 §7.0은 §7의 사전 개요로, ImagePolicyWebhook의 커널/네트워크 레벨 동작 원리를 먼저 다룬다. 이후 §7 본문(출제 패턴·실전 문제)으로 이어진다.
+
+### 7.0 내부 동작 원리: ImagePolicyWebhook의 Admission 체인
 
 ```
 ImagePolicyWebhook 커널/네트워크 레벨 동작
@@ -44,7 +50,19 @@ ImagePolicyWebhook 커널/네트워크 레벨 동작
 
 ## 7. 이 주제가 시험에서 어떻게 나오는가
 
+### 공급망 보안(Supply Chain Security) 개요 — 왜 CKS 도메인의 20%인가
+
+**등장 배경.** Supply Chain Security는 컨테이너 이미지가 개발 단계부터 배포까지의 경로(빌드 → 레지스트리 푸시 → 클러스터 배포)에서 변조·탈취되는 것을 방지하는 분야다. 과거 Docker 중심 시절에는 이미지 서명 체계가 표준화되어 있지 않아, 공격자가 Dockerfile을 변조하거나 레지스트리 자격증명을 탈취한 뒤 같은 태그(예: `nginx:1.25`)에 악성 내용을 덮어쓰는 image replacement(이미지 교체) 공격이 가능했다. 이미지 한 장에는 베이스 OS·라이브러리 수십~수백 개가 들어 있어, 그중 하나에 알려진 취약점(CVE)이 있으면 클러스터 전체가 위험해진다.
+
+**무엇이 나아졌나(메커니즘).** CKS는 이 공격 체인을 단계별 방어로 끊는다. Trivy(이미지 스캔으로 알려진 CVE를 사전 탐지) → ImagePolicyWebhook·ValidatingWebhookConfiguration(배포 시점에 정책을 강제) → Cosign(이미지에 디지털 서명을 붙여 출처·무결성 검증) → SBOM(이미지에 포함된 컴포넌트 목록을 공개·추적)이 각각 빌드·배포·검증·감사 단계를 담당한다.
+
+**트레이드오프.** 스캔·서명·웹훅 검증은 빌드와 배포 파이프라인에 지연을 더하고, 웹훅 장애 시 정책(fail-open/fail-closed)에 따라 가용성과 보안 사이의 선택을 강제한다. CKS가 이 도메인에 20% 비중을 두는 이유는, 인증·인가(RBAC)·런타임 보안과 달리 공급망은 클러스터 외부에서 들어오는 위협 표면이라 별도의 방어 계층이 필요하기 때문이다.
+
+> 아래 용어 풀이: **CVE**(Common Vulnerabilities and Exposures)는 공개된 보안 취약점에 부여하는 표준 식별자다. **Admission Controller**는 API 요청이 인증·인가를 통과한 뒤 etcd에 저장되기 전에 요청을 수정(Mutating)하거나 검증·거부(Validating)하는 플러그인이다. **mTLS**(mutual TLS)는 서버와 클라이언트가 서로의 인증서를 검증하는 양방향 TLS다. **SBOM**(Software Bill of Materials)은 이미지에 포함된 소프트웨어 컴포넌트 목록이다.
+
 ### 7.1 출제 패턴
+
+각 패턴은 위에서 설명한 공격 체인의 어느 단계를 막는지와 함께 이해하면 외우기 쉽다.
 
 ```
 Supply Chain Security 출제 패턴 (20%)
@@ -74,7 +92,37 @@ Supply Chain Security 출제 패턴 (20%)
 
 ### 7.2 실전 문제 (10개 이상)
 
+> 아래 실전 문제는 §7.1의 출제 패턴을 하나씩 손으로 풀어보는 미니랩이다. 앞 절(§7.1 개요)의 공격 체인 — 스캔·정책·서명·SBOM — 과 연결해 읽으면 "왜 이 작업을 하는가"가 드러난다.
+
+#### 내부 동작 원리: 이미지 태그 vs 다이제스트
+
+문제 1·4에서 다루는 이미지 다이제스트의 배경을 먼저 짚는다. 이미지 태그(`nginx:1.25`)는 **변경 가능한 참조**다. 같은 태그를 가리키는 실제 이미지 내용은 레지스트리에 재푸시하면 언제든 바뀔 수 있다. 반면 다이제스트(`nginx@sha256:...`)는 이미지 내용 전체를 SHA-256으로 해시한 값이라 내용이 1비트라도 바뀌면 해시도 달라진다 — 즉 **불변(immutable) 참조**다. 보안이 중요한 환경에서는 태그 대신 다이제스트로 이미지를 고정해, 공격자가 같은 태그에 악성 이미지를 덮어쓰는 image replacement 공격을 차단한다.
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  tag["Pod가 nginx:1.25 (태그) 참조"]
+  push["공격자가 레지스트리에\n같은 태그로 악성 이미지 재푸시"]
+  pull["다음 배포 시 Pod가\n변조된 이미지를 받음"]
+  dig["Pod가 nginx@sha256:6af7... (다이제스트) 참조"]
+  block["내용이 바뀌면 해시 불일치\n→ 변조 이미지 차단"]
+  tag --> push --> pull
+  dig --> block
+```
+_그림 0. 태그 참조는 재푸시로 내용이 바뀌지만(image replacement), 다이제스트 참조는 내용 변경 시 해시가 달라져 차단된다._
+
 ### 문제 1. Trivy 이미지 스캔
+
+> **사전 준비 — scan-ns 네임스페이스 및 리소스 생성.** 아래 명령을 풀이 시작 전에 반드시 실행한다. 클러스터에 scan-ns 가 없으면 kubectl get pods -n scan-ns 가 "No resources found" 를 반환하므로, 풀이의 출발점이 성립하지 않는다.
+>
+> ```bash
+> kubectl create ns scan-ns
+> kubectl run web1   -n scan-ns --image=nginx:1.19 --restart=Never
+> kubectl run web2   -n scan-ns --image=nginx:1.25 --restart=Never
+> kubectl run cache1 -n scan-ns --image=redis:6   --restart=Never
+> kubectl run cache2 -n scan-ns --image=redis:7   --restart=Never
+> kubectl wait pod -n scan-ns --all --for=condition=Ready --timeout=60s
+> ```
 
 다음 이미지 중 CRITICAL 취약점이 있는 이미지를 사용하는 Pod를 삭제하라: `nginx:1.19`, `nginx:1.25`, `redis:6`, `redis:7`
 
@@ -95,6 +143,8 @@ kubectl delete pod web1 -n scan-ns     # nginx:1.19 (구버전)
 kubectl delete pod cache1 -n scan-ns   # redis:6 (구버전)
 ```
 
+> 위 `trivy image ...` 명령의 실제 출력(취약점 표·`Total: ... (CRITICAL: N)` 요약 줄)은 §4①에 따라 실제 터미널 스크린샷으로 제시해야 한다. 현재는 (스크린샷 필요) 상태이며, 캡처는 메인이 dev 클러스터에서 별도 수행한다. 출력 형식의 읽는 법은 "추가 심화 학습 > Trivy 스캔 결과 분석 예제"를 참조한다.
+
 </details>
 
 ### 문제 2. ImagePolicyWebhook 설정
@@ -104,7 +154,16 @@ ImagePolicyWebhook Admission Controller를 활성화하라. 설정 파일은 `/e
 <details>
 <summary>풀이</summary>
 
+전제: 이 작업은 control-plane 노드에 SSH로 들어가 진행한다(예: `ssh staging-master`). API Server 매니페스트와 admission 설정 파일은 호스트의 `/etc/kubernetes/` 아래에 있다. 파괴 실습이므로 staging(또는 dev)에서만 한다.
+
 ```bash
+# 0) 기존 admission-plugins 값 먼저 확인 — 여기에 추가하는 것이지 통째로 교체가 아니다
+kubectl get pod kube-apiserver-staging-master -n kube-system -o yaml | grep enable-admission-plugins
+# 예: --enable-admission-plugins=NodeRestriction 만 있을 수도, 없을 수도 있다(없으면 기본 세트가 적용 중)
+
+# 설정 디렉터리가 없으면 만든다(파일명은 문제에서 주어진 admission-config.yaml 사용)
+ls /etc/kubernetes/admission-control/ 2>/dev/null || sudo mkdir -p /etc/kubernetes/admission-control
+
 # 설정 확인 및 수정
 cat /etc/kubernetes/admission-control/admission-config.yaml
 # defaultAllow: false 확인 (아니면 수정)
@@ -113,6 +172,8 @@ cat /etc/kubernetes/admission-control/admission-config.yaml
 cp /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/kube-apiserver.yaml.bak
 vi /etc/kubernetes/manifests/kube-apiserver.yaml
 ```
+
+> `--enable-admission-plugins`에는 **기존값에 `,`로 구분해 ImagePolicyWebhook을 덧붙인다**(예: `NodeRestriction` → `NodeRestriction,ImagePolicyWebhook`). 플러그인 나열 순서는 실행 순서에 영향을 주지 않으므로 상관없다. 플래그가 아예 없었다면 새로 추가하되, 기본으로 켜져 있던 플러그인을 끄지 않도록 주의한다.
 
 추가할 내용:
 ```yaml
@@ -145,20 +206,14 @@ kubectl get nodes
 kubectl get pod kube-apiserver-staging-master -n kube-system -o yaml | grep enable-admission-plugins
 ```
 
-```text
-    - --enable-admission-plugins=NodeRestriction,ImagePolicyWebhook
-```
+![kube-apiserver --enable-admission-plugins(staging 실측 기본 NodeRestriction)](images/day10-01-admission.png)
 
 ```bash
 # API Server가 정상 동작하는지 확인
 kubectl get nodes
 ```
 
-```text
-NAME              STATUS   ROLES           AGE   VERSION
-staging-master    Ready    control-plane   10d   v1.31.0
-staging-worker    Ready    <none>          10d   v1.31.0
-```
+![staging 노드 상태](images/day10-02-nodes.png)
 
 ### 문제 3. Dockerfile 보안 수정
 
@@ -198,17 +253,35 @@ ENTRYPOINT ["python3", "app.py"]
 4. `ADD` → `COPY` 변경
 5. 멀티스테이지 빌드 적용
 
+> 베이스 이미지 태그는 사용 전 실제로 존재하는지 확인한다. distroless의 `python3-debian12`는 기본적으로 root(UID 0)로 실행되고, `:nonroot` 변형은 UID 65532로 실행된다. 위 Dockerfile은 어느 쪽이든 `USER 65532:65532`를 명시하므로 non-root 실행이 보장되지만, 태그 존재 여부는 `docker manifest inspect gcr.io/distroless/python3-debian12:nonroot` 또는 [console.cloud.google.com 의 distroless 레지스트리](https://github.com/GoogleContainerTools/distroless)에서 확인한다. 검증된 안전 대안으로 `gcr.io/distroless/base-debian12:nonroot`가 있다.
+
 </details>
 
 ### 문제 4. 이미지 다이제스트 적용
 
+> **사전 준비 — production 네임스페이스 및 web-app Deployment 생성.** 문제 4·11 모두 production 네임스페이스의 web-app Deployment 를 전제한다. 없으면 아래 명령으로 먼저 만든다.
+>
+> 대상 클러스터: **dev 클러스터**에서 시험 환경 시뮬레이션용으로 `production` 네임스페이스를 생성한다. tart-infra의 prod 클러스터(CLAUDE.md §3: 읽기 위주, 변경 자제)와는 무관하다.
+>
+> ```bash
+> export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+> kubectl create ns production
+> kubectl create deployment web-app -n production --image=nginx:latest --replicas=1
+> kubectl wait deployment web-app -n production --for=condition=Available --timeout=60s
+> ```
+
 `production` 네임스페이스의 `web-app` Deployment가 `nginx:latest`를 사용하고 있다. 다이제스트로 변경하라.
+
+준비물: 다이제스트 조회 도구가 필요하다. `which crane`으로 설치 여부를 확인하고, 없으면 `go install github.com/google/go-containerregistry/cmd/crane@latest`로 설치하거나 `docker inspect <image> | jq '.[0].RepoDigests'`로 대체할 수 있다. 아래 풀이는 도구 없이도 가능한 방법(실행 중 Pod의 `imageID` 필드 활용)을 먼저 보인다. `imageID`에는 kubelet이 실제로 pull한 이미지의 다이제스트가 들어 있다.
 
 <details>
 <summary>풀이</summary>
 
 ```bash
-# 현재 이미지의 다이제스트 확인
+# 현재 실행 중인 Pod 이름 확인 (label app=web-app 인 Deployment의 Pod)
+kubectl get pods -n production -l app=web-app
+
+# 현재 이미지의 다이제스트 확인 (-l 셀렉터로 첫 Pod의 imageID 추출)
 kubectl get pod -n production -l app=web-app \
   -o jsonpath='{.items[0].status.containerStatuses[0].imageID}'
 
@@ -227,12 +300,14 @@ kubectl get deployment web-app -n production \
 
 주어진 Pod YAML의 보안 점수를 높이기 위한 수정사항을 적용하라.
 
+도구 소개: **kubesec**은 Kubernetes YAML의 보안 설정을 평가해 점수(score)와 권고사항을 내는 정적 분석 도구다. 설치는 `curl -sSL https://github.com/controlplaneio/kubesec/releases/download/v2.14.2/kubesec_linux_amd64.tar.gz | tar xz && sudo mv kubesec /usr/local/bin/` (버전은 릴리스 페이지에서 확인). 설치가 어려우면 웹 API `curl -sSX POST --data-binary @pod.yaml https://v2.kubesec.io/scan`로도 동일한 결과를 얻는다(설치 불필요). 아래 풀이의 두 명령은 같은 평가를 로컬 바이너리 vs 원격 API로 수행하는 차이일 뿐이며, 출력 형식(JSON)은 동일하다.
+
 <details>
 <summary>풀이</summary>
 
 ```bash
 kubesec scan pod.yaml
-# 또는
+# 또는 (설치 없이 웹 API 사용)
 curl -sSX POST --data-binary @pod.yaml https://v2.kubesec.io/scan | jq .
 ```
 
@@ -270,6 +345,14 @@ spec:
 
 dev 클러스터의 demo 네임스페이스에서 실행 중인 모든 이미지를 스캔하고, CRITICAL 취약점이 없는 이미지만 남겨라.
 
+준비: dev 클러스터 접속과 demo 네임스페이스 존재를 먼저 확인한다. demo는 tart-infra dev 클러스터에 상주하는 데모 워크로드 네임스페이스다(없으면 문제의 전제 리소스를 먼저 배포해야 한다).
+
+```bash
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+kubectl get ns | grep demo                 # demo 네임스페이스 존재 확인
+kubectl get pods -n demo                    # 스캔 대상 Pod 목록 확인
+```
+
 <details>
 <summary>풀이</summary>
 
@@ -299,6 +382,8 @@ kubectl delete pod <pod-name> -n demo
 
 nginx:1.25 이미지의 SBOM(Software Bill of Materials)을 CycloneDX 형식으로 생성하라.
 
+개념: **SBOM**(Software Bill of Materials)은 컨테이너 이미지에 포함된 모든 소프트웨어 컴포넌트(라이브러리·패키지·버전) 목록이다. 부품 명세서에 비유하면, 완제품(이미지)에 어떤 부품(패키지)이 들어갔는지를 한눈에 보여준다. 의존성 변조(supply chain 공격)나 새로 공개된 CVE의 영향 범위를 빠르게 추적하려면 배포 시점에 SBOM을 함께 공개해야 한다. **CycloneDX**는 이 SBOM을 표준화한 형식 중 하나이며, Trivy는 이미지를 분석해 SBOM을 자동 생성할 수 있다.
+
 <details>
 <summary>풀이</summary>
 
@@ -318,6 +403,17 @@ cat /tmp/nginx-sbom.cdx.json | jq '.components[] | {name, version, type}' | head
 ### 문제 8. ValidatingWebhookConfiguration 작성
 
 이미지 검증을 위한 ValidatingWebhookConfiguration을 작성하라. Pod 생성 시 `image-validator` 서비스(security 네임스페이스)를 호출하도록 설정하라.
+
+개념 비교: 문제 2의 **ImagePolicyWebhook**과 본 문제의 **ValidatingWebhookConfiguration**은 둘 다 외부 웹훅을 호출하지만 적용 방식이 다르다.
+
+| 구분 | ImagePolicyWebhook | ValidatingWebhookConfiguration |
+|:--|:--|:--|
+| 형태 | API Server 내장 admission 플러그인 | 클러스터 리소스(YAML로 동적 등록) |
+| 활성화 | API Server 플래그·설정 파일 수정 + 재시작 필요 | `kubectl apply`로 즉시 등록(재시작 불필요) |
+| 검증 범위 | 이미지 정책만(`ImageReview` 객체) | 임의 리소스(Pod·Deployment·NetworkPolicy 등) |
+| 위치 | `imagepolicy.k8s.io/v1alpha1`(alpha, 사용 빈도 감소) | `admissionregistration.k8s.io/v1`(안정, 범용) |
+
+최신 CKS 시험과 실무는 동적 등록이 가능하고 범용적인 ValidatingWebhookConfiguration을 더 권장한다. ImagePolicyWebhook은 API Server 설정을 직접 다루는 능력을 묻는 전통적 출제 패턴으로 남아 있다.
 
 <details>
 <summary>풀이</summary>
@@ -350,6 +446,20 @@ webhooks:
       values: ["kube-system"]
 ```
 
+> **caBundle 값을 채우는 법.** 위 YAML의 `caBundle: <base64-encoded-ca>` 플레이스홀더에는 webhook 서버의 CA 인증서를 base64로 인코딩한 값을 넣는다. 다음 두 가지 방법으로 추출한다.
+>
+> ```bash
+> # 방법 1: webhook 서버가 TLS Secret을 사용하는 경우 (ca.crt 키)
+> kubectl get secret -n security image-validator-tls \
+>   -o jsonpath="{.data['ca\.crt']}"
+>
+> # 방법 2: 클러스터 CA를 webhook CA로 재사용하는 경우
+> kubectl config view --raw --minify \
+>   -o jsonpath="{.clusters[0].cluster.certificate-authority-data}"
+> ```
+>
+> 두 명령 모두 이미 base64로 인코딩된 값을 반환한다. 추출한 값을 그대로 `caBundle:` 필드에 붙여넣는다(추가 인코딩 불필요).
+
 </details>
 
 ### 문제 9. Trivy 설정 파일 스캔
@@ -381,6 +491,8 @@ Cosign을 사용하여 이미지의 서명을 검증하는 명령어를 작성�
 
 <details>
 <summary>풀이</summary>
+
+**Keyless 서명 원리.** Sigstore는 Fulcio(인증서 CA)·Rekor(감사 로그)·cosign(서명 CLI)을 묶는 오픈소스 공급망 서명 생태계다. 키리스(keyless) 서명은 장기 개인키 파일 없이 서명하는 방식이다. GitHub Actions 같은 CI 환경이 빌드 시점에 OIDC(OpenID Connect) 토큰을 발급받아 Sigstore Fulcio(단기 인증서 CA)에서 수명이 수 분에 불과한 X.509 인증서를 발급받는다. 이 인증서로 이미지에 서명하고, 서명 메타데이터를 Rekor(투명성 로그, 공개 변경 불가 로그)에 기록한다. 검증 시 `--certificate-oidc-issuer`는 "어떤 OIDC 제공자(예: GitHub Actions)를 신뢰하는가"를, `--certificate-identity`는 "어떤 워크플로 ID(예: builder@company.com)로 서명했는가"를 지정한다. 단기 인증서라 장기 키 유출 위험이 없고, Rekor 로그 덕분에 사후 감사도 가능하다.
 
 ```bash
 # 키 기반 검증
@@ -452,6 +564,28 @@ spec:
 
 </details>
 
+### 이 섹션의 체크리스트 (실전 문제 1~11 요약)
+
+문제를 풀며 손에 익혀야 할 명령을 그룹별로 정리한다. 상세 버전은 문서 끝의 "전체 CKS 공급망 보안 체크리스트"에 있다.
+
+```
+문제 1~3 (스캔·정책·Dockerfile):
+  □ trivy image <이미지> --severity CRITICAL → CRITICAL 있는 Pod 삭제
+  □ ImagePolicyWebhook: 기존 enable-admission-plugins에 ,로 추가 + config-file + 볼륨마운트
+  □ Dockerfile: 버전태그·USER non-root·ADD→COPY·불필요 패키지 제거·멀티스테이지
+
+문제 4~6 (다이제스트·kubesec·클러스터 스캔):
+  □ imageID 또는 crane digest 로 sha256 다이제스트 확보 → kubectl set image
+  □ kubesec scan / 웹 API 로 score 확인 → critical 항목 제거
+  □ 네임스페이스 전체 이미지 루프 스캔 → CRITICAL Pod 식별·삭제
+
+문제 7~11 (SBOM·웹훅·서명·복합):
+  □ trivy image --format cyclonedx 로 SBOM 생성
+  □ ValidatingWebhookConfiguration: rules·clientConfig.service·failurePolicy
+  □ cosign verify --key / keyless 로 서명 검증
+  □ 복합: 스캔 → 무취약 버전 → 다이제스트 고정 → Restricted SecurityContext
+```
+
 ---
 
 ## 트러블슈팅: Supply Chain 시험 문제 장애 대응
@@ -497,21 +631,14 @@ fi
 kubesec scan pod.yaml | jq '.[0].scoring.critical'
 ```
 
-```text
-[
-  {"id": "Privileged", "reason": "Privileged containers can allow almost completely unrestricted host access"},
-  {"id": "RunAsRoot", "reason": "Running as root gives full control of host"}
-]
-```
+![kubesec 매니페스트 스캔 — 수정 전: privileged Pod 점수 -30(실측)](images/cks-kubesec.png)
 
 ```bash
 # 해결: privileged=false, runAsNonRoot=true 등을 적용한 뒤 재스캔
 kubesec scan pod-fixed.yaml | jq '.[0].score'
 ```
 
-```text
-7
-```
+> **수정 후 스크린샷:** (미캡처) — pod-fixed.yaml 에 `securityContext.runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` 적용 후 score 가 0 이상으로 올라간 실측 화면을 메인이 별도 캡처해 삽입한다. 현재 위 이미지는 수정 전(score -30) 상태이다.
 
 점수 0 이상이면 기본적으로 안전한 상태이다.
 
@@ -538,13 +665,13 @@ kubesec scan pod-fixed.yaml | jq '.[0].score'
 
 ---
 
-## tart-infra 실습
+## 9. tart-infra 실습 (선택 — 실제 dev 클러스터 검증)
 
 ### 실습 환경 설정
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/tart-infra/kubeconfig/dev.yaml
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -555,16 +682,7 @@ kubectl get nodes
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | sort -u
 ```
 
-**예상 출력:**
-```
-docker.io/istio/proxyv2:1.x.x
-docker.io/kennethreitz/httpbin
-nginx:1.25
-postgres:15
-rabbitmq:3-management
-redis:7
-docker.io/jboss/keycloak:latest
-```
+**예상 출력:** (미캡처) — 실제 출력은 메인이 dev 클러스터 demo 네임스페이스에서 캡처 후 삽입한다.
 
 **동작 원리:** 이미지 보안 점검 순서:
 1. 사용 중인 이미지 목록을 추출한다
@@ -598,10 +716,7 @@ kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{ra
 kubectl get pod kube-apiserver-dev-master -n kube-system -o yaml | grep "enable-admission-plugins"
 ```
 
-**예상 출력:**
-```
-    - --enable-admission-plugins=NodeRestriction
-```
+**예상 출력:** (미캡처) — 실제 출력은 메인이 dev 클러스터에서 `kubectl get pod kube-apiserver-dev-master -n kube-system -o yaml` 실행 후 캡처해 삽입한다.
 
 **동작 원리:** Admission Controller의 역할:
 1. API 요청이 인증/인가를 통과한 후 etcd에 저장되기 전에 실행된다
@@ -633,6 +748,11 @@ kubectl get pods -n demo -o jsonpath='{range .items[*]}{range .spec.containers[*
 
 ## 추가 심화 학습: Supply Chain Security 고급 패턴
 
+> **학습 우선순위 안내.** 이 섹션은 **필수**와 **선택** 두 단계로 나뉜다. 시험 대비 우선순위가 높은 필수 항목을 먼저 학습하고, 여력이 있을 때 선택 항목을 추가로 학습한다.
+>
+> - **필수(시험 직결):** Trivy 이미지 스캔 상세 · Trivy 스캔 결과 분석 · ImagePolicyWebhook 설정 상세 · Dockerfile 보안 문제 식별과 수정 · kubesec 활용
+> - **선택(심화 이해):** 이미지 서명 및 검증(Cosign) · conftest · Private Registry 접근 설정 · Admission Controller 종류와 순서 · 추가 연습 문제
+
 ### Trivy 이미지 스캔 상세 사용법
 
 ```bash
@@ -663,27 +783,21 @@ trivy k8s --report summary cluster
 
 ### Trivy 스캔 결과 분석 예제
 
-```
-스캔 결과 읽는 법
-═══════════════
+**스캔 결과 읽는 법**
 
-nginx:1.25 (debian 12.4)
-Total: 142 (CRITICAL: 3, HIGH: 15, MEDIUM: 89, LOW: 35)
+`nginx:1.25 (debian 12.4)` — `Total: 142 (CRITICAL: 3, HIGH: 15, MEDIUM: 89, LOW: 35)`
 
-┌──────────────┬────────────────┬──────────┬────────────────┬───────────────┐
-│   Library    │ Vulnerability  │ Severity │ Installed Ver  │  Fixed Ver    │
-├──────────────┼────────────────┼──────────┼────────────────┼───────────────┤
-│ libssl3      │ CVE-2024-XXXXX │ CRITICAL │ 3.0.11-1       │ 3.0.13-1      │
-│ libcurl4     │ CVE-2024-YYYYY │ HIGH     │ 7.88.1-10      │ 7.88.1-10+deb│
-│ zlib1g       │ CVE-2023-ZZZZZ │ MEDIUM   │ 1:1.2.13       │              │
-└──────────────┴────────────────┴──────────┴────────────────┴───────────────┘
+| Library | Vulnerability | Severity | Installed Ver | Fixed Ver |
+|:--|:--|:--|:--|:--|
+| libssl3 | CVE-2024-0727 | CRITICAL | 3.0.11-1 | 3.0.13-1 |
+| libcurl4 | CVE-2023-38545 | HIGH | 7.88.1-10 | 7.88.1-10+deb |
+| zlib1g | CVE-2023-45853 | MEDIUM | 1:1.2.13 | (패치 없음) |
 
-해석:
-  - Library: 취약한 패키지 이름
-  - Vulnerability: CVE 식별자 (cve.mitre.org에서 상세 확인)
-  - Fixed Ver: 패치된 버전 (빈칸 = 아직 패치 없음)
-  - CRITICAL/HIGH는 즉시 조치, MEDIUM은 계획 수립, LOW는 모니터링
-```
+각 열의 의미:
+- **Library**: 취약한 패키지 이름
+- **Vulnerability**: CVE 식별자(cve.mitre.org에서 상세 확인). CVE-2024-0727은 OpenSSL의 NULL 포인터 역참조로 서비스 거부(DoS)를 유발하고, CVE-2023-38545는 libcurl의 SOCKS5 프록시 버퍼 오버플로(CRITICAL급), CVE-2023-45853은 zlib의 정수 오버플로(공식 패치 미발표 시점 기준)다.
+- **Fixed Ver**: 패치된 버전. 빈칸(패치 미존재)일 때 대응 전략: ① 해당 라이브러리를 포함하지 않는 베이스 이미지(distroless, scratch)로 교체한다. ② `trivy image --ignore-unfixed`로 패치 없는 항목을 출력에서 제외하고 별도 추적 티켓을 생성해 패치 발표를 모니터링한다. ③ 단기 완화책으로 해당 기능을 비활성화하거나 네트워크 접근을 제한한다.
+- 심각도 대응 우선순위: CRITICAL·HIGH는 즉시 조치, MEDIUM은 계획 수립, LOW는 모니터링.
 
 ### ImagePolicyWebhook 설정 상세
 
@@ -823,19 +937,22 @@ cosign sign --key cosign.key myregistry.io/myapp:1.0
 cosign verify --key cosign.pub myregistry.io/myapp:1.0
 ```
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  build["개발자가 이미지 빌드"]
+  sign["개인키로 서명\n(서명 = '내가 만들었다'의 디지털 증명)"]
+  push["레지스트리에 푸시"]
+  verify{"배포 시: 레지스트리에서\n공개키로 서명 검증"}
+  ok["검증 성공: 배포 허용"]
+  no["검증 실패: 배포 차단\n(이미지 변조 가능성)"]
+  build --> sign --> push --> verify
+  verify --> ok
+  verify --> no
 ```
-이미지 서명 흐름 (비대칭 키 기반 디지털 서명)
-══════════════════════════════════════════════
+_그림 1. 비대칭 키 기반 이미지 디지털 서명과 검증 흐름._
 
-개발자가 이미지를 빌드 → 개인키로 서명 → 레지스트리에 푸시
-                             │
-                      서명 = "이 이미지는 내가 만들었다"의 디지털 증명
-                             │
-배포 시 ← 공개키로 검증 ← 레지스트리에서 서명 확인
-  │
-  └─ 검증 성공: 배포 허용
-  └─ 검증 실패: 배포 차단 (이미지가 변조되었을 수 있음!)
-```
+비대칭 키란 한 쌍(개인키·공개키)으로 이루어진 암호 키다. 서명의 의도는 단순하다. 개발자가 **개인키**로 이미지에 "나는 이 이미지의 빌더다"라는 서명을 붙이면, 배포 시스템(kubectl·Admission Controller)이 짝이 되는 **공개키**로 그 서명을 검증해 "이 이미지가 변조되지 않았고, 신뢰하는 빌더가 만든 것인가"를 확인한다. 개인키는 빌더만 갖고 공개키는 누구나 가질 수 있으므로, 공격자가 레지스트리에 악성 이미지를 푸시해도 올바른 개인키 서명이 없어 검증에 실패한다 — 이것이 image replacement 공격을 막는 원리다.
 
 **동작 원리:** 이미지 서명의 필요성:
 1. 레지스트리에 악의적으로 변조된 이미지가 푸시될 수 있다
@@ -858,12 +975,14 @@ EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
-**정답:**
+**정답 — 주요 5가지 (필수, 문제 요구 충족):**
 1. `FROM node:latest` → 태그 불명확, 최신 버전이 변경될 수 있음 → `node:20-alpine`
 2. `COPY . .` → .git, .env, node_modules 등 불필요한 파일 포함 → `.dockerignore` 필요
 3. `RUN npm install` → devDependencies 포함 → `RUN npm ci --only=production`
-4. `chmod 777` → 과도한 파일 권한 → `chmod 755` 또는 최소 권한
+4. `chmod 777` → 모든 사용자에게 읽기·쓰기·실행 권한 부여(과도) → `chmod 755`. 755는 소유자만 쓰기 가능하고 그룹·기타 사용자는 읽기·실행만 가능하다. 불필요한 쓰기 권한을 제거하면 컨테이너 런타임이 의도 외로 파일을 수정하는 것을 막아 변조 표면이 줄어든다.
 5. `USER root` → root 실행 → `USER node` (node 이미지에 내장된 non-root 유저)
+
+**심화 항목 (추가로 적으면 가점):**
 6. 멀티스테이지 빌드 미사용 → 빌드 도구가 최종 이미지에 포함됨
 7. 헬스체크 미설정 → `HEALTHCHECK CMD curl -f http://localhost:3000/ || exit 1`
 
@@ -913,7 +1032,9 @@ spec:
 # crictl ps | grep kube-apiserver
 ```
 
-### CKS 시험 팁: Supply Chain Security 빠른 풀이
+### CKS 시험 팁: Supply Chain Security 빠른 풀이 — 전체 CKS 공급망 보안 체크리스트
+
+아래는 §7.2의 그룹별 체크리스트를 한데 모은 최종 정리판이다.
 
 ```
 Supply Chain Security 체크리스트
@@ -1006,45 +1127,23 @@ spec:
 
 ### Admission Controller 종류와 순서
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  req["클라이언트 요청\n→ 인증 → 인가"]
+  mut["Mutating Admission Webhooks (순서대로)\n요청을 수정\n- Istio sidecar injection\n- Default ServiceAccount\n- Default StorageClass"]
+  schema["Object Schema Validation\nYAML 스키마 검증"]
+  val["Validating Admission Webhooks (병렬 가능)\n요청을 검증(거부 가능)\n- Pod Security Admission\n- ResourceQuota\n- OPA Gatekeeper\n- ImagePolicyWebhook"]
+  etcd[("etcd에 저장")]
+  req --> mut --> schema --> val --> etcd
 ```
-Admission Controller 실행 순서
-═════════════════════════════
-
-클라이언트 요청 → 인증(Authentication) → 인가(Authorization)
-    │
-    ▼
-┌──────────────────────────────────┐
-│ Mutating Admission Webhooks      │  ← 요청을 수정한다
-│ (순서대로 실행)                    │
-│ - Istio sidecar injection        │
-│ - Default ServiceAccount 설정     │
-│ - Default StorageClass 설정       │
-└──────────────┬───────────────────┘
-               │
-               ▼
-┌──────────────────────────────────┐
-│ Object Schema Validation         │  ← YAML 스키마 검증
-└──────────────┬───────────────────┘
-               │
-               ▼
-┌──────────────────────────────────┐
-│ Validating Admission Webhooks    │  ← 요청을 검증한다 (거부 가능)
-│ (병렬 실행 가능)                   │
-│ - Pod Security Admission         │
-│ - ResourceQuota                  │
-│ - OPA Gatekeeper                 │
-│ - ImagePolicyWebhook             │
-└──────────────┬───────────────────┘
-               │
-               ▼
-         etcd에 저장
+_그림 2. Admission Controller 실행 순서(Mutating → 스키마 검증 → Validating → 저장)._
 
 CKS 시험에서 중요한 Admission Controller:
   - NodeRestriction: kubelet이 자신의 노드/Pod만 수정 가능
   - PodSecurity: Pod Security Standards 적용
   - ImagePolicyWebhook: 이미지 정책 검증
   - EventRateLimit: API 요청 속도 제한
-```
 
 ### 연습 문제: 추가 Supply Chain 시나리오
 

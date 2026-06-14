@@ -2,6 +2,8 @@
 
 > 학습 목표 | CKA 도메인: Cluster Architecture, Installation & Configuration (25%) - Part 1 | 예상 소요 시간: 4시간
 
+CKA 학습의 첫 번째 날이다. 이 문서는 이후 모든 day의 기반이 되는 클러스터 아키텍처를 다루며, day02부터 다루는 워크로드 관리·스케줄링·스토리지·네트워킹은 여기서 소개하는 컴포넌트들이 어떻게 협력하는지를 이해해야 따라갈 수 있다.
+
 ---
 
 ## 오늘의 학습 목표
@@ -22,7 +24,14 @@
 
 컨테이너 기술(Docker 등)이 등장하면서 애플리케이션 패키징과 배포가 편리해졌으나, 수백~수천 개의 컨테이너를 수동으로 관리하는 것은 불가능에 가까웠다. 컨테이너가 죽으면 누가 재시작하는가? 트래픽이 증가하면 누가 스케일아웃하는가? 새 버전을 무중단으로 어떻게 배포하는가? 이러한 문제를 해결하기 위해 Google이 내부에서 사용하던 Borg 시스템의 경험을 바탕으로 2014년에 오픈소스로 공개한 것이 쿠버네티스이다.
 
-쿠버네티스(Kubernetes, 줄여서 K8s)는 컨테이너화된 애플리케이션을 자동으로 배포, 확장, 관리하는 오케스트레이션(orchestration) 플랫폼이다. 선언적 구성(declarative configuration)과 자동화를 기반으로, desired state와 current state 간의 차이를 지속적으로 reconciliation하는 제어 루프(control loop) 아키텍처를 채택한다.
+쿠버네티스(Kubernetes, 줄여서 K8s)는 컨테이너화된 애플리케이션을 자동으로 배포, 확장, 관리하는 오케스트레이션(orchestration) 플랫폼이다.
+
+이 문장에 나오는 두 핵심 용어를 먼저 풀어 둔다. 이후 거의 모든 동작 원리가 이 둘로 설명되기 때문이다.
+
+- **선언적 구성(declarative configuration)** — "원하는 최종 상태(desired state)를 선언만 하고, 거기까지 가는 방법(How)은 시스템이 알아서 한다"는 방식이다. 대조되는 것이 **명령형(imperative)** 으로, "이 명령 실행하고 다음 저 명령 실행하고…"처럼 절차를 사람이 일일이 지시한다. 예로 선언형은 "nginx Pod 3개가 항상 떠 있어야 한다"고 적어 두면 끝이지만, 명령형은 "Pod 만들어 → 죽으면 다시 만들어 → 부족하면 추가해"를 사람이 계속 시켜야 한다.
+- **리컨실리에이션(reconciliation)** — 현재 상태(current state)와 원하는 상태(desired state)의 **차이를 감지해 자동으로 맞춰 나가는 제어 루프**다. 쿠버네티스의 거의 모든 컴포넌트가 "내가 맡은 리소스의 현재 상태 관찰 → 선언된 목표와 비교 → 차이를 메우는 동작 실행"을 무한 반복한다. 이 패턴을 §2.2의 Watch 메커니즘으로 구현한다.
+
+즉 쿠버네티스는 선언적 구성과 리컨실리에이션 제어 루프(control loop)를 기반으로 desired state와 current state의 차이를 지속적으로 수렴시키는 아키텍처를 채택한다.
 
 **핵심 용어 정리:**
 
@@ -34,33 +43,30 @@
 | **컨테이너(Container)** | 애플리케이션과 실행 환경을 패키징한 격리된 프로세스 | cgroup + namespace로 격리된 프로세스 |
 | **네임스페이스(Namespace)** | 클러스터 내부를 논리적으로 분리하는 가상 공간 | RBAC, ResourceQuota, NetworkPolicy의 스코프 경계 |
 
+> **용어 충돌 주의 — "namespace"는 두 가지다.**
+> - **Linux namespace** (위 Pod·컨테이너 행) — OS 커널이 제공하는 **격리 메커니즘**이다. 같은 namespace에 속한 프로세스끼리는 네트워크(IP·포트), IPC(프로세스 간 통신), 호스트명(UTS) 등을 **공유**하고, 다른 namespace의 프로세스는 서로를 **보지 못한다**. Pod 안의 컨테이너들은 동일한 network namespace를 공유하므로 `localhost`로 서로 통신할 수 있다.
+> - **Kubernetes Namespace** (맨 아래 행) — 클러스터 안에서 리소스를 묶는 **논리적 칸막이**(이름표 같은 그룹)다. 커널 격리와는 무관하며 `default`, `kube-system` 등이 그 예다.
+> - **cgroup** — Linux namespace와 짝을 이루는 커널 기능으로, namespace가 "무엇을 볼 수 있는가"를 격리한다면 cgroup은 CPU·메모리 등 "자원을 얼마나 쓸 수 있는가"를 제한한다. 컨테이너 = `namespace(격리) + cgroup(자원 제한)`으로 만든 프로세스다.
+
 ### 1.2 Control Plane(마스터 노드) 구성 요소 심화
 
 Control Plane은 클러스터의 제어 계층(control plane)으로, desired state와 current state의 차이를 감지하고 reconciliation을 수행하는 모든 관리 컴포넌트가 실행된다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph CP["Control Plane (Master Node)"]
+    direction TB
+    api["kube-apiserver (6443)\n모든 요청의 진입점"]
+    sched["kube-scheduler (10259)\nPod를 어느 노드에 배치할지 결정"]
+    cm["kube-controller-manager (10257)\n다양한 컨트롤러 실행"]
+    etcd[("etcd (2379/2380)\n클러스터 상태를 저장하는 DB")]
+    api --> etcd
+  end
+  kubelet["kubelet (모든 노드에서 실행, 10250)"]
+  kubelet --> api
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                    Control Plane (Master Node)                    │
-│                                                                  │
-│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
-│  │  kube-apiserver  │  │  kube-scheduler  │  │  kube-controller│  │
-│  │   (포트: 6443)   │  │  (포트: 10259)   │  │  -manager      │  │
-│  │                 │  │                  │  │  (포트: 10257)  │  │
-│  │  모든 요청의     │  │  Pod를 어떤      │  │  다양한 컨트롤러│  │
-│  │  진입점         │  │  노드에 배치할지  │  │  를 실행        │  │
-│  │                 │  │  결정            │  │                │  │
-│  └────────┬────────┘  └──────────────────┘  └───────────────┘  │
-│           │                                                      │
-│  ┌────────▼────────┐                                            │
-│  │      etcd        │                                            │
-│  │  (포트: 2379/80) │                                            │
-│  │  클러스터 상태를  │                                            │
-│  │  저장하는 DB      │                                            │
-│  └─────────────────┘                                            │
-│                                                                  │
-│  kubelet (모든 노드에서 실행, 포트: 10250)                       │
-└──────────────────────────────────────────────────────────────────┘
-```
+_그림 1. Control Plane 구성요소와 통신. 모든 컴포넌트는 kube-apiserver 를 거쳐 etcd 에 접근한다._
 
 #### kube-apiserver (API 서버)
 
@@ -152,7 +158,7 @@ spec:                             # Pod의 상세 사양(스펙)
 
 **등장 배경:** 쿠버네티스 같은 분산 시스템은 클러스터 전체의 상태를 하나의 일관된 저장소에 기록해야 한다. 일반적인 RDBMS는 Watch(변경 알림) 기능이 부족하고, 분산 환경에서의 일관성 보장이 어렵다. etcd는 Raft 합의 알고리즘으로 강한 일관성(strong consistency)을 보장하면서도 Watch API로 실시간 변경 알림을 제공하여 쿠버네티스의 제어 루프 아키텍처에 적합하다.
 
-etcd는 Raft 합의 알고리즘 기반의 분산 키-값 저장소로, 모든 쿠버네티스 오브젝트(Pod, Service, Deployment 등)의 상태를 /registry 프리픽스 하위에 protobuf 직렬화된 형태로 저장한다. linearizable read를 보장하며, 오직 kube-apiserver만 etcd와 직접 통신한다.
+etcd는 Raft 합의 알고리즘 기반의 분산 키-값 저장소로, 모든 쿠버네티스 오브젝트(Pod, Service, Deployment 등)의 상태를 /registry 프리픽스 하위에 protobuf(Protocol Buffers: JSON보다 빠른 이진 직렬화 형식) 직렬화된 형태로 저장한다. linearizable read(읽기 시점에 가장 최신의 확정된 값을 반환, 캐시/복제 지연 없음)를 보장하며, 오직 kube-apiserver만 etcd와 직접 통신한다.
 
 **핵심 특성:**
 - Raft 합의 알고리즘(consensus algorithm) 기반 - 여러 etcd 노드 중 과반수가 동의해야 데이터가 확정됨
@@ -214,6 +220,12 @@ spec:
 
 #### kube-scheduler (스케줄러)
 
+**등장 배경:** 스케줄러가 없던 초기 컨테이너 오케스트레이션에서는 운영자가 어떤 서버에 어느 컨테이너를 배치할지 수동으로 결정했다. 서버가 수십 대를 넘으면 각 서버의 현재 CPU·메모리 여유, 이미 실행 중인 컨테이너 수, 데이터 지역성 등을 사람이 파악해 결정하는 것은 불가능에 가까웠다. 배치 실수로 특정 서버에만 부하가 집중되거나, 메모리가 부족한 노드에 Pod를 배치해 OOMKill(Out-Of-Memory Kill)이 발생하는 문제가 반복됐다.
+
+**무엇이 나아졌나:** kube-scheduler는 이 결정을 알고리즘으로 자동화한다. 두 단계(필터링·스코어링)를 거쳐 제약 조건을 위반하지 않는 노드 중 가장 적합한 노드를 선택한다. 플러그인 구조(Scheduling Framework)로 커스텀 정책을 추가할 수 있어 데이터 지역성·GPU 선호·보안 격리 요구사항도 확장으로 처리된다.
+
+**트레이드오프:** 스케줄러는 배치 결정을 한 시점의 클러스터 스냅샷을 기반으로 내린다. 배치 이후 노드 부하가 급증해도 Pod를 자동으로 재배치하지 않는다(재배치는 Descheduler 같은 별도 컴포넌트의 영역이다). 또한 스케줄링 결정이 잘못된 경우(예: 모든 필터를 통과한 노드가 없는 상황) Pod는 `Pending` 상태로 무한히 대기한다.
+
 스케줄러는 nodeName이 미설정된 새 Pod를 감지하여, 필터링(Filtering)과 스코어링(Scoring) 2단계 알고리즘으로 최적의 노드를 선택하고 바인딩(Binding)하는 컴포넌트이다.
 
 **스케줄링 과정:**
@@ -221,25 +233,24 @@ spec:
 2. **점수 매기기(Scoring)**: 남은 노드에 점수를 부여 (리소스 균형, 어피니티 등)
 3. **바인딩(Binding)**: 가장 높은 점수의 노드에 Pod를 배정
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  req(["Pod 생성 요청"])
+  filter["필터링\n노드 10개 중 조건에 맞는 3개만 남김\n리소스 부족/Taint 불일치/nodeSelector 불일치 노드 제외"]
+  score["점수 매기기\n남은 3개 노드에 점수 부여\n노드D 85점 / 노드E 72점 / 노드F 68점"]
+  bind["바인딩\n노드D에 Pod 배정 (API 서버에 알림)"]
+  req --> filter --> score --> bind
 ```
-Pod 생성 요청
-    │
-    ▼
-[필터링] 노드 10개 중 조건에 맞는 3개만 남김
-    │    - 노드A: 리소스 부족 → 제외
-    │    - 노드B: Taint 있는데 Toleration 없음 → 제외
-    │    - 노드C: nodeSelector 불일치 → 제외
-    │    - ...
-    ▼
-[점수 매기기] 3개 노드에 점수 부여
-    │    - 노드D: 85점 (리소스 여유, Affinity 일치)
-    │    - 노드E: 72점 (리소스 보통)
-    │    - 노드F: 68점 (리소스 빡빡)
-    ▼
-[바인딩] 노드D에 Pod 배정 (API 서버에 알림)
-```
+_그림 2. kube-scheduler 의 필터링-스코어링-바인딩 3단계._
 
 #### kube-controller-manager (컨트롤러 매니저)
+
+**등장 배경:** 선언형 구성만으로는 시스템이 스스로 원하는 상태를 유지할 수 없다. "Pod 3개를 항상 유지해라"고 선언했더라도 누군가 지속적으로 현재 상태를 감시하고 Pod가 줄어들면 새로 만드는 작업을 반복해야 한다. 초기에는 이런 감시·복구 로직을 각 기능마다 별도 데몬(프로세스)으로 만들었는데, 데몬 수가 늘어날수록 프로세스 관리·버전 관리·배포가 복잡해지는 문제가 있었다.
+
+**무엇이 나아졌나:** kube-controller-manager는 ReplicaSet·Deployment·Node·Job 등 서로 독립적인 수십 개의 제어 루프(컨트롤러)를 하나의 바이너리로 묶어 실행한다. 각 컨트롤러는 §2.2의 Watch 메커니즘으로 자신이 담당하는 리소스 변경만 구독하므로, 서로 간섭하지 않고 각자의 reconciliation 루프를 독립적으로 수행한다. 단일 바이너리이므로 Control Plane Static Pod 하나로 관리된다.
+
+**트레이드오프:** 모든 컨트롤러가 하나의 프로세스이므로 컨트롤러 하나에 버그가 생기면 프로세스 전체가 영향을 받을 수 있다. 쿠버네티스는 리더 선출(Leader Election) 메커니즘으로 HA 환경에서 하나의 인스턴스만 활성화되도록 보장하므로, 인스턴스가 죽으면 대기 중인 인스턴스가 리더를 이어받는다.
 
 컨트롤러 매니저는 다수의 독립적인 제어 루프(control loop)를 단일 바이너리로 실행하는 컴포넌트이다. 각 컨트롤러는 Watch 메커니즘으로 리소스 변경을 감지하고, current state를 desired state로 수렴시키는 reconciliation 로직을 수행한다.
 
@@ -259,30 +270,33 @@ Pod 생성 요청
 
 Worker Node는 kubelet, container runtime(containerd), kube-proxy(또는 eBPF 기반 CNI)가 실행되며 실제 워크로드 Pod를 호스팅하는 데이터 플레인 노드이다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph WN["Worker Node"]
+    direction TB
+    kubelet["kubelet (10250)\nPod 생명주기 관리"]
+    proxy["kube-proxy\nService 네트워크 규칙 관리"]
+    runtime["Container Runtime (containerd)\n컨테이너 실행 엔진"]
+    cni["CNI Plugin (Cilium)\nPod 네트워크 설정"]
+    subgraph PODS["워크로드 Pod"]
+      direction LR
+      pa["Pod A"]
+      pb["Pod B"]
+      pc["Pod C"]
+      pd["Pod D"]
+    end
+  end
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                       Worker Node                             │
-│                                                              │
-│  ┌─────────────┐  ┌───────────────┐  ┌────────────────────┐ │
-│  │   kubelet    │  │  kube-proxy   │  │  Container Runtime │ │
-│  │             │  │               │  │  (containerd)      │ │
-│  │  Pod 생명주기│  │  Service      │  │                    │ │
-│  │  관리        │  │  네트워크     │  │  컨테이너 실행     │ │
-│  │  포트:10250  │  │  규칙 관리    │  │  엔진              │ │
-│  └─────────────┘  └───────────────┘  └────────────────────┘ │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │                    CNI Plugin (Cilium)                    │ │
-│  │                    Pod 네트워크 설정                       │ │
-│  └─────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  ┌───────┐  ┌───────┐  ┌───────┐  ┌───────┐                │
-│  │ Pod A │  │ Pod B │  │ Pod C │  │ Pod D │                │
-│  └───────┘  └───────┘  └───────┘  └───────┘                │
-└──────────────────────────────────────────────────────────────┘
-```
+_그림 3. Worker Node 구성요소와 워크로드 Pod 배치._
 
 #### kubelet
+
+**등장 배경:** 컨테이너 오케스트레이터가 중앙에서 모든 노드에 컨테이너를 직접 SSH로 실행·감시하는 방식을 생각해 볼 수 있다. 그러나 수백 노드를 중앙에서 직접 제어하면 네트워크 지연·중앙 장애 시 전체 마비·동시 SSH 세션 폭증 등의 문제가 생긴다. 또한 컨테이너가 죽었을 때 중앙에서 감지→재시작 명령을 내리는 동안 수 초의 공백이 발생한다.
+
+**무엇이 나아졌나:** kubelet은 이 제어 책임을 각 노드로 분산한다. 각 노드에 kubelet이 상주하면서 API 서버로부터 자신의 노드에 배정된 PodSpec을 Watch하고, 컨테이너 런타임을 직접 호출해 컨테이너를 실행·감시·재시작한다. 중앙 제어 없이 각 노드가 자율적으로 desired state를 유지하므로, API 서버가 일시적으로 불통이 되더라도 이미 실행 중인 컨테이너는 kubelet이 계속 감시하고 재시작한다.
+
+**트레이드오프:** kubelet은 각 노드에 직접 설치되는 유일한 K8s 컴포넌트(Static Pod가 아닌 systemd 서비스)이다. kubelet이 죽으면 그 노드의 모든 Pod 관리가 중단되며, 노드 상태가 NotReady로 바뀐다(§6.3 트러블슈팅 참조). 또한 kubelet 업그레이드는 노드별로 순차적으로 수행해야 해 클러스터 전체 업그레이드 시 가장 시간이 많이 걸리는 단계이다.
 
 kubelet은 각 노드에서 실행되는 에이전트로, API 서버로부터 PodSpec을 수신하여 CRI(Container Runtime Interface)를 통해 컨테이너 생명주기를 관리한다.
 
@@ -336,69 +350,61 @@ kube-proxy는 Service로 들어오는 트래픽을 올바른 Pod로 전달하는
 
 **등장 배경:** Pod는 생성/삭제될 때마다 IP가 변경된다. 클라이언트가 Pod IP를 직접 사용하면 Pod 재생성 시 접속이 불가해진다. Service는 고정된 가상 IP(ClusterIP)를 제공하고, kube-proxy가 이 가상 IP로 들어오는 트래픽을 실제 Pod IP로 DNAT(Destination NAT) 변환하는 규칙을 iptables/IPVS에 프로그래밍한다.
 
-**동작 모드:**
-- **iptables** (기본): iptables 규칙으로 트래픽 라우팅
-- **IPVS**: Linux IPVS(IP Virtual Server)로 라우팅 (고성능)
-- **nftables**: 차세대 Linux 방화벽 프레임워크
+**직전 방식과 무엇이 나아졌나(스토리):** 쿠버네티스 이전(또는 초기)에는 개발자가 Pod IP를 직접 알아내 호출했는데, Pod가 재생성되면 IP가 바뀌어 연결이 끊기는 문제가 반복됐다. Service(고정 ClusterIP) + kube-proxy(DNAT 규칙)가 이 문제를 해결했다. 그런데 kube-proxy의 구현 방식도 세대를 거치며 바뀌었고, 각각 트레이드오프가 있다.
 
-**참고:** tart-infra는 Cilium CNI를 `kubeProxyReplacement=true`로 사용하므로, kube-proxy 대신 Cilium이 이 역할을 수행한다.
+**동작 모드 비교:**
+| 모드 | 방식 | 트레이드오프 |
+|:--|:--|:--|
+| **iptables**(기본) | 커널 iptables 규칙으로 트래픽 라우팅 | 규칙이 선형 리스트라 Service 수가 늘면 매칭 비용이 O(n)으로 증가. 규칙 갱신도 전체 테이블을 다시 쓰는 구조라 대규모에서 느려진다 |
+| **IPVS** | 커널 IPVS(IP Virtual Server) 해시 테이블로 라우팅 | 조회가 O(1)에 가깝고 부하분산 알고리즘(rr, lc 등) 선택 가능. 대신 설정이 복잡하고 커널 모듈 의존 |
+| **nftables** | 차세대 Linux 방화벽 프레임워크 | iptables 후속. 갱신 성능이 개선됐으나 비교적 신규라 환경 지원 편차 |
+
+**그 다음 세대 — eBPF(이 저장소가 쓰는 방식):** **eBPF(extended Berkeley Packet Filter)** 는 커널을 재컴파일하거나 모듈을 올리지 않고도 **커널 내부에 안전한 프로그램을 끼워 넣어** 패킷을 처리하게 해주는 리눅스 커널 기술이다. **Cilium**은 이 eBPF를 쓰는 고성능 CNI(컨테이너 네트워크 플러그인)로, Service 라우팅을 iptables 규칙이 아니라 eBPF 맵(해시 테이블)으로 처리한다. 그래서 Service가 수천 개로 늘어도 성능이 일정(O(1))하고, kube-proxy 자체를 대체할 수 있다.
+
+> **용어 — Cilium / eBPF / CNI**: **CNI**(Container Network Interface)는 "Pod에 네트워크를 붙이는 방법"의 표준 규격이고, **Cilium**은 그 규격을 eBPF로 구현한 플러그인이다. 이 저장소의 4개 클러스터는 전부 Cilium을 `kubeProxyReplacement=true`로 쓰므로 **kube-proxy DaemonSet이 아예 없고 Cilium이 그 역할을 대신**한다(day02·day10 실측에서 확인). 즉 위 iptables/IPVS 설명은 "전통적 kube-proxy"의 동작이고, 우리 실습 클러스터는 그 윗 세대인 eBPF로 동작한다.
 
 #### Container Runtime (컨테이너 런타임)
 
 컨테이너 런타임은 kubelet의 지시를 받아 실제로 컨테이너를 생성, 실행, 삭제하는 엔진이다.
 
-**등장 배경:** 초기 쿠버네티스는 Docker를 직접 호출하여 컨테이너를 관리했으나, Docker는 이미지 빌드, 네트워크, 볼륨 등 쿠버네티스가 필요하지 않은 기능까지 포함한 무거운 데몬이었다. 이에 쿠버네티스 1.5에서 CRI(Container Runtime Interface)라는 표준 인터페이스를 도입하여, 런타임을 교체 가능하게 만들었다. Docker의 핵심 런타임 부분만 분리한 것이 containerd이며, 현재 대부분의 클러스터에서 사용한다.
+**등장 배경(스토리):** 초기 쿠버네티스는 Docker를 직접 호출해 컨테이너를 관리했다. 그런데 Docker는 이미지 빌드(`docker build`), 네트워크(`docker network`), 볼륨(`docker volume`) 등 **쿠버네티스에는 필요 없는 기능까지 포함한 무거운 데몬**이었다. 쿠버네티스가 컨테이너 런타임에 바라는 건 단 하나 — "컨테이너를 만들고·실행하고·지워라"뿐이다.
+
+**직전 한계 → 표준화 → 무엇이 나아졌나:** 이 불일치를 풀기 위해 업계는 컨테이너 표준을 만들었다. **OCI**(Open Container Initiative)가 이미지·런타임 규격을 정의했고, 쿠버네티스는 1.5에서 **CRI(Container Runtime Interface)** 라는 표준 인터페이스를 도입했다. 그 결과 런타임을 **플러그인처럼 교체**할 수 있게 됐다. 계층을 정리하면:
+
+- **containerd** — Docker에서 "런타임 핵심"만 떼어낸 고수준 런타임. kubelet과 CRI(gRPC)로 통신하며 이미지 풀·컨테이너 수명주기를 담당한다. 이 저장소의 모든 노드가 사용(`containerd://2.2.1` 또는 `1.7.28`, day01 실측).
+- **runc** — containerd가 호출하는 저수준 런타임. 실제로 Linux **namespace + cgroup**을 설정해 컨테이너 프로세스를 띄우는 OCI 표준 실행기다.
+- 정리하면 `kubelet → (CRI) → containerd → runc → namespace+cgroup`. 덕분에 쿠버네티스는 containerd·CRI-O·gVisor 등 여러 런타임을 코드 수정 없이 바꿔 끼울 수 있다.
+
+**트레이드오프:** 표준화로 유연성과 경량화를 얻었지만, 디버깅 시 `docker` 명령 대신 `crictl`(CRI 전용 도구)을 써야 하고(day01·day03 실측), Docker에 익숙한 사용자에게는 도구 체계가 한 겹 더 생긴 셈이다.
 
 쿠버네티스는 CRI(Container Runtime Interface)를 통해 다양한 런타임을 지원한다:
 - **containerd** (가장 많이 사용, Docker에서 분리된 핵심 엔진)
 - **CRI-O** (Red Hat/OpenShift에서 주로 사용)
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  kubelet["kubelet"] --> cri["CRI"] --> containerd["containerd"] --> runc["runc"] --> ctr(["컨테이너"])
 ```
-kubelet → CRI → containerd → runc → 컨테이너
-```
+_그림 4. CRI 를 통한 컨테이너 실행 경로._
 
 ### 1.4 API 요청 처리 전체 흐름
 
 사용자가 `kubectl apply -f deployment.yaml`을 실행하면 어떤 일이 일어날까?
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  user(["사용자: kubectl apply -f deployment.yaml"])
+  s1["1단계 kube-apiserver\n인증/인가/Admission/Validation 후\netcd 에 Deployment 저장"]
+  s2["2단계 Deployment Controller\nDeployment 변경 감지(watch)\nReplicaSet 생성 후 etcd 저장"]
+  s3["3단계 ReplicaSet Controller\nReplicaSet 변경 감지\nPod 생성(nodeName 미지정) 후 etcd 저장"]
+  s4["4단계 kube-scheduler\nnodeName 빈 Pod 감지\n최적 노드 선택 후 nodeName 바인딩"]
+  s5["5단계 kubelet (해당 노드)\n배정된 Pod 감지\ncontainerd 컨테이너 생성 + CNI 네트워크 설정\nPod 상태 Running 갱신"]
+  s6["6단계 kube-proxy / Cilium\nService 네트워크 규칙 업데이트\n트래픽을 Pod 로 라우팅"]
+  user --> s1 --> s2 --> s3 --> s4 --> s5 --> s6
 ```
-사용자: kubectl apply -f deployment.yaml
-    │
-    ▼
-[1단계] kube-apiserver
-    │  - 인증: kubeconfig의 인증서로 사용자 확인
-    │  - 인가: RBAC 정책으로 권한 확인
-    │  - Admission Control: 정책 검증 (예: ResourceQuota)
-    │  - Validation: YAML 문법 및 필드 유효성 검사
-    │  - etcd에 Deployment 오브젝트 저장
-    ▼
-[2단계] kube-controller-manager (Deployment Controller)
-    │  - etcd에서 Deployment 변경 감지 (watch)
-    │  - ReplicaSet 오브젝트 생성
-    │  - etcd에 ReplicaSet 저장
-    ▼
-[3단계] kube-controller-manager (ReplicaSet Controller)
-    │  - ReplicaSet 변경 감지
-    │  - 지정된 수의 Pod 오브젝트 생성
-    │  - etcd에 Pod 저장 (nodeName 미지정 상태)
-    ▼
-[4단계] kube-scheduler
-    │  - nodeName이 비어있는 Pod 감지
-    │  - 필터링 + 점수 매기기로 최적 노드 선택
-    │  - Pod의 nodeName 필드에 노드 이름 바인딩
-    │  - etcd 업데이트
-    ▼
-[5단계] kubelet (해당 노드)
-    │  - 자신의 노드에 배정된 새 Pod 감지
-    │  - containerd에 컨테이너 생성 요청
-    │  - CNI 플러그인(Cilium)으로 네트워크 설정
-    │  - 컨테이너 시작
-    │  - Pod 상태를 Running으로 업데이트
-    ▼
-[6단계] kube-proxy / Cilium
-    - Service가 있으면 네트워크 규칙 업데이트
-    - 외부/내부 트래픽을 Pod로 라우팅
-```
+_그림 5. kubectl apply 부터 컨테이너 실행까지의 API 요청 처리 흐름._
 
 ### 1.5 Static Pod 심화
 
@@ -415,6 +421,8 @@ Static Pod는 kubelet이 API 서버를 경유하지 않고 staticPodPath 디렉�
 
 **왜 중요한가?**
 Control Plane의 핵심 컴포넌트(apiserver, etcd, scheduler, controller-manager)가 모두 Static Pod로 실행된다!
+
+아래는 실측 캡처가 아닌 경로 구조 도식이다(실제 `ls /etc/kubernetes/manifests/` 출력은 §트러블슈팅 스크린샷 참조).
 
 ```
 Static Pod 매니페스트 디렉터리 구조:
@@ -475,48 +483,28 @@ kubeadm은 쿠버네티스 클러스터를 빠르게 설치하고 관리하기 �
 
 kubeadm은 PKI 인증서 생성, kubeconfig 파일 생성, Static Pod 매니페스트 배치, Bootstrap Token 발급 등의 과정을 자동화하여 쿠버네티스 클러스터를 부트스트래핑하는 도구이다.
 
+**등장 배경 — kubeadm 이전의 고통:** kubeadm이 없던 시절 클러스터를 직접 구축하려면 수십 단계의 수동 작업이 필요했다. CA 인증서를 직접 `openssl` 명령으로 생성하고, API 서버·etcd·scheduler·controller-manager 각각의 인증서에 올바른 SAN(Subject Alternative Name)을 수동 지정해야 했다. 그런 다음 kubelet 설정 파일과 kubeconfig 파일을 손으로 작성하고, Static Pod 매니페스트를 각 파일에 직접 배치한 뒤 kubelet을 재시작하여 Control Plane이 순차적으로 뜨기를 기다려야 했다. 인증서 경로 오타 하나, SAN 누락 하나로 API 서버가 etcd에 연결되지 않는 문제가 생겨도 오류 메시지만으로 원인을 찾기가 극도로 어려웠다. "The Hard Way"(Kelsey Hightower의 유명한 수동 설치 가이드)가 바로 이 고통을 정리한 문서이다.
+
+**무엇이 나아졌나:** kubeadm은 이 수십 단계 절차를 단일 명령(`kubeadm init`)으로 압축했다. 인증서 생성부터 Static Pod 배치까지 7단계를 자동화하며, 각 단계에서 사전 조건(Preflight) 검사로 흔한 실수를 미리 차단한다. 새 노드 추가는 `kubeadm join` 한 줄로, 인증서 갱신은 `kubeadm certs renew` 한 줄로 처리된다.
+
+**트레이드오프:** kubeadm은 "클러스터 부트스트랩 도구"이지 운영 자동화 도구가 아니다. 쿠버네티스 버전 업그레이드·다중 마스터(HA) 구성·클러스터 모니터링은 별도 도구(kubespray, Cluster API 등)가 필요하다. 또한 이 저장소의 클러스터처럼 tart VM 기반 환경에서는 VM 재부팅 시 IP가 바뀌면 kubeadm이 init 시점에 굳혀 놓은 IP와 불일치가 생겨 클러스터가 깨진다(`fix-cluster-ip-drift.sh`가 이를 복구한다).
+
 #### kubeadm init 7단계 상세
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  init(["kubeadm init 실행"])
+  p1["1단계 Preflight Checks\nroot 권한/swap 비활성화/포트(6443,2379,10250)\n커널 모듈/containerd 실행 점검"]
+  p2["2단계 인증서 생성\n/etc/kubernetes/pki/ 에 CA/apiserver/etcd 인증서\n기본 유효기간 1년, CA 10년"]
+  p3["3단계 kubeconfig 생성\nadmin.conf / kubelet.conf\ncontroller-manager.conf / scheduler.conf"]
+  p4["4단계 Static Pod 매니페스트 생성\n/etc/kubernetes/manifests/ 에 4개 파일\netcd/apiserver/controller-manager/scheduler.yaml"]
+  p5["5단계 kubelet 이 Static Pod 시작\nmanifests 감지 후 Control Plane 기동\nAPI 서버 응답 대기"]
+  p6["6단계 Bootstrap Token 생성\nWorker 조인용 토큰, 기본 TTL 24시간"]
+  p7["7단계 Addon 설치\nCoreDNS Deployment / kube-proxy DaemonSet 배포"]
+  init --> p1 --> p2 --> p3 --> p4 --> p5 --> p6 --> p7
 ```
-kubeadm init 실행
-    │
-    ▼
-[1단계] Preflight Checks (사전 점검)
-    │  - root 권한 확인
-    │  - 스왑(swap) 비활성화 여부 확인
-    │  - 필요한 포트(6443, 2379, 10250 등) 사용 가능 여부 확인
-    │  - 커널 모듈(br_netfilter, overlay) 로드 확인
-    │  - 컨테이너 런타임(containerd) 실행 중인지 확인
-    ▼
-[2단계] 인증서 생성
-    │  - /etc/kubernetes/pki/ 디렉터리에 인증서 생성
-    │  - CA 인증서, API 서버 인증서, etcd 인증서 등
-    │  - 기본 유효기간: 1년 (CA는 10년)
-    ▼
-[3단계] kubeconfig 파일 생성
-    │  - /etc/kubernetes/admin.conf (관리자용)
-    │  - /etc/kubernetes/kubelet.conf (kubelet용)
-    │  - /etc/kubernetes/controller-manager.conf
-    │  - /etc/kubernetes/scheduler.conf
-    ▼
-[4단계] Static Pod 매니페스트 생성
-    │  - /etc/kubernetes/manifests/ 디렉터리에 4개 파일 생성
-    │  - etcd.yaml, kube-apiserver.yaml
-    │  - kube-controller-manager.yaml, kube-scheduler.yaml
-    ▼
-[5단계] kubelet이 Static Pod 시작
-    │  - kubelet이 manifests 디렉터리를 감지
-    │  - Control Plane 컴포넌트를 Pod로 시작
-    │  - API 서버가 응답할 때까지 대기
-    ▼
-[6단계] Bootstrap Token 생성
-    │  - Worker Node 조인용 토큰 생성
-    │  - 기본 TTL: 24시간
-    ▼
-[7단계] Addon 설치
-    - CoreDNS Deployment 배포
-    - kube-proxy DaemonSet 배포
-```
+_그림 6. kubeadm init 7단계 부트스트랩 순서._
 
 #### kubeadm 핵심 명령어
 
@@ -545,9 +533,12 @@ kubeadm certs renew all                     # 모든 인증서 갱신
 kubeadm certs renew apiserver              # 특정 인증서만 갱신
 
 # === 업그레이드 ===
+# 주의: upgrade apply/node 는 반드시 kubectl drain <node> 로 노드를 비운 뒤 실행한다.
+# 순서: kubectl drain → kubeadm upgrade → kubelet/kubectl apt upgrade → kubectl uncordon
+# 전체 절차는 day04(클러스터 업그레이드)에서 상세히 다룬다.
 kubeadm upgrade plan                        # 업그레이드 가능한 버전 확인
-kubeadm upgrade apply v1.32.0              # Control Plane 업그레이드
-kubeadm upgrade node                        # Worker Node 업그레이드
+kubeadm upgrade apply v1.32.0              # Control Plane 업그레이드 (drain 후 실행)
+kubeadm upgrade node                        # Worker Node 업그레이드 (drain 후 실행)
 
 # === 리셋 ===
 kubeadm reset                              # 클러스터 초기화 (주의! 모든 데이터 삭제)
@@ -639,6 +630,10 @@ kubectl config set-context <ctx> --cluster=<cluster> \
 
 ### 1.8 인증서 구조 완벽 정리
 
+**신뢰 체계 — 누가 누구를 검증하는가:** 쿠버네티스 컴포넌트 간 통신은 mTLS(mutual TLS — 클라이언트·서버 양쪽이 인증서를 제시해 서로를 검증하는 방식)를 기반으로 한다. 모든 인증서는 클러스터 루트 CA(`ca.crt`)가 서명한다. 예를 들어 API 서버가 kubelet에 접속할 때는 `apiserver-kubelet-client.crt`를 제시하고, kubelet은 자신이 신뢰하는 CA(`ca.crt`)로 이 인증서를 검증한다. etcd도 별도 CA(`etcd/ca.crt`)를 두어 etcd 클러스터 내부 통신(peer)과 API 서버와의 통신을 분리한다.
+
+**인증서 만료 장애 시나리오:** 기본 유효기간은 1년(CA는 10년)이다. 인증서가 만료되면 해당 통신 채널이 TLS handshake 실패로 끊기며, API 서버 인증서 만료 시 kubectl을 포함한 모든 접근이 차단된다. `kubeadm certs check-expiration` 명령으로 갱신 시점을 사전에 확인하고, `kubeadm certs renew all`로 갱신한다. 갱신 후 Static Pod(API 서버·컨트롤러 매니저·스케줄러)는 매니페스트를 잠깐 이동했다가 되돌리거나 kubelet을 재시작해 새 인증서를 로드해야 한다.
+
 ```
 /etc/kubernetes/pki/
 │
@@ -659,6 +654,7 @@ kubectl config set-context <ctx> --cluster=<cluster> \
 ├── front-proxy-ca.crt / .key             # 프론트 프록시 CA
 ├── front-proxy-client.crt / .key         # 프론트 프록시 클라이언트
 │   └── 역할: API aggregation layer용
+│         (API aggregation layer — 외부 API를 K8s API로 확장하는 레이어로, custom metrics API 등이 이를 통해 kube-apiserver에 등록된다. 상세는 day06 참조)
 │
 ├── sa.key / sa.pub                        # ServiceAccount 서명 키쌍
 │   └── 역할: ServiceAccount 토큰 발급/검증
@@ -676,44 +672,35 @@ kubectl config set-context <ctx> --cluster=<cluster> \
 
 ### 2.1 Pod 생성 전체 흐름도
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  kubectl["kubectl (사용자)"]
+  api["kube-apiserver (인증/인가)"]
+  etcd[("etcd (저장)")]
+  cm["controller-manager\n(ReplicaSet 생성)"]
+  sched["kube-scheduler\n(노드 선택)"]
+  kubelet["kubelet (Pod 실행)"]
+  containerd["containerd (컨테이너 생성)"]
+  cni["CNI (Cilium) 네트워크 설정"]
+  kubectl --> api --> etcd
+  api --> cm
+  api --> sched
+  sched --> kubelet --> containerd --> cni
 ```
-┌──────────┐     ┌──────────────┐     ┌───────┐
-│  kubectl  │────▶│ kube-apiserver│────▶│ etcd  │
-│  (사용자)  │     │  (인증/인가)   │     │(저장) │
-└──────────┘     └──────┬───────┘     └───────┘
-                        │
-              ┌─────────┴──────────┐
-              │                    │
-     ┌────────▼─────────┐  ┌──────▼──────────────┐
-     │ controller-manager│  │   kube-scheduler     │
-     │ (ReplicaSet생성)  │  │   (노드 선택)        │
-     └──────────────────┘  └──────────────────────┘
-                                    │
-                           ┌────────▼────────┐
-                           │    kubelet       │
-                           │ (Pod 실행)       │
-                           └────────┬────────┘
-                                    │
-                           ┌────────▼────────┐
-                           │   containerd    │
-                           │ (컨테이너 생성)  │
-                           └────────┬────────┘
-                                    │
-                           ┌────────▼────────┐
-                           │   CNI (Cilium)  │
-                           │ (네트워크 설정)   │
-                           └─────────────────┘
-```
+_그림 7. Pod 생성 전체 흐름: kubectl 부터 CNI 네트워크 설정까지._
 
 ### 2.2 Watch 메커니즘
 
+**등장 배경:** Watch 이전에는 각 컴포넌트가 폴링(polling) 방식으로 API 서버에 주기적으로 "현재 상태가 어때?"를 반복 질의했다. N초마다 전체 리소스 목록을 조회하므로 컴포넌트 수가 늘수록 API 서버와 etcd에 불필요한 CPU·네트워크 부하가 선형으로 쌓이고, 변경 감지까지 최대 N초의 반응 지연이 발생했다. 수백 개의 컨트롤러가 1초마다 폴링하면 클러스터가 감당할 수 없을 정도로 부하가 치솟는다.
+
 쿠버네티스의 핵심 동작 원리는 "Watch(감시)"이다. 각 컴포넌트는 API 서버에 Watch 요청을 보내서 관심 있는 리소스의 변경 사항을 실시간으로 받는다.
 
-```
-controller-manager → API 서버에 Watch 요청: "Deployment 변경 알려줘"
-scheduler          → API 서버에 Watch 요청: "nodeName 없는 Pod 알려줘"
-kubelet            → API 서버에 Watch 요청: "내 노드에 배정된 Pod 알려줘"
-```
+Watch는 HTTP GET 요청에 `?watch=true` 파라미터를 붙인 long-lived 연결로 동작한다. API 서버는 HTTP chunked streaming 방식으로 etcd에서 발생하는 변경 이벤트(ADDED·MODIFIED·DELETED)를 컴포넌트에 즉시 전달한다. 컴포넌트는 연결을 끊지 않고 이벤트 스트림을 계속 수신하므로, 폴링(주기적 조회) 없이도 변경을 실시간으로 반응할 수 있다.
+
+- controller-manager → API 서버에 Watch 요청: "Deployment 변경 알려줘"
+- scheduler → API 서버에 Watch 요청: "nodeName 없는 Pod 알려줘"
+- kubelet → API 서버에 Watch 요청: "내 노드에 배정된 Pod 알려줘"
 
 이 패턴을 "컨트롤 루프(Control Loop)" 또는 "Reconciliation Loop"라고 한다:
 1. 현재 상태(Current State) 관찰
@@ -744,9 +731,15 @@ CKA 시험에서 "Cluster Architecture" 관련 문제는 전체의 25%를 차지
 
 ---
 
-## 4. 실전 시험 문제 (15문제)
+## 4. 실전 시험 문제 (5문제)
+
+> **직접 해보기 — 시간 측정 드릴**: 각 문제는 풀이를 보기 전에 스스로 시간을 재며 풀어본다. `<details>` 안의 풀이는 직접 시도한 뒤에만 연다. 목표 시간은 CKA 시험 기준이다. 총 5문제 합계 목표: 20분 이내.
+
+---
 
 ### 문제 1. Static Pod 생성 [7%]
+
+> 목표 시간: **3분** — 매니페스트 경로 확인 + YAML 작성 + 검증까지
 
 **컨텍스트:** `kubectl config use-context platform`
 
@@ -764,8 +757,8 @@ CKA 시험에서 "Cluster Architecture" 관련 문제는 전체의 25%를 차지
 **풀이 단계:**
 
 ```bash
-# Step 1: SSH 접속
-ssh admin@<platform-master-ip>
+# Step 1: SSH 접속 (별칭은 ~/.ssh/config 에 등록된 tart VM 이름이다 — CLAUDE.md §3 참조)
+ssh platform-master
 
 # Step 2: Static Pod 매니페스트 경로 확인 (가장 중요한 첫 단계!)
 cat /var/lib/kubelet/config.yaml | grep staticPodPath
@@ -795,9 +788,7 @@ kubectl --context=platform get pods -A | grep static-nginx
 ```
 
 **검증 - 기대 출력:**
-```text
-default   static-nginx-platform-master   1/1   Running   0   30s
-```
+![platform 클러스터에서 Static Pod 가 Running. 이름에 노드명 접미사가 붙는다](images/day01-01-static-nginx.png)
 
 Pod 이름에 `-platform-master`가 접미사로 붙는 것을 확인한다. STATUS가 Running이 아니면 이미지 이름이나 매니페스트 문법에 오류가 있는 것이다.
 
@@ -808,7 +799,7 @@ Pod 이름에 `-platform-master`가 접미사로 붙는 것을 확인한다. STA
 
 **정리:**
 ```bash
-ssh admin@<platform-master-ip>
+ssh platform-master
 sudo rm /etc/kubernetes/manifests/static-nginx.yaml
 exit
 ```
@@ -819,6 +810,8 @@ exit
 
 ### 문제 2. Static Pod 매니페스트 경로가 변경된 경우 [7%]
 
+> 목표 시간: **4분** — 비표준 경로 탐색 + 동적 경로 추출 + Pod 생성까지
+
 **컨텍스트:** `kubectl config use-context staging`
 
 `staging-master` 노드에서 Static Pod 매니페스트 경로가 기본 경로가 아닌 다른 경로로 설정되어 있다. 올바른 경로를 찾아 Static Pod `static-httpd`(이미지: `httpd:2.4`)를 생성하라.
@@ -828,7 +821,7 @@ exit
 
 ```bash
 # Step 1: SSH 접속
-ssh admin@<staging-master-ip>
+ssh staging-master
 
 # Step 2: staticPodPath 확인 (핵심!)
 cat /var/lib/kubelet/config.yaml | grep staticPodPath
@@ -868,6 +861,8 @@ kubectl --context=staging get pods | grep static-httpd
 
 ### 문제 3. kubeadm join 명령 생성 [4%]
 
+> 목표 시간: **2분** — SSH 접속 후 명령 한 줄이면 완료
+
 **컨텍스트:** `kubectl config use-context staging`
 
 `staging` 클러스터에 새 Worker Node를 추가하기 위한 `kubeadm join` 명령을 생성하라. 명령을 `/tmp/join-command.txt`에 저장하라.
@@ -877,7 +872,7 @@ kubectl --context=staging get pods | grep static-httpd
 
 ```bash
 # Step 1: staging master에 SSH 접속
-ssh admin@<staging-master-ip>
+ssh staging-master
 
 # Step 2: join 명령 생성 (한 줄 명령!)
 sudo kubeadm token create --print-join-command > /tmp/join-command.txt
@@ -903,6 +898,8 @@ sudo kubeadm token list
 
 ### 문제 4. API 서버 설정 확인 [4%]
 
+> 목표 시간: **3분** — SSH 없이 kubectl로 먼저 시도, 필요 시 SSH 전환
+
 **컨텍스트:** `kubectl config use-context platform`
 
 `platform` 클러스터의 kube-apiserver에서 다음 설정값을 확인하여 `/tmp/apiserver-config.txt`에 저장하라:
@@ -920,7 +917,7 @@ kubectl -n kube-system get pod kube-apiserver-platform-master -o yaml | \
   grep -E "authorization-mode|service-cluster-ip-range" > /tmp/apiserver-config.txt
 
 # 방법 2: SSH 접속하여 매니페스트 직접 확인
-ssh admin@<platform-master-ip>
+ssh platform-master
 sudo grep -E "authorization-mode|service-cluster-ip-range" \
   /etc/kubernetes/manifests/kube-apiserver.yaml | tee /tmp/apiserver-config.txt
 exit
@@ -937,6 +934,8 @@ cat /tmp/apiserver-config.txt
 ---
 
 ### 문제 5. kubeconfig 컨텍스트 관리 [7%]
+
+> 목표 시간: **8분** — 4단계 순서를 정확히 지키는 것이 핵심
 
 **컨텍스트:** 없음 (여러 클러스터 전환)
 
@@ -979,26 +978,20 @@ cat /tmp/prod-server.txt
 
 ---
 
-## tart-infra 실습
+## 5. tart-infra 실습
 
 ### 실습 환경 설정
 
 ```bash
 # 4개 클러스터 kubeconfig를 모두 로드
-export KUBECONFIG=~/sideproejct/tart-infra/kubeconfig/platform.yaml:~/sideproejct/tart-infra/kubeconfig/dev.yaml:~/sideproejct/tart-infra/kubeconfig/staging.yaml:~/sideproejct/tart-infra/kubeconfig/prod.yaml
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
 
 # 사용 가능한 컨텍스트 확인
 kubectl config get-contexts
 ```
 
-**예상 출력:**
-```
-CURRENT   NAME       CLUSTER    AUTHINFO   NAMESPACE
-*         platform   platform   platform
-          dev        dev        dev
-          staging    staging    staging
-          prod       prod       prod
-```
+**검증 - 기대 출력:** 4개 클러스터 컨텍스트(platform/dev/staging/prod)가 모두 보이고, `*` 가 현재 컨텍스트를 가리킨다.
+![kubectl config get-contexts — 4개 클러스터 컨텍스트 목록](images/day01-00-get-contexts.png)
 
 ### 실습 1: Control Plane 아키텍처 직접 확인
 
@@ -1008,15 +1001,9 @@ kubectl config use-context platform
 kubectl get pods -n kube-system -o custom-columns='NAME:.metadata.name,NODE:.spec.nodeName,STATUS:.status.phase'
 ```
 
-**예상 출력:**
-```
-NAME                                       NODE              STATUS
-etcd-platform-master                       platform-master   Running
-kube-apiserver-platform-master             platform-master   Running
-kube-controller-manager-platform-master    platform-master   Running
-kube-scheduler-platform-master             platform-master   Running
-coredns-xxxxxxx-xxxxx                      platform-master   Running
-```
+**예상 출력 (platform 실측, 컨트롤플레인 + coredns 발췌):**
+![Control Plane 4종은 master 에 고정(Static Pod), coredns 는 Deployment](images/day01-02-platform-controlplane.png)
+> 컨트롤플레인 4종은 Static Pod 라 master 에 고정되지만, coredns 는 일반 Deployment 라 worker 에도 스케줄된다.
 
 **동작 원리:**
 1. Static Pod는 kubelet이 `/etc/kubernetes/manifests/` 디렉터리의 YAML을 직접 읽어 생성한다
@@ -1031,13 +1018,8 @@ coredns-xxxxxxx-xxxxx                      platform-master   Running
 kubectl config view -o jsonpath='{range .clusters[*]}{.name}{"\t"}{.cluster.server}{"\n"}{end}'
 ```
 
-**예상 출력:**
-```
-platform	https://192.168.64.10:6443
-dev	https://192.168.64.20:6443
-staging	https://192.168.64.30:6443
-prod	https://192.168.64.40:6443
-```
+**예상 출력 (실측 — IP 는 tart 가 부팅마다 재할당하므로 시점에 따라 다르다):**
+![병합 kubeconfig 의 클러스터별 API Server 주소(IP 는 tart 가 부팅마다 재할당)](images/day01-03-clusters.png)
 
 **동작 원리:**
 1. `KUBECONFIG` 환경변수에 `:` 구분자로 여러 파일을 지정하면 kubectl이 자동 머지한다
@@ -1055,12 +1037,9 @@ kubectl get nodes -o wide
 kubectl get nodes -o custom-columns='NAME:.metadata.name,KUBELET:.status.nodeInfo.kubeletVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion'
 ```
 
-**예상 출력:**
-```
-NAME          KUBELET   RUNTIME
-dev-master    v1.31.0   containerd://1.7.x
-dev-worker1   v1.31.0   containerd://1.7.x
-```
+**예상 출력 (dev 실측 — `reset-cluster.sh` 로 새로 만들어 containerd 2.2.x):**
+![dev 노드의 kubelet/런타임 버전(reset-cluster.sh 로 새로 만들어 containerd 2.2.1)](images/day01-04-dev-versions.png)
+> 런타임 버전은 노드 이미지에 따라 다르다(81일 전 만든 platform/staging/prod 는 `containerd://1.7.28`). KUBELET 버전은 `K8S_VERSION=1.31` 기준 패치판 v1.31.14.
 
 **동작 원리:**
 1. kubelet은 각 노드에서 실행되며 Node 오브젝트의 `.status.nodeInfo`에 자신의 버전 정보를 보고한다
@@ -1082,29 +1061,21 @@ dev-worker1   v1.31.0   containerd://1.7.x
 sudo systemctl status kubelet
 ```
 
-```text
-● kubelet.service - kubelet: The Kubernetes Node Agent
-   Active: active (running) since ...
-```
+![platform-master 의 kubelet 서비스 active(running)](images/day01-05-kubelet-status.png)
 
 ```bash
 # 2. kubelet 로그에서 에러 확인
 sudo journalctl -u kubelet --since "5 min ago" | grep -i error
 ```
 
-```text
-# YAML 문법 오류 시 출력 예:
-E0301 10:00:00.000000  1234 file.go:187] "Could not process manifest file" err="..." path="/etc/kubernetes/manifests/static-nginx.yaml"
-```
+![잘못된 YAML 매니페스트 배치 시 kubelet 이 남기는 실제 파싱 에러 로그](images/day01-06-journalctl-error.png)
 
 ```bash
 # 3. staticPodPath가 올바른지 확인
 cat /var/lib/kubelet/config.yaml | grep staticPodPath
 ```
 
-```text
-staticPodPath: /etc/kubernetes/manifests
-```
+![kubelet config.yaml 의 staticPodPath 설정값](images/day01-07-staticpodpath.png)
 
 ```bash
 # 4. YAML 문법 검증
@@ -1128,11 +1099,7 @@ python3 -c "import yaml; yaml.safe_load(open('/etc/kubernetes/manifests/static-n
 sudo crictl ps | grep kube-apiserver
 ```
 
-```text
-# 정상:
-a1b2c3d4e5f6   registry.k8s.io/kube-apiserver:v1.31.0   Running   kube-apiserver   0   ...
-# 비정상: 출력 없음 또는 Exited 상태
-```
+![crictl 로 본 kube-apiserver 컨테이너(STATE=Running)](images/day01-08-crictl-apiserver.png)
 
 ```bash
 # 2. API 서버 컨테이너 로그 확인
@@ -1159,27 +1126,15 @@ sudo crictl ps | grep etcd
 kubectl describe node <node-name> | grep -A10 Conditions
 ```
 
-```text
-Conditions:
-  Type             Status  Reason
-  ----             ------  ------
-  MemoryPressure   False   KubeletHasSufficientMemory
-  DiskPressure     False   KubeletHasNoDiskPressure
-  PIDPressure      False   KubeletHasSufficientPID
-  Ready            False   KubeletNotReady
-```
+![kubelet 중지로 NotReady 가 된 노드의 Conditions(모두 Unknown)](images/day01-09-notready-conditions.png)
 
 ```bash
 # 2. 해당 노드에 SSH 접속 후 kubelet 상태 확인
-ssh admin@<node-ip>
+ssh <vm-별칭>
 sudo systemctl status kubelet
 ```
 
-```text
-# kubelet이 죽어 있는 경우:
-● kubelet.service - kubelet: The Kubernetes Node Agent
-   Active: inactive (dead)
-```
+![kubelet 이 중지된 노드의 서비스 상태 inactive(dead)](images/day01-10-kubelet-dead.png)
 
 ```bash
 # 3. kubelet 재시작
@@ -1194,4 +1149,60 @@ sudo systemctl status containerd
 - containerd(컨테이너 런타임) 비정상 → `systemctl restart containerd`
 - 디스크 용량 부족 → `df -h`로 확인
 - kubelet 인증서 만료 → `rotateCertificates: true` 설정 확인
+
+---
+
+## 자가점검
+
+다음 질문에 답하고 `<details>`를 열어 정답을 확인한다.
+
+1. Static Pod를 삭제하려면 어떻게 해야 하는가?
+2. `kube-apiserver`가 유일하게 직접 접근하는 컴포넌트는 무엇인가?
+3. nodeName이 비어 있는 Pod를 처리하는 컴포넌트는 무엇인가?
+4. kubeadm init이 자동화하는 작업 중 3가지를 나열하라.
+5. kubelet이 Static Pod를 감지하는 메커니즘은 무엇인가?
+6. kube-proxy의 iptables 모드 한계는 무엇인가?
+7. kubeconfig의 3요소(cluster·user·context)가 각각 어떤 정보를 담는가?
+8. 인증서 만료 시 어떤 컴포넌트가 가장 먼저 장애를 일으키는가?
+
+<details>
+<summary>정답</summary>
+
+1. 해당 노드에 SSH 접속하여 staticPodPath(`/etc/kubernetes/manifests/`) 아래의 매니페스트 파일을 삭제한다. `kubectl delete pod`로는 파일이 남아 있어 kubelet이 즉시 재생성한다.
+2. etcd. 다른 모든 컴포넌트는 kube-apiserver를 통해 간접 접근한다.
+3. kube-scheduler. nodeName이 없는 Pod를 Watch하여 최적 노드를 선택하고 nodeName을 바인딩한다.
+4. PKI 인증서 생성, kubeconfig 파일 생성, Static Pod 매니페스트 배치, Bootstrap Token 발급, CoreDNS 및 kube-proxy Addon 설치 중 3가지.
+5. kubelet이 staticPodPath 디렉터리를 inotify(파일시스템 이벤트)로 감시하며 YAML 파일 추가/삭제를 실시간 감지한다.
+6. 규칙이 선형 리스트 구조이므로 Service 수가 늘면 매칭 비용이 O(n)으로 증가하고, 갱신 시 전체 테이블을 다시 쓰는 구조라 대규모 환경에서 성능이 저하된다.
+7. cluster: API 서버 주소 + CA 인증서. user: 클라이언트 인증서/개인키 또는 토큰. context: 어떤 cluster에 어떤 user로 어떤 namespace에 접근할지의 조합.
+8. kube-apiserver. API 서버 자체 TLS 인증서가 만료되면 모든 컴포넌트와 kubectl이 API 서버와 통신할 수 없어 클러스터 전체가 마비된다.
+
+</details>
+
+---
+
+## 시험 팁
+
+- **컨텍스트 전환 먼저**: 시험 문제마다 `kubectl config use-context <ctx>` 명령이 제시된다. 이것을 먼저 실행하지 않으면 엉뚱한 클러스터에서 작업하게 되어 0점이다.
+- **속도를 높이는 alias 설정**: 시험 시작 즉시 다음 설정을 입력한다.
+  ```bash
+  alias k=kubectl
+  export do='--dry-run=client -o yaml'
+  export now='--force --grace-period=0'
+  ```
+- **Static Pod 경로 찾기**: 문제에서 Static Pod 경로가 명시되지 않으면 `cat /var/lib/kubelet/config.yaml | grep staticPodPath`로 먼저 확인한다. 기본값(`/etc/kubernetes/manifests`)이 아닌 경우가 시험에 자주 출제된다.
+- **kubeadm join 명령**: `kubeadm token create --print-join-command` 한 줄로 즉시 생성된다. 외워 두면 4점짜리 문제를 30초 안에 풀 수 있다.
+- **컴포넌트 설정 확인**: API 서버 설정은 `kubectl -n kube-system get pod kube-apiserver-<node> -o yaml`로 SSH 없이 확인 가능하다. SSH보다 빠르다.
+- **SSH 접속은 VM 별칭 사용**: 이 저장소 환경에서 노드 접속은 `ssh platform-master`, `ssh dev-master` 등 `~/.ssh/config`에 등록된 별칭으로 접속한다(IP 입력 불필요).
+
+---
+
+## 더 읽을거리
+
+- [Kubernetes 공식 문서 — Cluster Architecture](https://kubernetes.io/docs/concepts/architecture/)
+- [Kubernetes 공식 문서 — kubeadm init](https://kubernetes.io/docs/reference/setup-tools/kubeadm/kubeadm-init/)
+- [Kubernetes 공식 문서 — Configure Access to Multiple Clusters](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/)
+- [Kubernetes 공식 문서 — Static Pods](https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/)
+- [Kubernetes 공식 문서 — PKI certificates and requirements](https://kubernetes.io/docs/setup/best-practices/certificates/)
+- [Kubernetes The Hard Way (Kelsey Hightower)](https://github.com/kelseyhightower/kubernetes-the-hard-way) — kubeadm 이전 수동 설치 절차의 교과서
 

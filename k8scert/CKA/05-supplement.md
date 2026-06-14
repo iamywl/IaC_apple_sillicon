@@ -1,5 +1,9 @@
 # CKA 보충 학습 자료
 
+> 학습 목표: PSA/SecurityContext/Init Container/PriorityClass/metrics-server 심화 + etcd 백업/업그레이드/NetworkPolicy/RBAC 실전 예제 + 50문항 | 도메인: Cluster Architecture 25%, Workloads & Scheduling 30%, Services & Networking 20%, Storage 15%, Troubleshooting 10% | 예상 소요: 8~12시간
+
+> 이 문서를 읽기 전에 01-concepts.md(핵심 개념), 02-examples.md(YAML 예제), 04-tart-infra-practice.md(tart 클러스터 실습)를 완료해야 한다. 특히 kubectl 기본 조작, RBAC 기본 개념, StorageClass/PV/PVC 관계는 이미 알고 있다고 가정한다.
+
 > 이 문서는 기존 CKA 학습 자료(01~04)에서 다루지 않은 핵심 토픽을 보강하고, 추가 실전 예제와 확인 문제를 제공한다. 모든 명령어와 YAML은 시험 환경에서 즉시 사용 가능한 형태로 작성한다. 각 개념에는 등장 배경, 기존 한계점, 내부 동작 원리, 장애 시나리오, 검증 방법이 포함되어 있다.
 
 ### 이 문서의 구성 원칙
@@ -13,6 +17,8 @@
 ---
 
 ## Part 1: 누락된 개념 보강
+
+> **실습 전제 (모든 검증 섹션 공통).** 아래 검증 명령은 가동 중인 tart 클러스터를 대상으로 한다. 파괴 실습이 허용된 `dev` 또는 `staging`에서만 실행하고(`platform`·`prod` 금지), kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`을 사용한다(예: `kubectl --kubeconfig kubeconfig/dev.yaml ...`). 재부팅 직후라면 먼저 `./scripts/boot.sh` 와 `./scripts/fix-cluster-ip-drift.sh <클러스터>`로 IP 드리프트를 복구한 뒤 진행한다. 각 명령 아래의 `# 예상 출력:` 블록은 실제 실행 시 나타나야 할 결과의 형태를 미리 보여주는 참고용이며(클러스터·버전에 따라 IP·AGE·해시 값은 달라진다), CLAUDE.md §4① 규약상 최종 문서에는 실제 터미널 캡처 이미지로 대체되어야 한다(캡처는 메인 작업에서 수행한다).
 
 ---
 
@@ -216,6 +222,14 @@ kubectl exec restricted-pod -n secure-app -- cat /proc/1/status | grep -i seccom
 
 이 단계적 접근법을 통해 기존 워크로드의 중단 없이 보안 정책을 강화할 수 있다.
 
+#### 트레이드오프
+
+PSA는 PSP의 복잡성을 제거하는 데 성공했지만 다음 비용을 수반한다.
+
+- **warn + enforce 동시 운용 시 운영 복잡도 증가.** warn/audit 모드를 병행하면 네임스페이스 레이블이 최대 6개까지 늘어난다. 여러 팀이 같은 클러스터를 공유하면 레이블 관리 부담이 커진다.
+- **프로파일 3종 외 세밀한 제어 불가.** PSP는 개별 capability 단위로 허용 목록을 만들 수 있었으나, PSA는 Privileged·Baseline·Restricted 세 수준만 제공한다. 더 세밀한 제어가 필요하면 OPA/Gatekeeper(Open Policy Agent — 정책을 Rego 언어로 코드화하여 Admission Webhook으로 강제하는 도구)나 Kyverno(YAML 기반 정책 엔진으로 OPA 대비 설정이 단순하고 K8s 리소스 형식과 친화적이다) 같은 외부 Admission Webhook을 추가해야 한다.
+- **네임스페이스 단위 적용 — 컨테이너 개별 예외 불가.** 같은 네임스페이스 안에서 일부 Pod만 예외 처리하려면 해당 Pod를 별도 네임스페이스로 분리해야 한다. 네임스페이스 경계를 재설계하는 비용이 발생한다.
+
 ---
 
 ### 1.2 Init Containers
@@ -352,6 +366,8 @@ kubectl describe pod myapp-pod
 
 #### Sidecar Container와의 차이 (Kubernetes 1.28+)
 
+**[배경] 기존 sidecar 패턴의 한계.** sidecar(사이드카)란 메인 앱 컨테이너 옆에서 보조 역할을 수행하는 컨테이너로, 로그 수집·프록시·모니터링 에이전트가 대표적이다. Kubernetes 1.28 이전에는 사이드카를 `containers` 배열에 일반 컨테이너로 두는 방식이 관행이었다. 이 방식의 문제는 **초기화 순서를 보장하기 어렵다**는 점이다. `containers` 배열의 컨테이너는 모두 거의 동시에 시작되므로, 사이드카가 준비되기 전에 메인 앱이 네트워크 접속을 시도해 실패할 수 있었다. 또한 Pod 종료 시 사이드카가 메인 앱보다 먼저 종료되어 로그나 메트릭이 유실되는 문제도 있었다. Kubernetes 1.28의 native sidecar는 Init Container 영역에 `restartPolicy: Always`를 추가하는 방식으로, 초기화 완료를 보장하면서도 Pod 전체 수명 동안 실행된다는 두 가지 요건을 동시에 충족한다.
+
 Kubernetes 1.28에서 sidecar 패턴이 공식 지원되었다. `restartPolicy: Always`를 가진 Init Container는 앱 컨테이너와 **동시에** 실행된다. 기존 Init Container는 "완료 후 종료"되지만, sidecar Init Container는 Pod 전체 수명 동안 실행된다. 이를 통해 로그 수집, 프록시, 모니터링 에이전트 등의 사이드카 패턴을 Init Container 섹션에서 구현할 수 있다.
 
 ```yaml
@@ -365,7 +381,15 @@ initContainers:
     mountPath: /var/log/app
 ```
 
-CKA 시험에서는 기본 Init Container(완료 후 종료)가 주로 출제된다. sidecar 패턴은 아직 GA(General Availability)가 아닌 버전에서는 출제되지 않을 수 있다.
+CKA 시험에서는 기본 Init Container(완료 후 종료)가 주로 출제된다. native sidecar(`restartPolicy: Always`를 가진 Init Container)는 Kubernetes 1.29에서 GA(General Availability — 정식 안정 버전 승격)로 승격되었다. 1.30 이상 시험 환경에서는 정식 기능이나, 문제 출제 빈도는 아직 낮다.
+
+#### 트레이드오프
+
+Init Container는 관심사 분리와 안정적 초기화 순서를 제공하지만 다음 비용을 수반한다.
+
+- **Pod 시작 지연 증가.** Init Container가 실행되는 동안 앱 컨테이너는 시작되지 않는다. DB 대기 루프가 수 분에 걸치면 전체 Pod 기동 시간이 그만큼 늘어난다. Readiness Gate나 외부 의존성 타임아웃을 설계할 때 이 지연을 고려해야 한다.
+- **이미지 추가로 노드 디스크 사용량 증가.** Init Container가 별도 이미지를 사용하면 노드에 추가 레이어가 캐시된다. 이미지가 크면 초기 Pull 시간도 늘어난다.
+- **디버깅 불편.** Init Container가 실패하면 앱 컨테이너 로그가 없다. `kubectl logs <pod> -c <init-container>` 로 개별 컨테이너를 지정해야 원인을 파악할 수 있다.
 
 #### 주의 사항 및 엣지 케이스
 
@@ -500,6 +524,14 @@ Preemption은 PDB를 존중하려 시도하지만, 높은 우선순위 Pod가 �
 | 0 ~ 999 | 배치 작업, 비필수 워크로드 | 로그 분석, 데이터 처리 |
 | 음수값 | 최저 우선순위 | 가장 먼저 축출되어야 하는 워크로드 |
 
+#### 트레이드오프
+
+PriorityClass와 Preemption은 중요 워크로드의 가용성을 높이지만 다음 비용을 수반한다.
+
+- **낮은 우선순위 워크로드의 예측 불가능한 축출.** Preemption은 언제든 발생할 수 있어 배치 작업이나 개발 환경 Pod가 갑자기 종료될 수 있다. 재시작이 허용되지 않는 상태 저장 작업에 낮은 우선순위를 부여하면 데이터 손실이 발생한다. `preemptionPolicy: Never`로 설정하거나 PDB를 설정하여 완화한다.
+- **우선순위 인플레이션 위험.** 팀마다 자신의 워크로드를 높은 우선순위로 설정하면 우선순위가 무의미해진다. 클러스터 전체 우선순위 체계를 관리자가 중앙에서 정의하고 팀별 PriorityClass 생성 권한을 RBAC으로 제한해야 한다.
+- **Preemption 이후 노드 재스케줄링 딜레이.** 축출된 Pod의 graceful termination(최대 30초)이 완료되어야 높은 우선순위 Pod가 배치된다. 즉각적인 자원 확보가 필요하면 terminationGracePeriodSeconds를 줄이는 것을 검토한다.
+
 #### 주의 사항 및 엣지 케이스
 
 - PriorityClass를 삭제해도 기존에 생성된 Pod의 priority 값은 변경되지 않는다. 새로 생성되는 Pod만 영향을 받는다.
@@ -520,6 +552,8 @@ Preemption은 PDB를 존중하려 시도하지만, 높은 우선순위 Pod가 �
 - 마운트된 Volume의 파일 소유권이 root로 설정되어 비root 프로세스에서 접근 문제가 발생한다.
 
 SecurityContext는 이 문제를 해결하기 위해 도입되었다. Pod 또는 컨테이너 수준에서 프로세스의 UID, GID, capabilities, 파일시스템 권한 등을 세밀하게 제어한다.
+
+SecurityContext와 PSA(1.1절)의 관계를 정리하면 다음과 같다. PSA는 네임스페이스 레이블로 "어떤 보안 조건을 강제할 것인가"를 선언하는 정책(policy) 계층이고, SecurityContext는 개별 Pod의 spec 필드로 "그 조건을 실제로 어떻게 만족시킬 것인가"를 기술하는 구현(implementation) 계층이다. 즉 PSA는 검사관이고, SecurityContext는 검사를 통과하기 위해 Pod가 갖춰야 하는 설정이다. 1.1절의 restricted 프로파일을 enforce하는 네임스페이스에서 Pod를 생성하려면, 이 절에서 다루는 securityContext 설정들 — `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, `seccompProfile.type: RuntimeDefault` — 이 모두 채워져 있어야 PSA의 거부(403 Forbidden)를 피할 수 있다. 두 개념을 혼동하지 않으려면, PSA는 네임스페이스 단위로 한 번 켜는 스위치이고 SecurityContext는 Pod마다 반복해서 작성하는 코드라고 기억하면 된다.
 
 #### 내부 동작 원리
 
@@ -671,6 +705,14 @@ containers:
 ```
 
 이 설정은 PSA restricted 프로파일의 요구사항을 모두 충족한다.
+
+#### 트레이드오프
+
+SecurityContext는 공격 표면을 줄이지만 다음 비용을 수반한다.
+
+- **`readOnlyRootFilesystem: true` 적용 시 기존 앱 대부분이 추가 emptyDir 패치를 필요로 한다.** nginx는 `/tmp`, `/var/cache/nginx`, `/var/run`, redis는 `/data`, 많은 JVM 앱은 임시 파일 디렉토리를 루트 파일시스템에 쓴다. 각 앱의 쓰기 경로를 파악해 emptyDir을 일일이 마운트해야 하므로 초기 설정 비용이 높다.
+- **비root UID 전환 시 파일 소유권 충돌.** 기존 이미지가 root(UID 0)로 파일을 생성했으면 비root UID로 전환할 때 파일 접근 오류가 발생한다. `fsGroup`이나 initContainer의 `chown` 명령으로 보정해야 한다.
+- **capabilities drop 후 앱 재검증 필요.** `drop: ALL` 설정 후 앱이 특정 capability를 사용하고 있었다면 오류 없이 기능이 누락되거나 Permission denied가 발생한다. 모든 기능 경로를 다시 테스트해야 한다.
 
 #### 주의 사항 및 엣지 케이스
 
@@ -857,17 +899,11 @@ kubectl get apiservice v1beta1.metrics.k8s.io
 
 검증 (정상):
 
-```text
-NAME                         SERVICE                      AVAILABLE   AGE
-v1beta1.metrics.k8s.io       kube-system/metrics-server   True        5m
-```
+![metrics-server 정상 시 APIService AVAILABLE=True(dev 실측)](images/m05-01-apiservice.png)
 
 검증 (비정상):
 
-```text
-NAME                         SERVICE                      AVAILABLE   AGE
-v1beta1.metrics.k8s.io       kube-system/metrics-server   False       5m
-```
+> **비정상 시그니처(참조):** metrics-server 가 죽으면 같은 명령에서 `AVAILABLE   False` 로 표시된다(Aggregation API 다운). 조치: `kubectl -n kube-system get pods -l k8s-app=metrics-server` 로 Pod 상태 점검 후 재기동.
 
 AVAILABLE이 False이면 metrics-server Pod 상태를 확인한다: `kubectl get pods -n kube-system -l k8s-app=metrics-server`.
 
@@ -883,6 +919,8 @@ AVAILABLE이 False이면 metrics-server Pod 상태를 확인한다: `kubectl get
 ## Part 2: 추가 실전 예제
 
 > 이 파트의 각 예제는 CKA 시험에서 자주 출제되는 시나리오를 기반으로 작성한다. 각 예제에는 등장 배경, 내부 동작 원리, 장애 시나리오가 포함되어 있다.
+>
+> **실습 전제.** etcd 백업/복원·kubeadm 업그레이드 예제는 노드에 직접 들어가야 하므로 `staging`(또는 별도 실습 클러스터)에서 SSH로 진행한다(`ssh staging-master` 등, §3의 전용 키 별칭). 등장하는 인증서 경로의 의미는 다음과 같다 — `--cacert`(etcd CA: 서버 신원을 검증하는 인증 기관 인증서), `--cert`/`--key`(클라이언트가 자신을 증명하는 인증서·개인키 쌍). 이 세 개가 mTLS(양방향 TLS, 서버·클라이언트가 서로의 신원을 인증서로 확인하는 방식) 접속에 모두 필요하다. kubectl로 클러스터 상태를 확인하는 명령은 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`을 사용한다. `# 예상 출력:` 블록은 형태 참고용이며 최종 문서에서는 실제 터미널 캡처로 대체된다(§4①).
 
 ---
 
@@ -904,7 +942,7 @@ etcd의 데이터 구성 요소:
 - **WAL(Write-Ahead Log)**: `/var/lib/etcd/member/wal/` — 트랜잭션 로그. 모든 쓰기 작업이 먼저 WAL에 기록된 후 boltdb에 적용된다. 장애 복구 시 WAL을 재생(replay)하여 일관성을 보장한다.
 - **스냅샷**: `/var/lib/etcd/member/snap/` — WAL이 일정 크기를 초과하면 스냅샷을 생성하고 이전 WAL을 정리한다.
 
-`etcdctl snapshot save`는 현재 boltdb의 consistent snapshot을 생성한다. 스냅샷 생성 중에도 etcd는 읽기/쓰기를 계속 처리하며, copy-on-write 메커니즘에 의해 스냅샷 일관성이 보장된다.
+`etcdctl snapshot save`는 현재 boltdb의 consistent snapshot(특정 시점의 데이터를 모순 없이 담은 일관된 사본)을 생성한다. 스냅샷 생성 중에도 etcd는 읽기/쓰기를 계속 처리하는데, 이것이 가능한 이유는 boltdb가 copy-on-write 메커니즘(원본 데이터 페이지는 그대로 두고, 수정이 발생할 때만 새 페이지에 복사본을 만들어 거기에 쓰는 기법)을 쓰기 때문이다. 스냅샷은 시작 시점의 페이지들을 가리키므로, 스냅샷 도중 들어온 쓰기는 새 페이지로 가고 스냅샷 결과에는 섞이지 않는다. 따라서 백업 중 클러스터를 멈출 필요가 없다.
 
 etcd 백업/복원에서 주의할 점은 다음과 같다:
 - `ETCDCTL_API=3`을 반드시 지정해야 한다. API v2는 Kubernetes에서 사용하지 않는다.
@@ -956,6 +994,13 @@ ETCDCTL_API=3 etcdctl snapshot restore /opt/etcd-backup.db \
   --data-dir=/var/lib/etcd-restored
 
 # 3. etcd 매니페스트에서 data-dir 경로 변경
+# [경로가 두 곳인 이유]
+# etcd.yaml에는 동일 경로가 두 군데 존재한다:
+#   ① command 배열의 --data-dir 인자 → etcd 프로세스가 데이터를 읽고 쓸 디렉토리
+#   ② volumes.hostPath.path 값 → 노드의 해당 디렉토리를 Pod 안으로 마운트하는 선언
+# ①만 바꾸면 etcd는 새 경로로 열려고 하지만 Pod 안에는 옛 디렉토리가 마운트되어 빈 디렉토리를 본다.
+# ②만 바꾸면 반대로 노드의 새 디렉토리가 마운트되지만 etcd 프로세스는 옛 경로로 접근한다.
+# 두 곳을 모두 바꿔야 "복원된 데이터가 있는 노드 디렉토리"를 "etcd 프로세스가 올바른 경로로" 사용한다.
 # 주의: 이 sed 명령은 --data-dir 인자와 hostPath 볼륨 경로를 모두 변경한다.
 # etcd.yaml 안에서 두 곳(command의 --data-dir 값, volumes.hostPath.path 값)이
 # 모두 새 경로로 바뀌어야 복원이 정상 동작한다.
@@ -1009,34 +1054,38 @@ Kubernetes 클러스터 업그레이드는 다음 규칙을 준수해야 한다:
 
 #### Control Plane 노드 업그레이드
 
+업그레이드 순서에는 이유가 있다. 암기 대신 각 단계가 무엇을 보장하는지 이해하면 변형 문제에도 대응할 수 있다. 핵심 원칙은 두 가지다. 첫째, kubeadm은 클러스터의 "설계도"를 갱신하는 도구이므로 가장 먼저 올린다 — kubeadm을 올려야 새 버전 매니페스트를 적용할 `kubeadm upgrade apply`를 쓸 수 있다. 둘째, kubelet은 실제 Pod를 돌리는 노드 에이전트이므로, 그것이 관리하는 Pod를 다른 노드로 옮긴(drain) 다음에 교체한다 — kubelet 재시작 중에는 해당 노드의 Pod가 잠깐 영향을 받을 수 있기 때문이다. 단계별 상태 변화는 다음 주석에 표기했다.
+
 ```bash
 # 1. 사용 가능한 kubeadm 버전 확인
 apt-cache madison kubeadm | grep 1.31
 
-# 2. kubeadm 업그레이드
+# 2. kubeadm 업그레이드 — 설계도 도구를 먼저 올려야 4단계 upgrade apply가 새 버전을 인식한다
+#    (apt-mark hold는 자동 업데이트로 버전이 멋대로 바뀌는 것을 막는 잠금이다)
 sudo apt-mark unhold kubeadm
 sudo apt-get update && sudo apt-get install -y kubeadm=1.31.0-1.1
 sudo apt-mark hold kubeadm
 
-# 3. 업그레이드 계획 확인
+# 3. 업그레이드 계획 확인 — apply 전에 어떤 컴포넌트가 어느 버전으로 바뀌는지 미리 점검(dry-run 성격)
 sudo kubeadm upgrade plan
 
-# 4. 업그레이드 적용
+# 4. 업그레이드 적용 — control plane 정적 Pod(apiserver/controller-manager/scheduler) 매니페스트를 새 버전으로 교체.
+#    이 시점에 apiserver는 1.31, kubelet은 아직 1.30 — kubelet이 apiserver보다 뒤처지는 것은 version skew policy 범위 내라 정상이다
 sudo kubeadm upgrade apply v1.31.0
 
-# 5. 노드 drain
+# 5. 노드 drain — 다음 단계에서 kubelet을 재시작하므로, 그 전에 이 노드의 Pod를 다른 노드로 옮겨 중단을 막는다
 kubectl drain controlplane --ignore-daemonsets --delete-emptydir-data
 
-# 6. kubelet, kubectl 업그레이드
+# 6. kubelet, kubectl 업그레이드 — 노드가 비워진 상태에서 안전하게 바이너리 교체
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get install -y kubelet=1.31.0-1.1 kubectl=1.31.0-1.1
 sudo apt-mark hold kubelet kubectl
 
-# 7. kubelet 재시작
+# 7. kubelet 재시작 — 새 바이너리를 실제로 적용(daemon-reload는 변경된 systemd 유닛 설정을 다시 읽는 것)
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
-# 8. 노드 uncordon
+# 8. 노드 uncordon — drain으로 막아둔 스케줄링을 다시 열어 Pod가 이 노드에 배치되도록 복구
 kubectl uncordon controlplane
 ```
 
@@ -1065,23 +1114,24 @@ kubectl get pods -n kube-system -o custom-columns=NAME:.metadata.name,IMAGE:.spe
 
 #### Worker 노드 업그레이드
 
-```bash
-# Worker 노드에 SSH 접속
-ssh worker-1
+> **터미널 준비.** 아래 절차는 두 개의 터미널이 필요하다: [터미널 A] Control Plane 접속용(`ssh staging-master`), [터미널 B] Worker 노드 SSH 접속용(`ssh staging-worker1`). 각 명령 앞에 실행 위치를 표기한다.
 
-# 1. kubeadm 업그레이드
+```bash
+# [터미널 B] Worker 노드에 SSH 접속
+ssh staging-worker1   # ~/.ssh/config에 등록된 별칭 사용 (IP 직접 입력 불필요)
+
+# [터미널 B] 1. kubeadm 업그레이드
 sudo apt-mark unhold kubeadm
 sudo apt-get update && sudo apt-get install -y kubeadm=1.31.0-1.1
 sudo apt-mark hold kubeadm
 
-# 2. kubeadm 업그레이드 적용 (Worker는 upgrade node)
+# [터미널 B] 2. kubeadm 업그레이드 적용 (Worker는 upgrade node)
 sudo kubeadm upgrade node
 
-# 3. Control Plane에서 drain
-# (Control Plane 터미널에서 실행)
+# [터미널 A] 3. Control Plane에서 drain — kubelet 교체 전에 워크로드를 다른 노드로 이동
 kubectl drain worker-1 --ignore-daemonsets --delete-emptydir-data
 
-# 4. kubelet, kubectl 업그레이드 (Worker 터미널에서)
+# [터미널 B] 4. kubelet, kubectl 업그레이드
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get install -y kubelet=1.31.0-1.1 kubectl=1.31.0-1.1
 sudo apt-mark hold kubelet kubectl
@@ -1089,7 +1139,7 @@ sudo apt-mark hold kubelet kubectl
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
-# 5. Control Plane에서 uncordon
+# [터미널 A] 5. Control Plane에서 uncordon — 업그레이드 완료 후 스케줄링 재개
 kubectl uncordon worker-1
 ```
 
@@ -1510,13 +1560,7 @@ web-1.nginx-headless.default.svc.cluster.local → 10.244.2.6
 web-2.nginx-headless.default.svc.cluster.local → 10.244.3.7
 ```
 
-그러나 다음과 같은 요구사항을 가진 stateful 워크로드에는 적합하지 않다:
-
-- **안정적인 네트워크 ID**: 각 Pod에 고유하고 예측 가능한 DNS 이름이 필요하다 (예: db-0, db-1, db-2).
-- **순서가 보장되는 배포/삭제**: Pod가 0, 1, 2 순서로 생성되고 2, 1, 0 순서로 삭제되어야 한다.
-- **Pod별 고유 스토리지**: 각 Pod에 독립적인 PVC가 할당되어야 한다. Pod가 재시작되어도 동일한 PVC에 연결되어야 한다.
-
-StatefulSet은 이 요구사항을 해결한다. Headless Service(`clusterIP: None`)와 함께 사용하여 각 Pod에 `<pod-name>.<service-name>.<namespace>.svc.cluster.local` 형태의 안정적인 DNS 이름을 제공한다.
+위 DNS 구조가 가능한 이유는 앞서 설명한 Deployment 한계 — Pod 이름 비고정, 공유 스토리지 불가, 스케줄 순서 미보장, 재생성 시 IP 변경 — 를 StatefulSet이 순서 보장·고정 이름·Pod별 PVC·Headless Service DNS로 각각 대응하기 때문이다. 아래 YAML 예제는 이 원리를 구현한 것이다.
 
 ```yaml
 # Headless Service (clusterIP: None)
@@ -1564,10 +1608,59 @@ spec:
       name: www
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: standard
+      storageClassName: standard   # 주의: 클러스터에 실제로 존재하는 StorageClass 이름을 사용해야 한다.
+                                   # kubectl get sc 로 사용 가능한 StorageClass를 확인한다.
+                                   # tart dev/staging 클러스터에 'standard'가 없으면 PVC가 Pending 상태에 머문다.
       resources:
         requests:
           storage: 1Gi
+
+> **tart 클러스터 실습 주의.** tart dev/staging 클러스터에는 동적 프로비저닝 StorageClass가 없으므로 `storageClassName: standard`를 지정하면 PVC가 Pending 상태에 머물고 StatefulSet Pod가 Running이 되지 않는다. tart 환경에서는 다음 두 가지 방법 중 하나를 사용한다.
+>
+> **방법 1 — 실제 StorageClass 이름 확인 후 대체.**
+> ```bash
+> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get sc
+> # NAME   PROVISIONER   RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+> # (없으면 빈 목록 또는 기본 제공 sc만 표시됨)
+> ```
+> 출력된 NAME 값이 있으면 그 이름으로 `storageClassName`을 교체한다.
+>
+> **방법 2 — volumeClaimTemplates 없이 hostPath volumes 직접 마운트 (tart 전용 대안 예제).**
+>
+> StatefulSet의 `volumeClaimTemplates`를 제거하고, Pod 템플릿에 `volumes[].hostPath`를 직접 선언하면 동적 프로비저닝 없이 노드 로컬 경로를 마운트할 수 있다. 단, Pod별 독립 스토리지 보장은 되지 않으므로 StatefulSet 동작 원리 학습(순서 보장·안정적 이름)에만 사용하고 스토리지 격리 검증은 방법 1로 한다.
+>
+> ```yaml
+> # tart 대안: volumeClaimTemplates 없이 hostPath 사용
+> apiVersion: apps/v1
+> kind: StatefulSet
+> metadata:
+>   name: web-local
+> spec:
+>   serviceName: nginx-headless
+>   replicas: 2
+>   selector:
+>     matchLabels:
+>       app: nginx-local
+>   template:
+>     metadata:
+>       labels:
+>         app: nginx-local
+>     spec:
+>       containers:
+>       - name: nginx
+>         image: nginx:1.25
+>         ports:
+>         - containerPort: 80
+>           name: web
+>         volumeMounts:
+>         - name: www
+>           mountPath: /usr/share/nginx/html
+>       volumes:
+>       - name: www
+>         hostPath:
+>           path: /tmp/statefulset-data   # 노드 로컬 경로, 실습용
+>           type: DirectoryOrCreate
+> ```
 ```
 
 #### 검증
@@ -3548,6 +3641,8 @@ cat /opt/pod-logs.txt | wc -l
 
 #### 문제 29. kube-proxy 모드 확인 및 트러블슈팅
 
+> **이 저장소 환경 주의.** 이 저장소의 tart 클러스터는 Cilium이 kube-proxy를 완전히 대체한다(§3 참조). 따라서 `kube-proxy` DaemonSet이 존재하지 않으며, `kubectl get daemonset kube-proxy -n kube-system` 명령이 `NotFound` 오류를 반환하는 것이 정상이다. 아래 문제는 표준 kubeadm 클러스터(Cilium 미사용)에서 kube-proxy가 존재하는 시험 환경을 전제한다. dev/staging 클러스터에서 실습하면 kube-proxy 관련 명령은 동작하지 않는다.
+
 kube-proxy의 동작 모드를 확인하고, Service에 접근이 안 될 때의 진단 절차를 작성하라.
 
 <details>
@@ -5303,17 +5398,11 @@ sudo crictl logs $(sudo crictl ps | grep controller-manager | awk '{print $1}') 
 
 검증 (정상 동작):
 
-```text
-I0330 10:00:00.000000       1 controllermanager.go:165] Version: v1.31.0
-I0330 10:00:00.000000       1 leaderelection.go:250] attempting to acquire leader lease kube-system/kube-controller-manager...
-I0330 10:00:00.000000       1 leaderelection.go:260] successfully acquired lease kube-system/kube-controller-manager
-```
+![kube-controller-manager 정상 로그 — 리더 선출 성공(platform 실측)](images/m05-03-cm-logs.png)
 
 검증 (비정상 - 인증서 오류):
 
-```text
-E0330 10:00:00.000000       1 authentication.go:67] Unable to authenticate the request due to an error: x509: certificate signed by unknown authority
-```
+> **비정상 시그니처(참조):** 인증서 문제 시 로그에 `x509: certificate signed by unknown authority` 가 보인다. 조치: `/etc/kubernetes/pki` CA 일관성·`kubeadm certs check-expiration` 점검.
 
 #### kube-scheduler 장애
 
@@ -5329,16 +5418,11 @@ kubectl logs -n kube-system kube-scheduler-<master-node> --tail=30
 
 검증 (정상):
 
-```text
-I0330 10:00:00.000000       1 server.go:154] "Starting Kubernetes Scheduler" version="v1.31.0"
-I0330 10:00:00.000000       1 leaderelection.go:260] successfully acquired lease kube-system/kube-scheduler
-```
+![kube-scheduler 정상 로그 — 리더 선출 성공(platform 실측)](images/m05-05-sched-logs.png)
 
 검증 (비정상 - 리더 선출 실패):
 
-```text
-E0330 10:00:00.000000       1 leaderelection.go:340] error retrieving resource lock kube-system/kube-scheduler: Get "https://127.0.0.1:6443/...": dial tcp 127.0.0.1:6443: connect: connection refused
-```
+> **비정상 시그니처(참조):** API 서버가 내려가면 scheduler 로그에 `dial tcp 127.0.0.1:6443: connect: connection refused` 가 반복된다. 조치: apiserver 정적 파드 상태(`crictl ps | grep apiserver`)부터 확인.
 
 이 경우 kube-apiserver가 먼저 정상인지 확인해야 한다. kube-scheduler는 kube-apiserver에 의존하기 때문이다.
 
@@ -5399,11 +5483,7 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide
 
 검증 (정상):
 
-```text
-NAME                       READY   STATUS    RESTARTS   AGE   IP           NODE
-coredns-5dd5756b68-abc12   1/1     Running   0          30d   10.244.0.2   controlplane
-coredns-5dd5756b68-def34   1/1     Running   0          30d   10.244.0.3   controlplane
-```
+![CoreDNS Pod 정상 Running(dev 실측)](images/m05-07-coredns.png)
 
 ```bash
 # Step 2: kube-dns Endpoints 확인
@@ -5412,17 +5492,11 @@ kubectl get endpoints kube-dns -n kube-system
 
 검증 (정상):
 
-```text
-NAME       ENDPOINTS                                         AGE
-kube-dns   10.244.0.2:53,10.244.0.3:53,10.244.0.2:53 + 3 more...   30d
-```
+![kube-dns Service 의 Endpoints — CoreDNS Pod IP:53(dev 실측)](images/m05-08-endpoints.png)
 
 검증 (비정상):
 
-```text
-NAME       ENDPOINTS   AGE
-kube-dns   <none>      30d
-```
+> **비정상 시그니처(참조):** CoreDNS Pod 가 모두 죽으면 `kube-dns` Endpoints 가 `<none>` 이 되어 클러스터 DNS 가 전면 실패한다. 조치: CoreDNS Deployment 롤아웃·노드 상태 점검.
 
 Endpoints가 비어 있으면 CoreDNS Pod가 Ready가 아닌 것이다.
 
@@ -5470,15 +5544,11 @@ ETCDCTL_API=3 etcdctl endpoint health \
 
 검증 (정상):
 
-```text
-https://127.0.0.1:2379 is healthy: successfully committed proposal: took = 2.5ms
-```
+![etcd endpoint health — 정상(successfully committed proposal, platform 실측)](images/m05-10-etcd-health.png)
 
 검증 (비정상):
 
-```text
-{"level":"warn","ts":"2026-03-30T10:00:00.000Z","caller":"clientv3/retry_interceptor.go:62","msg":"retrying of unary invoker failed","target":"endpoint://client-xxx/127.0.0.1:2379","attempt":0,"error":"rpc error: code = DeadlineExceeded desc = context deadline exceeded"}
-```
+> **비정상 시그니처(참조):** etcd 응답 불가 시 `context deadline exceeded`(DeadlineExceeded) 가 반환된다. 조치: etcd 정적 파드·디스크 I/O·peer 연결 점검.
 
 etcd 장애 시 스냅샷이 있으면 복원한다:
 

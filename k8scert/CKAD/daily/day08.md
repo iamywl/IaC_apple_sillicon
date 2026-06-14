@@ -4,6 +4,8 @@
 
 ---
 
+> **Day 7 → Day 8 연결**: Day 7(Part 2a)에서 선언형 Deployment 작성과 기본 롤아웃(kubectl rollout) 개념을 다뤘다. Day 8은 그 위에서 Helm으로 여러 리소스를 패키지 단위로 관리하는 실전 패턴과, Deployment Controller가 내부적으로 ReplicaSet을 어떻게 제어하는지 메커니즘 수준으로 심화한다. Day 9에서는 ConfigMap·Secret을 활용한 애플리케이션 구성 관리를 다룬다.
+
 ## 오늘의 학습 목표
 
 - [ ] Helm 실전 활용 패턴(환경별 배포, 롤백)을 연습한다
@@ -14,6 +16,8 @@
 ---
 
 ## 1. Helm 실전 활용
+
+> **Day 8 연결 고리**: Helm은 여러 Deployment를 한꺼번에 관리하는 패키징 도구이다. 그 내부에서 Deployment Controller가 어떻게 롤아웃을 제어하는지를 함께 이해하는 것이 CKAD 실기의 핵심이다. 두 주제를 하루에 묶어 다루는 이유가 여기에 있다.
 
 ### 1.1 등장 배경
 
@@ -40,6 +44,8 @@ values.yaml로 환경별 변수를 주입하고, Release 단위로 버전/롤백
 
 ### 1.2 환경별 배포
 
+> **맥락 연결**: 아래 예시는 자체 제작 Chart(`./mychart`)를 가정한 명령 형식이다. Day 8 실전 문제(섹션 3)에서는 `bitnami/nginx` Chart를 원격 리포지토리에서 받아 쓰며, `./mychart` 구조(Chart.yaml, templates/, values.yaml)는 Day 7에서 `helm create`로 생성한 것을 참조한다(day07.md 섹션 1.3). 직접 차트를 만들지 않아도 개념 학습에는 지장이 없다.
+
 ```bash
 # dev 환경
 helm install myapp ./mychart -f values-dev.yaml -n dev
@@ -59,10 +65,7 @@ helm list -n production
 ```
 
 기대 출력:
-```text
-NAME    NAMESPACE    REVISION    UPDATED                                 STATUS      CHART            APP VERSION
-myapp   production   1           2024-01-15 10:30:00.123456 +0900 KST    deployed    mychart-0.1.0    1.0.0
-```
+> **예시(참조) — 로컬 차트 helm list:** `./mychart` 로컬 차트를 직접 작성해 설치하면 위 형식으로 NAMESPACE/REVISION/CHART 가 표시된다(형식은 bitnami 차트 실측과 동일). 실제 출력 형식은 아래 문제 1 풀이의 스크린샷(그림 day08-03-list.png)과 동일하다.
 
 ### 1.3 Helm으로 배포 관리
 
@@ -86,12 +89,7 @@ helm history myapp -n production
 ```
 
 기대 출력:
-```text
-REVISION    UPDATED                     STATUS        CHART            APP VERSION    DESCRIPTION
-1           Mon Jan 15 10:30:00 2024    superseded    mychart-0.1.0    1.0.0          Install complete
-2           Mon Jan 15 11:00:00 2024    superseded    mychart-0.1.0    1.0.0          Upgrade complete
-3           Mon Jan 15 11:30:00 2024    deployed      mychart-0.1.0    1.0.0          Rollback to 2
-```
+> **예시(참조) — 로컬 차트 history:** 로컬 차트 업그레이드 시 revision 이 superseded 로 누적되고 Rollback 이 새 revision 으로 기록된다(형식은 위 web-release 실측과 동일). 실제 출력 형식은 아래 문제 2 풀이의 스크린샷(그림 day08-05-history.png)과 동일하다.
 
 ### 1.4 Helm 내부 동작 원리
 
@@ -100,10 +98,11 @@ REVISION    UPDATED                     STATUS        CHART            APP VERSI
 
 1. Chart 로딩
    - templates/ 디렉토리의 Go 템플릿 파일 파싱
+     (Go 템플릿 엔진: {{ }} 이중 중괄호로 변수를 치환하는 Go 언어 기반 텍스트 처리 방식)
    - values.yaml + -f 오버라이드 + --set 값 병합
 
 2. 템플릿 렌더링
-   - Go template 엔진이 {{ .Values.xxx }}를 치환
+   - Go template 엔진이 {{ .Values.xxx }}를 실제 값으로 치환
    - 결과물은 순수 Kubernetes YAML 매니페스트
 
 3. API Server에 전송
@@ -113,8 +112,22 @@ REVISION    UPDATED                     STATUS        CHART            APP VERSI
 4. Release 정보 저장
    - Release 메타데이터를 해당 네임스페이스의 Secret으로 저장
    - Secret 이름 형식: sh.helm.release.v1.<release-name>.v<revision>
+     (이 형식은 Helm이 Release 이력을 추적하기 위해 정한 내부 규약이다.
+      revision 번호마다 별도 Secret이 생성되어 롤백 시 참조된다)
    - 이 Secret에 렌더링된 매니페스트, values, Chart 메타데이터가 포함된다
 ```
+
+### 1.5 트레이드오프
+
+Helm은 환경별 분기·일괄 롤백·리소스 묶음 관리라는 실질적인 문제를 해결하지만, 새로운 비용도 수반한다.
+
+**Go 템플릿 디버깅 어려움**: `{{ if .Values.ingress.enabled }}` 같은 조건 분기가 복잡해지면 렌더링 결과가 예측하기 어렵다. `helm lint`로 정적 검사하고, `helm template` 명령으로 실제 렌더링 결과를 사전 확인하는 습관이 필요하다. `helm lint` 없이 배포하면 Go 템플릿 문법 오류가 배포 직전에야 발견된다.
+
+**out-of-band drift**: `helm install`로 배포한 리소스를 `kubectl edit`나 `kubectl patch`로 직접 수정하면 Helm의 Release 메타데이터와 클러스터 실제 상태가 달라진다(out-of-band drift: Helm 관리 범위 밖에서 발생한 상태 불일치). 이후 `helm upgrade`를 실행하면 Helm이 저장된 Release 값으로 덮어쓰므로 직접 수정한 내용이 사라진다.
+
+**롤백 가능 범위 제한**: `revisionHistoryLimit`(기본 10) 이상 오래된 revision은 Secret이 삭제되어 롤백이 불가하다. 매우 오래된 버전으로 되돌려야 할 때는 Chart 리포지토리에서 이전 Chart를 직접 받아 재배포해야 한다.
+
+**values 병합 오류 추적 복잡성**: 여러 `-f` 파일과 `--set` 옵션이 겹치면 최종 적용 값이 직관과 다를 수 있다. `helm get values <release> --all`로 실제 병합 결과를 항상 확인한다.
 
 ---
 
@@ -122,57 +135,40 @@ REVISION    UPDATED                     STATUS        CHART            APP VERSI
 
 ### 2.1 Deployment Controller의 상세 동작
 
+아래 다이어그램을 한 번에 읽으려 하면 복잡해 보인다. 다음 4단계 순서로 따라 읽는다.
+
+- **① 사용자 요청**: `kubectl apply` → API Server(승인·검증) → etcd 저장
+- **② 변경 감지**: Deployment Controller가 etcd 변경을 Watch/Informer로 감지하고 `spec.template` 해시를 계산한다
+- **③ RS 분기**: template이 바뀌면 새 ReplicaSet 생성 후 전략(RollingUpdate/Recreate)에 따라 교체. 바뀌지 않으면 replica 수만 조정한다
+- **④ Pod 생성**: ReplicaSet Controller → Scheduler(노드 선택) → Kubelet(컨테이너 생성·Probe 실행) 순으로 진행된다
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  apply["kubectl apply -f deployment.yaml"] --> api["API Server\nAdmission Controllers (ResourceQuota, LimitRange)\nValidation (YAML 문법, 필드 검증)"]
+  api --> etcd[("etcd에 Deployment 오브젝트 저장")]
+  etcd --> dc["Deployment Controller (kube-controller-manager)\n변경 감지(Informer/Watch)\nspec.template 해시 계산 -> 이전 RS와 비교"]
+  dc --> tmpl{"template 변경?"}
+  tmpl -->|새 template| newrs["새 ReplicaSet 생성 (hash suffix)\n예: app-deploy-6d5b7c9f8d"]
+  newrs --> strat{"strategy?"}
+  strat -->|RollingUpdate| ru["새 RS +maxSurge / 이전 RS -maxUnavailable\n모두 새 버전이 될 때까지 반복"]
+  strat -->|Recreate| rc["이전 RS replicas -> 0 (전체 종료)\n새 RS replicas -> desired"]
+  tmpl -.->|같은 template| same["replicas만 조정 (기존 RS 사용)"]
+  ru --> rsc["ReplicaSet Controller\ndesired vs actual 비교\n부족: Pod 생성 / 초과: Pod 삭제"]
+  rc --> rsc
+  same --> rsc
+  rsc --> sched["Scheduler\n적합한 Node 선택 -> Pod에 nodeName 할당"]
+  sched --> kubelet["Kubelet\n할당 Pod 감지 -> containerd에 컨테이너 생성 요청\nProbe 실행 (Startup -> Liveness, Readiness)"]
 ```
-[kubectl apply -f deployment.yaml]
-    |
-    v
-[API Server]
-    ├── Admission Controllers (ResourceQuota, LimitRange 등)
-    ├── Validation (YAML 문법, 필드 검증)
-    └── etcd에 Deployment 오브젝트 저장
-    |
-    v
-[Deployment Controller] (kube-controller-manager 내부)
-    ├── Deployment 변경 감지 (Informer/Watch)
-    ├── spec.template 해시 계산
-    |   └── 이전 ReplicaSet과 비교
-    |
-    ├── [새 template인 경우]
-    |   ├── 새 ReplicaSet 생성 (hash suffix 포함)
-    |   |   예: app-deploy-6d5b7c9f8d (해시: 6d5b7c9f8d)
-    |   |
-    |   └── strategy에 따라 스케일 조정
-    |       ├── RollingUpdate:
-    |       |   ├── 새 RS replicas 증가 (maxSurge만큼)
-    |       |   └── 이전 RS replicas 감소 (maxUnavailable만큼)
-    |       |   └── 반복 (모든 Pod가 새 버전이 될 때까지)
-    |       |
-    |       └── Recreate:
-    |           ├── 이전 RS replicas -> 0 (모든 Pod 종료)
-    |           └── 새 RS replicas -> desired (새 Pod 생성)
-    |
-    └── [같은 template인 경우]
-        └── replicas만 조정 (기존 RS 사용)
-    |
-    v
-[ReplicaSet Controller]
-    ├── desired vs actual Pod 수 비교
-    ├── 부족하면: Pod 생성 요청
-    └── 초과하면: Pod 삭제 요청
-    |
-    v
-[Scheduler]
-    ├── 생성 요청된 Pod에 적합한 Node 선택
-    └── Pod에 nodeName 할당
-    |
-    v
-[Kubelet]
-    ├── 할당된 Pod 감지
-    ├── 컨테이너 런타임(containerd)에 컨테이너 생성 요청
-    └── Probe 실행 (Startup -> Liveness, Readiness)
-```
+_그림 1. Deployment 적용 시 컨트롤 플레인 reconcile 흐름._
+
+> **다이어그램 용어 보충**
+> - **Informer/Watch**: kube-controller-manager가 etcd 변경을 실시간 감지하는 메커니즘. HTTP long-polling 대신 etcd의 Watch API를 활용해 이벤트를 스트리밍 수신한다
+> - **ResourceQuota/LimitRange**: API Server의 승인(Admission) 단계에서 네임스페이스별 자원 상한을 검사하는 플러그인이다. 이 개념은 Day 10(구성·제한)에서 상세히 다룬다. 지금은 "API Server가 단순 문법 검증 외에도 정책 검사를 수행한다"는 사실만 기억한다
 
 ### 2.2 RollingUpdate 상세 과정 (replicas=4, maxSurge=1, maxUnavailable=1)
+
+> 실제 배포에서는 `maxSurge=25%`, `maxUnavailable=1` 같은 비율을 혼합해 쓰는 경우가 많다. 여기서는 학습 목적으로 절댓값(1)으로 단순화했다.
 
 ```
 초기 상태: Old RS (4 Pod)
@@ -194,7 +190,12 @@ REVISION    UPDATED                     STATUS        CHART            APP VERSI
   New RS: █░   (1 running, 1 starting)
   총: 5, 가용: 4
 
-... (반복)
+단계 4: New Pod Ready -> Old Pod 1개 종료
+  Old RS: ██   (2 running, 1 terminating)
+  New RS: ██   (2 running)
+  총: 4, 가용: 4
+
+... (이후 동일 패턴 반복 — 단계 2~4 를 New RS 가 4개 모두 Ready 될 때까지 반복)
 
 최종: New RS (4 Pod), Old RS (0 Pod)
   Old RS: (0, 보관됨, revisionHistoryLimit까지)
@@ -230,6 +231,17 @@ kubectl rollout history deployment/app-deploy --revision=2
 
 ## 3. 실전 시험 문제 (12문제)
 
+> **실습 전제 조건 (문제 1~5, 11 공통)**
+> - 클러스터가 가동 중이어야 한다. 가동 확인: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes`
+> - Helm bitnami 리포지토리를 미리 등록한다:
+>   ```bash
+>   helm repo add bitnami https://charts.bitnami.com/bitnami
+>   helm repo update
+>   ```
+> - 문제 1~5는 순서대로 실행해야 한다. 각 문제는 이전 문제의 결과를 전제로 한다.
+> - 로컬에 `./mychart` 디렉터리를 직접 만들 필요 없다. 공식 bitnami/nginx Chart를 원격 리포지토리에서 바로 받아 쓴다.
+> - 노드 SSH 접근이 필요하면 `ssh dev-master` 별칭을 쓴다(kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`).
+
 ### 문제 1. Helm 설치 및 값 오버라이드
 
 bitnami 리포지토리에서 nginx Chart를 설치하라.
@@ -257,23 +269,14 @@ helm list -n helm-exam
 ```
 
 기대 출력:
-```text
-NAME          NAMESPACE    REVISION    STATUS      CHART          APP VERSION
-web-release   helm-exam    1           deployed    nginx-x.x.x   x.x.x
-```
+![helm list — web-release](images/day08-03-list.png)
 
 ```bash
 kubectl get deploy,svc -n helm-exam
 ```
 
 기대 출력:
-```text
-NAME                          READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/web-release   2/2     2            2           30s
-
-NAME                  TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-service/web-release   NodePort   10.96.x.x     <none>        80:3xxxx/TCP   30s
-```
+![web-release-nginx Deployment 2/2](images/day08-04-deploy.png)
 
 </details>
 
@@ -301,20 +304,14 @@ helm history web-release -n helm-exam
 ```
 
 기대 출력:
-```text
-REVISION    UPDATED                     STATUS        CHART          DESCRIPTION
-1           ...                         superseded    nginx-x.x.x   Install complete
-2           ...                         deployed      nginx-x.x.x   Upgrade complete
-```
+![helm history — install/upgrade/rollback 리비전](images/day08-05-history.png)
 
 ```bash
 kubectl get deploy -n helm-exam -o jsonpath='{.items[0].spec.replicas}'
 ```
 
 기대 출력:
-```text
-4
-```
+> **예시(참조):** `helm history` 의 현재 deployed revision 번호. 업그레이드/롤백을 거듭하면 단조 증가한다.
 
 </details>
 
@@ -336,21 +333,14 @@ helm history web-release -n helm-exam
 ```
 
 기대 출력:
-```text
-REVISION    UPDATED                     STATUS        CHART          DESCRIPTION
-1           ...                         superseded    nginx-x.x.x   Install complete
-2           ...                         superseded    nginx-x.x.x   Upgrade complete
-3           ...                         deployed      nginx-x.x.x   Rollback to 1
-```
+![롤백 후 helm history(새 리비전으로 기록)](images/day08-05-history.png)
 
 ```bash
 kubectl get deploy -n helm-exam -o jsonpath='{.items[0].spec.replicas}'
 ```
 
 기대 출력:
-```text
-2
-```
+> **예시(참조):** 롤백 대상 revision 번호. `helm rollback <release> <revision>` 의 인자.
 
 </details>
 
@@ -368,12 +358,7 @@ cat /tmp/helm-values.yaml
 ```
 
 기대 출력:
-```text
-USER-SUPPLIED VALUES:
-replicaCount: 2
-service:
-  type: NodePort
-```
+![helm get values -o yaml — 순수 YAML(replicaCount:2)](images/day08-09-values.png)
 
 </details>
 
@@ -395,18 +380,14 @@ helm list -n helm-exam
 ```
 
 기대 출력:
-```text
-NAME    NAMESPACE    REVISION    UPDATED    STATUS    CHART    APP VERSION
-```
+![uninstall 후 helm list 빈 목록](images/day08-10-empty.png)
 
 ```bash
 kubectl get deploy -n helm-exam
 ```
 
 기대 출력:
-```text
-No resources found in helm-exam namespace.
-```
+![helm-exam 네임스페이스에 리소스 없음](images/day08-11-noresources.png)
 
 </details>
 
@@ -483,18 +464,12 @@ kubectl set image deployment/batch-deploy app=busybox:1.37
 kubectl get pods -w -l app=batch-deploy
 ```
 
-기대 출력 (시간 순서):
-```text
-NAME                           READY   STATUS        RESTARTS   AGE
-batch-deploy-6d5b7c9f8d-abc    1/1     Terminating   0          2m
-batch-deploy-6d5b7c9f8d-def    1/1     Terminating   0          2m
-batch-deploy-6d5b7c9f8d-ghi    1/1     Terminating   0          2m
-batch-deploy-7f8b9c1d2e-xyz    0/1     Pending       0          0s
-batch-deploy-7f8b9c1d2e-xyz    0/1     ContainerCreating   0   0s
-batch-deploy-7f8b9c1d2e-xyz    1/1     Running       0          3s
-```
+기대 출력 (set image 직후 스냅샷 -> Recreate 라 기존 3개가 모두 Terminating):
+![Recreate 전략 — 새 Pod 생성 전 기존 Pod 전부 Terminating](images/day08-12-recreate.png)
 
-**핵심**: Recreate 전략은 모든 기존 Pod를 먼저 종료한 후 새 Pod를 생성한다. 다운타임이 발생하므로 stateless 배치 작업에 적합하다.
+![롤아웃 완료 후 새 RS Pod Running](images/day08-13-running.png)
+
+**핵심**: Recreate 전략은 모든 기존 Pod를 먼저 종료한 후 새 Pod를 생성한다. 다운타임이 발생하므로 stateless 배치 작업에 적합하다. 예를 들어 야간 배치 잡은 정해진 시간에만 실행되고 접속이 없으므로 Recreate로 모든 Pod를 동시 교체해도 서비스 영향이 없다. 반면 상시 접속이 필요한 웹 서비스는 반드시 RollingUpdate를 써야 한다.
 
 </details>
 
@@ -532,18 +507,14 @@ kubectl rollout status deployment/rolling-app
 ```
 
 기대 출력:
-```text
-deployment "rolling-app" successfully rolled out
-```
+![rolling-app 롤아웃 성공](images/day08-14-rollout.png)
 
 ```bash
 kubectl get deployment rolling-app -o jsonpath='{.spec.replicas} {.spec.template.spec.containers[0].image}'
 ```
 
 기대 출력:
-```text
-6 nginx:1.25
-```
+> **예시(참조):** `kubectl rollout history --revision=N` 의 이미지 확인 결과(예: revision 6 의 nginx:1.25).
 
 **핵심**: `rollout pause`를 사용하면 여러 변경 사항을 모아서 한 번의 롤아웃으로 적용할 수 있다. pause 상태에서는 spec 변경이 반영되지 않고, resume 시 누적된 변경이 단일 revision으로 반영된다.
 
@@ -663,15 +634,22 @@ kubectl get pods -l app=api --show-labels
 ```
 
 기대 출력:
-```text
-NAME                          READY   STATUS    RESTARTS   AGE   LABELS
-api-stable-xxx-aaa            1/1     Running   0          30s   app=api,version=stable
-api-stable-xxx-bbb            1/1     Running   0          30s   app=api,version=stable
-...  (9개)
-api-canary-yyy-ccc            1/1     Running   0          30s   app=api,version=canary
-```
+![canary — version=stable 라벨 Pod](images/day08-16-canary.png)
 
-**핵심**: Service selector가 `app=api`이므로 stable(9개)과 canary(1개) Pod 모두에 트래픽이 분배된다. replica 비율 9:1로 약 90%는 stable, 10%는 canary로 트래픽이 전달된다. 이 방식은 Ingress Controller 없이도 구현 가능하지만, 정밀한 가중치 제어가 필요하면 Istio VirtualService를 사용한다.
+**핵심**: Service selector가 `app=api`이므로 stable(9개)과 canary(1개) Pod 모두에 트래픽이 분배된다. replica 비율 9:1로 약 90%는 stable, 10%는 canary로 트래픽이 전달된다. 이 방식은 Ingress Controller 없이도 구현 가능하지만, 정밀한 가중치 제어가 필요하면 Istio VirtualService를 사용한다(Istio: 서비스메시 플랫폼으로, Pod 사이 트래픽을 sidecar proxy가 중계하며 VirtualService 리소스로 가중치 기반 라우팅을 Pod 수와 무관하게 퍼센트 단위로 정밀하게 설정할 수 있다. 자세한 내용은 CKS 심화에서 다룬다).
+
+> **예시(참조) — Istio mTLS/sidecar:** Istio 서비스메시 환경에서 PeerAuthentication(STRICT mTLS)·istio-proxy 사이드카 주입(2/2)을 확인한다(설치 환경 의존).
+
+검증 (트래픽 분산 근사 확인):
+```bash
+# 클러스터 내부에서 100회 요청을 보내 canary Pod의 로그가 실제로 찍히는지 확인한다
+CANARY_POD=$(kubectl get pod -l app=api,version=canary -o jsonpath='{.items[0].metadata.name}')
+# 별도 테스트 Pod에서 반복 요청
+kubectl run curl-test --image=curlimages/curl --restart=Never --rm -it -- \
+  sh -c 'for i in $(seq 1 50); do curl -s http://api-svc/; done'
+# canary Pod 로그에서 수신 건수 확인
+kubectl logs "$CANARY_POD" | wc -l
+```
 
 </details>
 
@@ -706,6 +684,14 @@ helm install custom-nginx bitnami/nginx \
   -f /tmp/custom-values.yaml \
   -n helm-exam --create-namespace
 ```
+
+검증:
+```bash
+helm list -n helm-exam
+kubectl get deploy -n helm-exam
+```
+
+> 위 두 명령으로 `custom-nginx` Release 가 `deployed` 상태인지, Deployment 가 3/3 Ready 인지 확인한다(미캡처 — 클러스터 환경에 따라 출력이 다름).
 
 </details>
 
@@ -749,7 +735,7 @@ kubectl get events --sort-by=.lastTimestamp | tail -20
 **핵심**: Deployment 상태에서 READY, UP-TO-DATE, AVAILABLE의 의미:
 - **READY**: 현재 Ready인 Pod / 원하는 Pod 수
 - **UP-TO-DATE**: 최신 template으로 생성된 Pod 수
-- **AVAILABLE**: 사용 가능한 Pod 수 (minReadySeconds 이후)
+- **AVAILABLE**: 사용 가능한 Pod 수 (minReadySeconds 이후) — `minReadySeconds`: Pod 가 Ready 상태가 된 후 이 시간(초)이 지나야 AVAILABLE 로 집계된다. 기본값 0이므로 Ready 와 동시에 AVAILABLE 로 계산된다
 
 </details>
 
@@ -771,10 +757,12 @@ helm upgrade --install my-release bitnami/nginx
 ### 실수 2: Helm values 우선순위
 
 ```bash
-# 우선순위 (높은 것이 승리):
-# 1. --set (가장 높음)
-# 2. -f values-override.yaml (나중에 지정한 것이 우선)
-# 3. Chart의 values.yaml (가장 낮음)
+# 우선순위 (뒤에 지정한 값이 앞의 값을 덮어씀):
+# --set (최우선) > 마지막 -f 파일 > ... > 첫 번째 -f 파일 > Chart 기본값(values.yaml)
+#
+# 아래 예에서:
+#  - values-prod.yaml 의 값이 values-base.yaml 의 값을 덮어쓴다
+#  - --set image.tag=v2.0.0 이 두 파일 모두를 덮어쓴다
 
 helm install myapp ./mychart \
   -f values-base.yaml \
@@ -804,6 +792,11 @@ strategy:
 ```bash
 # 롤백 후에도 새 revision이 생성됨
 # revision 3에서 1로 롤백하면 -> revision 4가 생성 (내용은 1과 동일)
+#
+# 왜 revision 1로 "되돌아가지" 않고 revision 4가 새로 생기는가?
+# K8s는 모든 상태 변화를 revision으로 순차 기록한다(감사 추적).
+# "롤백 동작" 자체가 하나의 상태 전환이므로 새 revision 번호를 부여한다.
+# 이 덕분에 롤백 후에도 다시 롤백(re-rollback)이 가능하고 변경 이력이 끊기지 않는다.
 ```
 
 ---
@@ -820,6 +813,8 @@ kubectl get pods -n production
 # 디버깅
 kubectl describe pod <pod-name> -n production
 kubectl logs <pod-name> -n production --previous
+# --previous: 재시작 전 컨테이너(이전 실행 인스턴스)의 로그를 출력한다.
+# CrashLoopBackOff 상태에서 현재 컨테이너는 이미 종료됐으므로 이 플래그 없이는 로그가 비어 있거나 없다.
 
 # 원인: values에 잘못된 이미지 태그, 환경변수 누락 등
 # 해결: 즉시 롤백
@@ -881,11 +876,13 @@ helm install myapp ./mychart -n production
 
 ## tart-infra 실습
 
+> **이 섹션은 이 저장소의 tart 멀티클러스터에서만 실행 가능하다.** 자신의 K8s 환경이 없거나 클러스터가 가동 중이 아니라면 앞의 문제 1~12만 완료하면 된다. 클러스터 접근 전제: `./scripts/boot.sh` 실행 후 `./scripts/fix-cluster-ip-drift.sh dev` 로 IP 드리프트를 복구한다.
+
 ### 실습 환경 설정
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/tart-infra/kubeconfig/dev.yaml
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -896,12 +893,27 @@ kubectl get nodes
 helm list -A
 ```
 
+> (미캡처 — 클러스터 환경에 따라 출력이 다름. 위 명령 실행 결과로 네임스페이스별 Release 목록과 REVISION/STATUS/CHART 컬럼이 표시된다.)
+
 **동작 원리:** Helm Release 정보:
 1. Helm v3는 Release 정보를 해당 네임스페이스의 Secret으로 저장한다
 2. Secret 이름: `sh.helm.release.v1.<release-name>.v<revision>`
 3. `helm list -A`는 모든 네임스페이스의 Release를 조회한다
 
 ### 실습 2: Deployment 롤아웃 분석
+
+> **전제 조건**: `demo` 네임스페이스에 `nginx-web` Deployment가 없으면 먼저 생성한다. 이 리소스는 이전 day에서 생성했을 수 있으나, 없으면 아래 명령으로 초기화한다.
+>
+> ```bash
+> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+>   create namespace demo --dry-run=client -o yaml | \
+>   kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml apply -f -
+> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+>   create deployment nginx-web --image=nginx:1.24 --replicas=2 -n demo
+> # 이미지 업데이트 1회로 revision 2 생성 (rollout history 확인을 위해)
+> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+>   set image deployment/nginx-web nginx=nginx:1.25 -n demo
+> ```
 
 ```bash
 # nginx-web Deployment의 롤아웃 히스토리
@@ -914,6 +926,8 @@ kubectl get rs -n demo -l app=nginx-web
 kubectl get deployment nginx-web -n demo -o jsonpath='{.spec.strategy}' | python3 -m json.tool
 ```
 
+> (미캡처 — 클러스터 환경에 따라 출력이 다름. `rollout history` 는 revision 번호와 CHANGE-CAUSE 컬럼을, `get rs` 는 각 revision 에 대응하는 ReplicaSet 과 DESIRED/CURRENT/READY 수를 보여준다.)
+
 ### 실습 3: Helm Chart values 분석
 
 ```bash
@@ -921,8 +935,34 @@ kubectl get deployment nginx-web -n demo -o jsonpath='{.spec.strategy}' | python
 helm get values cilium -n kube-system -o yaml | head -30
 ```
 
+> (미캡처 — 클러스터 환경에 따라 출력이 다름. 사용자가 오버라이드한 values 만 YAML 형식으로 출력된다. 값이 없으면 `null` 또는 빈 출력이 나온다.)
+
 **동작 원리:** Helm values 시스템:
 1. Chart에 `values.yaml`이 기본값을 정의한다
 2. 설치/업그레이드 시 `-f values.yaml` 또는 `--set`으로 오버라이드한다
 3. `helm get values`는 사용자가 오버라이드한 값만 보여준다
 4. `helm get values --all`은 기본값을 포함한 모든 값을 보여준다
+
+---
+
+## 7. 시험 팁
+
+- **`helm upgrade --install` 멱등성 패턴**: CKAD 실기에서 "helm으로 배포하라"는 문제가 나올 때 `helm install`과 `helm upgrade`를 구분하는 대신 `helm upgrade --install <release> <chart>`를 쓰면 Release가 없으면 설치, 있으면 업그레이드를 수행하므로 이미 존재 에러 없이 멱등하게 실행된다.
+
+- **`rollout pause/resume` 일괄 변경 패턴**: 이미지 변경과 replica 조정을 동시에 적용해야 할 때, `kubectl rollout pause` → 변경 명령들 → `kubectl rollout resume` 순서로 실행하면 단일 revision으로 한 번에 롤아웃된다. pause 없이 두 번 변경하면 revision이 두 개 생겨 롤백 대상이 복잡해진다.
+
+- **`--to-revision` 철자 주의**: `kubectl rollout undo --to-revision=N`이다. `--revision`이나 `--to-rev`는 잘못된 플래그다. 시험 중 자동완성(`<Tab>`)으로 확인하는 습관을 들인다.
+
+- **jsonpath로 단일 필드 빠른 확인**: 이미지나 replica 수를 빠르게 확인할 때 `kubectl get deployment <name> -o jsonpath='{.spec.template.spec.containers[0].image}'`가 `kubectl describe`보다 빠르다. 복수 필드는 `'{.spec.replicas} {.spec.template.spec.containers[0].image}'`처럼 공백으로 이어 붙인다.
+
+- **Helm revision과 kubectl rollout revision은 별개**: `helm history`의 revision과 `kubectl rollout history`의 revision은 완전히 별도 카운터다. Helm으로 배포한 후 `kubectl set image`로 직접 수정하면 helm history에는 안 보이지만 rollout history에는 기록된다. 시험에서 "rollback to revision 1"이라는 지시는 도구(helm/kubectl) 맥락을 확인해야 한다.
+
+---
+
+## 8. 더 읽을거리
+
+- **Helm 공식 문서**: [https://helm.sh/docs/](https://helm.sh/docs/) — Chart 구조(templates/, values.yaml), Go 템플릿 문법, `helm upgrade --install` 옵션 전체 레퍼런스.
+- **Helm Chart 베스트 프랙티스**: [https://helm.sh/docs/chart_best_practices/](https://helm.sh/docs/chart_best_practices/) — values 설계, 하위 호환성 유지, 릴리스 명명 규약.
+- **kubectl rollout 공식 문서**: [https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/) — pause/resume/undo/status/history 옵션 전체.
+- **Deployment 전략 공식 문서**: [https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy) — maxSurge/maxUnavailable 비율 계산, Recreate vs RollingUpdate 상세 비교.
+- **ReplicaSet과 Deployment 관계**: [https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/) — revision과 RS 해시 suffix 매핑, revisionHistoryLimit 동작.

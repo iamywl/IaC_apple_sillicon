@@ -2,6 +2,44 @@
 
 > 이 문서는 CKA 시험에서 출제되는 주요 실습 항목을 명령어와 YAML 예제로 정리한 것이다. 모든 예제는 **즉시 사용 가능한 형태**로 작성되어 있으며, 각 리소스의 등장 배경, 필드별 존재 이유, 생략 시 기본값, 내부 동작 원리, 장애 시나리오 및 트러블슈팅을 포함한다.
 
+#### 실습 전제
+
+아래 실습은 동작 중인 Kubernetes 클러스터를 전제로 한다. 이 저장소에서는 tart로 띄운 dev/staging 클러스터를 실습장으로 쓰며(파괴 실습 허용 클러스터), kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`에 있다. 따라서 문서의 `kubectl ...` 명령은 실제로는 대상 클러스터를 명시해 실행한다.
+
+```bash
+# 클러스터 기동 + 재부팅 후 IP 드리프트 복구
+./scripts/boot.sh
+./scripts/fix-cluster-ip-drift.sh dev
+
+# 이후 모든 kubectl 명령에 클러스터를 명시(또는 KUBECONFIG export)
+kubectl --kubeconfig kubeconfig/dev.yaml get nodes
+export KUBECONFIG=kubeconfig/dev.yaml      # 이 셸에서만 dev로 고정
+```
+
+§1의 kubeadm `init`/업그레이드, etcd 백업/복구는 노드 안에서 직접 작업해야 하므로, `ssh dev-master`처럼 VM 이름 별칭으로 노드에 접속한 뒤 `/etc/kubernetes/manifests/`·`/etc/kubernetes/pki/`(인증서 디렉터리) 등을 조작한다. 이런 노드 내부 작업은 platform/prod가 아니라 dev/staging에서 한다.
+
+> **kubectl 컨텍스트 주의:** 이 문서의 모든 `kubectl ...` 명령은 `export KUBECONFIG=kubeconfig/dev.yaml`을 실행한 셸을 가정한다. 섹션마다 별도 표기를 생략하지만, 새 터미널을 열거나 다른 섹션으로 이동할 때는 위 export를 다시 실행하거나 `--kubeconfig kubeconfig/dev.yaml`을 명시한다. staging 실습(§1.2 업그레이드, §1.3 etcd)은 `kubeconfig/staging.yaml`로 교체한다.
+
+## 목차
+
+- [1. 클러스터 설치 및 구성](#1-클러스터-설치-및-구성)
+  - 1.1 kubeadm을 이용한 클러스터 초기화
+  - 1.2 클러스터 업그레이드 (v1.30.0 → v1.31.0 예시)
+  - 1.3 etcd 백업과 복구
+  - 1.4 RBAC 설정
+- [2. 워크로드 관리](#2-워크로드-관리)
+  - 2.1 Deployment 생성 및 관리
+  - 2.2 nodeSelector 예제
+  - 2.3 Node Affinity 예제
+  - 2.4 Pod Anti-Affinity 예제 (고가용성)
+  - 2.5 Taint와 Toleration 예제
+  - 2.6 이상 이후 섹션 (DaemonSet·StatefulSet·Job·CronJob·HPA 등)
+- [3. 서비스 및 네트워킹](#3-서비스-및-네트워킹)
+- [4. 스토리지](#4-스토리지)
+- [5. 트러블슈팅 명령어 치트시트](#5-트러블슈팅-명령어-치트시트)
+- [6. 시험 필수 kubectl 명령어 모음](#6-시험-필수-kubectl-명령어-모음)
+- [시험 시작 시 설정](#시험-시작-시-설정)
+
 ---
 
 ## 1. 클러스터 설치 및 구성
@@ -10,9 +48,17 @@
 
 #### 등장 배경
 
-kubeadm 이전에는 Kubernetes 클러스터를 구축하려면 etcd, kube-apiserver, kube-controller-manager, kube-scheduler를 개별적으로 바이너리 설치하고 systemd 유닛 파일을 수동 작성해야 했다. 인증서 생성(CA, 서버 인증서, 클라이언트 인증서)도 수동이었으며, 구성 요소 간 통신 설정에서 실수가 빈번하게 발생했다. kubeadm은 이 과정을 자동화하여 인증서 생성, Static Pod 매니페스트 배치, kubelet 부트스트랩을 단일 명령으로 처리한다.
+**없던 시절의 고통.** kubeadm 이전에는 Kubernetes 클러스터를 구축하려면 etcd, kube-apiserver, kube-controller-manager, kube-scheduler를 개별 바이너리로 내려받아 각각 systemd 유닛 파일을 손으로 작성해야 했다. 더 큰 문제는 인증서였다. 컨트롤 플레인 구성 요소들은 서로 TLS(전송 계층 암호화)로 통신하는데, 이를 위해 CA(Certificate Authority, 인증서를 발급·서명하는 루트 신뢰 기관)를 직접 만들고 그 CA로 apiserver 서버 인증서, etcd 인증서, 각 클라이언트 인증서를 일일이 서명해야 했다. 인증서 하나의 SAN(Subject Alternative Name, 인증서가 유효한 호스트명·IP 목록) 한 줄만 틀려도 구성 요소 간 통신이 막혔고, 원인을 찾기 어려웠다.
+
+**직전 방식의 한계.** kubernetes.io가 배포하는 공식 바이너리를 직접 설치하거나 kops 같은 도구로 일부 자동화할 수 있었으나, 전자는 위의 수작업을 그대로 떠안았고 후자는 특정 클라우드(주로 AWS)에 묶여 있고 내부 동작이 불투명했다. 표준화된 "어디서나 같은 방식으로 단일 노드 클러스터를 올리는" 절차가 없었다.
+
+**무엇이 나아졌나.** kubeadm은 이 과정을 선언형으로 묶는다. `kubeadm init` 한 번이면 preflight 검사(포트 충돌·스왑·커널 모듈 점검), CA와 모든 인증서 자동 생성, kubeconfig 파일 생성, 컨트롤 플레인 구성 요소를 Static Pod(kubelet이 매니페스트 파일을 직접 감시해 띄우는 Pod, API 서버 없이도 동작) 매니페스트로 배치, kubelet 부트스트랩까지 자동으로 처리한다. 메커니즘 수준에서 보면 "수동 인증서 서명 + systemd 유닛 작성"을 "preflight → 인증서 생성 → Static Pod 배치"라는 표준 파이프라인으로 대체한 것이다.
+
+**트레이드오프.** kubeadm은 클러스터 부트스트랩만 표준화한다. CNI 설치, 다중 컨트롤 플레인 HA 구성에 필요한 외부 로드밸런서, 사내 CA를 쓰는 커스텀 인증서 구성 등은 여전히 수동이다. 즉 "단일 클러스터를 표준 절차로 올리는" 문제는 풀어 주지만, "프로덕션급 HA·관측·백업까지 갖춘 클러스터를 운영하는" 문제는 사용자 몫으로 남는다.
 
 #### 사전 준비 (모든 노드에서 실행)
+
+> **실습 환경:** 이 저장소의 tart VM 기준 **OS: Ubuntu 22.04 LTS, arch: arm64(Apple Silicon)**. 아래 apt 명령은 Ubuntu/Debian 계열 전용이며, tart VM에서 그대로 동작한다. 다른 배포판(Rocky Linux 등)은 `yum`/`dnf`와 패키지 이름이 다르므로 주의한다.
 
 ```bash
 # 스왑 비활성화
@@ -70,7 +116,7 @@ sudo systemctl enable --now kubelet
 
 - **스왑 비활성화**: kubelet은 기본적으로 스왑이 활성화된 노드에서 시작을 거부한다. Kubernetes의 메모리 리소스 관리(requests/limits)는 물리 메모리 기반으로 동작하며, 스왑이 있으면 OOM Killer 동작과 QoS 보장이 예측 불가능해진다. `/etc/fstab`에서도 주석 처리해야 재부팅 후에도 스왑이 비활성 상태로 유지된다.
 - **overlay 모듈**: 컨테이너 런타임이 OverlayFS를 사용하여 이미지 레이어를 효율적으로 마운트하는 데 필요하다. 이 모듈이 없으면 containerd가 컨테이너 파일시스템을 생성하지 못한다.
-- **br_netfilter 모듈**: 브리지 네트워크를 통과하는 패킷이 iptables 규칙의 적용을 받도록 한다. 이 모듈이 없으면 Pod 간 통신에서 kube-proxy가 설정한 iptables/IPVS 규칙이 무시된다.
+- **br_netfilter 모듈**: 먼저 용어부터 본다. 리눅스 bridge(브리지)는 한 노드 안에서 여러 컨테이너(Pod)를 묶어 주는 소프트웨어 스위치이며, 같은 노드의 Pod들은 이 브리지를 통해 패킷을 주고받는다. iptables는 리눅스 커널의 패킷 필터링·주소 변환 시스템으로, "이 IP로 가는 패킷은 저 IP로 바꿔라" 같은 규칙(rule)을 등록할 수 있다. kube-proxy는 Service IP(가상 IP)로 들어온 패킷을 실제 Pod IP로 바꾸는 DNAT(Destination NAT, 목적지 주소 변환) 규칙을 iptables에 등록하는 구성 요소다. 문제는 기본 상태의 리눅스에서는 같은 브리지를 통과하는 패킷이 iptables 체인을 건너뛴다는 점이다. br_netfilter 모듈을 로드하면 브리지를 지나는 패킷도 iptables 규칙의 평가를 받게 되어, kube-proxy가 등록한 Service→Pod 변환 규칙이 비로소 적용된다. 이 모듈이 없으면 Pod가 Service IP로 보낸 패킷이 변환되지 않아 Pod 간 서비스 통신이 라우팅되지 않는다. IPVS(IP Virtual Server, 커널 내장 L4 로드밸런서)를 쓰는 kube-proxy 모드에서도 같은 전제가 필요하다.
 - **net.bridge.bridge-nf-call-iptables = 1**: 브리지를 통과하는 IPv4 트래픽이 iptables 체인을 거치도록 한다. kube-proxy의 서비스 라우팅이 정상 동작하려면 필수이다.
 - **net.ipv4.ip_forward = 1**: 노드가 라우터 역할을 하여 Pod 네트워크 간 패킷을 전달할 수 있게 한다. 비활성화 시 다른 노드의 Pod와 통신이 불가능하다.
 - **SystemdCgroup = true**: kubelet과 containerd가 동일한 cgroup 드라이버(systemd)를 사용하도록 맞춘다. 불일치 시 kubelet이 컨테이너의 리소스 제한을 올바르게 추적하지 못하며, Pod가 `CrashLoopBackOff`에 빠질 수 있다.
@@ -127,36 +173,21 @@ kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/
 kubectl cluster-info
 ```
 
-```text
-Kubernetes control plane is running at https://192.168.1.100:6443
-CoreDNS is running at https://192.168.1.100:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
-```
+![cluster-info — API 서버/CoreDNS 엔드포인트(dev 실측)](images/m02-01-cluster-info.png)
 
 ```bash
 # 노드 상태 확인
 kubectl get nodes
 ```
 
-```text
-NAME              STATUS   ROLES           AGE   VERSION
-control-plane     Ready    control-plane   2m    v1.30.0
-```
+![get nodes — 노드 상태(dev 실측)](images/m02-02-nodes.png)
 
 ```bash
 # Control Plane 컴포넌트 Pod 상태 확인
 kubectl get pods -n kube-system
 ```
 
-```text
-NAME                                    READY   STATUS    RESTARTS   AGE
-coredns-5dd5756b68-abcde                1/1     Running   0          2m
-coredns-5dd5756b68-fghij                1/1     Running   0          2m
-etcd-control-plane                      1/1     Running   0          2m
-kube-apiserver-control-plane            1/1     Running   0          2m
-kube-controller-manager-control-plane   1/1     Running   0          2m
-kube-proxy-xxxxx                        1/1     Running   0          2m
-kube-scheduler-control-plane            1/1     Running   0          2m
-```
+![kube-system Control Plane Pod 상태(dev 실측)](images/m02-03-kubesystem.png)
 
 CNI가 설치되지 않은 상태에서는 CoreDNS Pod가 `Pending` 상태로 남고, 노드 상태가 `NotReady`이다. CNI 설치 후 `Ready`로 전환된다.
 
@@ -186,12 +217,7 @@ kubeadm token list
 kubectl get nodes -o wide
 ```
 
-```text
-NAME              STATUS   ROLES           AGE   VERSION    INTERNAL-IP     OS-IMAGE             KERNEL-VERSION
-control-plane     Ready    control-plane   10m   v1.30.0    192.168.1.100   Ubuntu 22.04.3 LTS   5.15.0-86-generic
-worker-1          Ready    <none>          2m    v1.30.0    192.168.1.101   Ubuntu 22.04.3 LTS   5.15.0-86-generic
-worker-2          Ready    <none>          1m    v1.30.0    192.168.1.102   Ubuntu 22.04.3 LTS   5.15.0-86-generic
-```
+![get nodes -o wide — IP/OS/커널(platform 실측)](images/m02-04-nodes-wide.png)
 
 Worker Node의 ROLES이 `<none>`으로 표시된다. 역할 레이블을 부여하려면 `kubectl label node worker-1 node-role.kubernetes.io/worker=`을 실행한다.
 
@@ -209,9 +235,17 @@ Worker Node의 ROLES이 `<none>`으로 표시된다. 역할 레이블을 부여�
 
 #### 등장 배경
 
-Kubernetes는 마이너 버전 간 3개 버전까지만 호환성을 보장한다. 보안 패치, 버그 수정, 신규 API 추가를 위해 정기적인 업그레이드가 필요하다. 업그레이드 시 Control Plane을 먼저 올리고, 이후 Worker Node를 순차적으로 올려야 한다. kubelet은 kube-apiserver보다 최대 2개 마이너 버전 낮을 수 있으나, 그 반대는 지원되지 않는다.
+보안 패치, 버그 수정, 신규 API 추가를 위해 정기적인 업그레이드가 필요하다. 핵심은 무작정 따라 하기가 아니라 "왜 이 순서인가"를 이해하는 것이다.
+
+**왜 Control Plane을 먼저, Worker를 나중에 올리는가 (버전 스큐 규칙).** Kubernetes는 구성 요소 간 마이너 버전 차이(version skew)에 명확한 규칙을 둔다. kubelet은 kube-apiserver와 같거나 그보다 낮을 수 있고(최근 정책은 최대 3개 마이너 버전까지 뒤처짐을 허용한다), 절대 apiserver보다 높을 수 없다. 즉 apiserver v1.31은 kubelet v1.28~1.31을 받아 주지만, kubelet v1.31에 apiserver v1.30을 붙이는 구성은 지원되지 않는다. 그래서 컨트롤 플레인(apiserver 포함)을 먼저 올려 천장을 높인 뒤, 그 아래에서 Worker의 kubelet을 따라 올린다. 역순으로 하면 Worker kubelet이 한순간이라도 apiserver보다 앞서게 되어 규칙을 위반한다. 또한 한 번에 한 마이너 버전씩만 건너뛴다(v1.30→v1.32 직행 불가).
+
+**왜 drain을 먼저 하는가.** drain은 업그레이드 대상 노드에서 실행 중인 Pod를 다른 노드로 안전하게 옮기고 새 스케줄링을 막는 작업이다. kubelet을 재시작하는 동안 그 노드의 워크로드가 영향을 받을 수 있으므로, 미리 비워 두어 다운타임을 다른 노드가 흡수하게 한다.
+
+**왜 daemon-reload가 필요한가.** apt로 새 kubelet 바이너리를 설치해도 systemd는 이미 메모리에 올려 둔 옛 서비스 정의를 그대로 쓴다. `systemctl daemon-reload`로 서비스 파일을 다시 읽게 한 뒤 재시작해야 새 바이너리가 실제로 구동된다. 이 단계를 빠뜨리면 패키지는 새 버전인데 실행 중인 프로세스는 옛 버전인 모순 상태가 된다.
 
 #### Control Plane 노드 업그레이드
+
+> **실습 클러스터 기준:** 아래 절차는 **staging 클러스터**에서 수행한다(`ssh staging-master`로 접속). 명령의 `<control-plane-node>`에 실제 노드명을 대입해야 한다. 노드명은 `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml get nodes`로 확인한다. 이 저장소 staging 기준 예시: `<control-plane-node>=staging-master`, `<worker-node>=staging-worker1`.
 
 ```bash
 # 1단계: kubeadm 업그레이드
@@ -258,30 +292,9 @@ kubectl get nodes
 sudo kubeadm upgrade plan
 ```
 
-```text
-[upgrade/config] Making sure the configuration is correct:
-[preflight] Running pre-flight checks.
-[upgrade] Running cluster health checks
-[upgrade] Fetching available versions to upgrade to
+> **예시(참조) — kubeadm upgrade plan:** `kubeadm upgrade plan` 은 preflight·health check 후 업그레이드 가능한 버전과 수동 업그레이드 대상(kubelet/kubectl)을 출력한다. 실제 업그레이드 실습은 day04 참고(staging 에서 수행).
 
-Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':
-COMPONENT   CURRENT       TARGET
-kubelet     2 x v1.30.0   v1.31.0
-
-Upgrade to the latest stable version:
-
-COMPONENT                 CURRENT    TARGET
-kube-apiserver            v1.30.0    v1.31.0
-kube-controller-manager   v1.30.0    v1.31.0
-kube-scheduler            v1.30.0    v1.31.0
-kube-proxy                v1.30.0    v1.31.0
-CoreDNS                   v1.11.1    v1.11.3
-etcd                      3.5.12-0   3.5.15-0
-
-You can now apply the upgrade by executing the following command:
-
-	kubeadm upgrade apply v1.31.0
-```
+`kubeadm upgrade plan` 출력에서 확인해야 할 항목은 세 가지다. 첫째, **"COMPONENT"** 컬럼에서 `kube-apiserver`, `kube-controller-manager`, `kube-scheduler`, `etcd` 각각의 현재(CURRENT) 버전과 업그레이드 가능한(AVAILABLE) 버전을 확인한다. 둘째, **"Manually upgrade your CNI…"** 또는 **"Manual upgrades needed"** 섹션에 `kubelet`과 `kubectl`이 나열되는데, 이 두 컴포넌트는 `kubeadm upgrade apply`가 자동으로 올리지 않으므로 위 절차 5단계에서 직접 설치해야 한다. 셋째, deprecated API가 있으면 "API changes in v1.3x" 경고가 출력되며, 업그레이드 전에 워크로드 매니페스트를 수정해야 할 수 있다.
 
 **검증 - 업그레이드 후 노드 버전 확인:**
 
@@ -289,14 +302,9 @@ You can now apply the upgrade by executing the following command:
 kubectl get nodes
 ```
 
-```text
-NAME              STATUS   ROLES           AGE   VERSION
-control-plane     Ready    control-plane   30d   v1.31.0
-worker-1          Ready    <none>          30d   v1.30.0
-worker-2          Ready    <none>          30d   v1.30.0
-```
+> **예시(참조) — 업그레이드 중 버전 스큐:** Control Plane 을 먼저 v1.31 로 올리고 worker 는 아직 v1.30 인 중간 상태. kubelet 은 apiserver 보다 높으면 안 되고 최대 2 마이너 뒤까지 허용된다. 우리 클러스터는 전부 v1.31.14 로 균일하다(day02·day19 실측).
 
-Control Plane 노드만 v1.31.0으로 변경되고, Worker Node는 아직 v1.30.0인 것을 확인할 수 있다. VERSION 컬럼은 kubelet 버전을 표시한다.
+Control Plane 노드만 v1.31.0으로 변경되고, Worker Node는 아직 v1.30.0인 것을 확인할 수 있다. VERSION 컬럼은 kubelet 버전을 표시한다. 중간 상태에서 `get nodes`를 실행하면 컨트롤 플레인 행은 v1.31.x, 워커 행은 v1.30.x로 두 버전이 공존한다. 이 상태에서도 클러스터는 정상 동작한다(버전 스큐 허용 범위 내). STATUS 컬럼이 모두 `Ready`인지 반드시 확인한다. `NotReady`가 보이면 kubelet 재시작 전 `daemon-reload` 누락을 먼저 점검한다.
 
 #### Worker Node 업그레이드
 
@@ -338,12 +346,9 @@ kubectl uncordon <worker-node>
 kubectl get nodes
 ```
 
-```text
-NAME              STATUS   ROLES           AGE   VERSION
-control-plane     Ready    control-plane   30d   v1.31.0
-worker-1          Ready    <none>          30d   v1.31.0
-worker-2          Ready    <none>          30d   v1.31.0
-```
+> **예시(참조) — 업그레이드 완료:** worker 까지 v1.31 로 올려 전 노드 버전이 일치한 상태.
+
+완료 상태의 `get nodes` 출력에서 확인할 포인트는 두 가지다. 첫째, **VERSION 컬럼**이 모든 노드에서 동일한 버전(예: v1.31.0)으로 표시되어야 한다. 불일치가 남아 있다면 해당 Worker Node의 kubelet 업그레이드 절차를 다시 실행한다. 둘째, **STATUS 컬럼**이 모든 노드에서 `Ready`여야 한다. uncordon을 빠뜨렸으면 `kubectl uncordon <node>`를 실행한다. ROLES 컬럼에서 컨트롤 플레인 노드는 `control-plane`으로, Worker 노드는 `<none>` 또는 수동으로 부여한 역할로 표시되는지도 확인한다.
 
 **장애 시나리오:**
 
@@ -394,12 +399,7 @@ ETCDCTL_API=3 etcdctl snapshot status /opt/etcd-backup.db --write-out=table
 cat /etc/kubernetes/manifests/etcd.yaml | grep -E "(--cert-file|--key-file|--trusted-ca-file|--listen-client-urls)"
 ```
 
-```text
-    - --cert-file=/etc/kubernetes/pki/etcd/server.crt
-    - --key-file=/etc/kubernetes/pki/etcd/server.key
-    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
-    - --listen-client-urls=https://127.0.0.1:2379,https://192.168.1.100:2379
-```
+![etcd Static Pod 매니페스트의 인증서·리스닝 설정(platform 실측)](images/m02-08b-etcd-conf.png)
 
 **검증 - 백업 상태 확인:**
 
@@ -407,13 +407,7 @@ cat /etc/kubernetes/manifests/etcd.yaml | grep -E "(--cert-file|--key-file|--tru
 ETCDCTL_API=3 etcdctl snapshot status /opt/etcd-backup.db --write-out=table
 ```
 
-```text
-+----------+----------+------------+------------+
-|   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |
-+----------+----------+------------+------------+
-| fe01cf57 |       10 |         13 |     2.1 MB |
-+----------+----------+------------+------------+
-```
+![etcd 스냅샷 status — HASH/REVISION/KEYS/SIZE(platform 실측)](images/m02-07-etcd-status.png)
 
 - **HASH**: 스냅샷의 무결성 검증용 해시값이다. 복구 시 이 해시를 기반으로 데이터 무결성을 확인한다.
 - **REVISION**: etcd의 현재 리비전 번호이다. 모든 쓰기 연산마다 리비전이 증가한다.
@@ -473,13 +467,7 @@ ETCDCTL_API=3 etcdctl member list \
   --write-out=table
 ```
 
-```text
-+------------------+---------+--------+----------------------------+----------------------------+
-|        ID        | STATUS  |  NAME  |         PEER ADDRS         |        CLIENT ADDRS        |
-+------------------+---------+--------+----------------------------+----------------------------+
-| 8e9e05c52164694d | started | default| http://localhost:2380      | https://127.0.0.1:2379     |
-+------------------+---------+--------+----------------------------+----------------------------+
-```
+![etcd member list — 멤버 ID/상태/주소(platform 실측)](images/m02-08-etcd-member.png)
 
 ```bash
 # 클러스터 리소스 복구 확인
@@ -665,43 +653,28 @@ kubectl auth can-i --list --as=jane -n development
 kubectl auth can-i get pods --as=jane -n development
 ```
 
-```text
-yes
-```
+![jane 의 development pods 조회 권한 — yes](images/m02-11-jane-get.png)
 
 ```bash
 # jane 사용자가 production 네임스페이스에서 Pod를 삭제할 수 있는지 확인
 kubectl auth can-i delete pods --as=jane -n production
 ```
 
-```text
-no
-```
+![jane 의 production pods 삭제 권한 — no(바인딩 없음)](images/m02-12-jane-delete.png)
 
 ```bash
 # jane 사용자의 전체 권한 목록 확인
 kubectl auth can-i --list --as=jane -n development
 ```
 
-```text
-Resources                                       Non-Resource URLs   Resource Names   Verbs
-pods                                            []                  []               [get list watch create delete]
-pods/log                                        []                  []               [get]
-deployments.apps                                []                  []               [get list create update patch]
-selfsubjectaccessreviews.authorization.k8s.io   []                  []               [create]
-selfsubjectrulesreviews.authorization.k8s.io    []                  []               [create]
-                                                [/api/*]            []               [get]
-                                                [/healthz]          []               [get]
-```
+![jane 의 전체 권한 목록 — pods/deployments 허용 동사](images/m02-13-jane-list.png)
 
 ```bash
 # ServiceAccount 권한 확인
 kubectl auth can-i get secrets --as=system:serviceaccount:development:my-sa -n development
 ```
 
-```text
-no
-```
+![my-sa 의 secrets 조회 권한 — no](images/m02-14-sa-secrets.png)
 
 **장애 시나리오:**
 
@@ -750,7 +723,9 @@ spec:
 
 #### 등장 배경
 
-초기 Kubernetes에서는 ReplicationController가 Pod 복제본을 관리했으나, 롤링 업데이트 시 `kubectl rolling-update` 명령을 사용해야 했고, 이는 클라이언트 측에서 동작하여 네트워크 끊김 시 업데이트가 중단되는 문제가 있었다. Deployment는 서버 측에서 롤링 업데이트를 관리하며, ReplicaSet을 추상화하여 선언적 업데이트, 자동 롤백, 일시 정지/재개 등의 기능을 제공한다.
+초기 Kubernetes에서는 ReplicationController가 Pod 복제본을 관리했고, 버전을 올릴 때는 `kubectl rolling-update` 명령을 썼다. 이 방식의 결정적 한계는 롤링 업데이트 로직이 클라이언트(kubectl을 실행하는 사용자 터미널) 쪽에서 돌았다는 점이다. kubectl이 직접 새 Pod를 하나 만들고, 준비되면 옛 Pod를 하나 지우고, 다시 만들고 지우는 식으로 순차 진행했다. 따라서 업데이트가 끝나기 전에 터미널을 닫거나 네트워크가 끊기면 그 자리에서 멈췄고, 결과적으로 일부 Pod는 옛 버전·일부는 새 버전인 채로 방치되어 서비스가 불안정해졌다. 진행 상태가 서버 어디에도 기록되지 않으니 재개할 방법도 마땅치 않았다.
+
+Deployment는 이 책임을 서버 측 컨트롤러(kube-controller-manager 안의 Deployment Controller)로 옮겼다. 사용자는 "최종 상태(원하는 이미지·복제본 수)"만 선언하고, 컨트롤러가 현재 상태와 비교하며(reconciliation, 선언한 목표와 실제를 끊임없이 일치시키는 조정 루프) 새 ReplicaSet 생성·옛 ReplicaSet 축소를 알아서 진행한다. 클라이언트가 끊겨도 컨트롤러는 계속 돌므로 업데이트가 멈추지 않는다. 그 위에 자동 롤백, 일시 정지/재개, 리비전 이력 같은 기능이 얹힌다. 트레이드오프로 추상화 계층(Deployment→ReplicaSet→Pod)이 한 단계 늘어 디버깅 시 어느 계층에서 막혔는지 추적해야 한다.
 
 #### 생성
 
@@ -821,7 +796,7 @@ spec:
 - `strategy.type`: `RollingUpdate`(기본값) 또는 `Recreate`를 지정한다. `Recreate`는 기존 Pod를 모두 종료한 후 새 Pod를 생성하므로 다운타임이 발생하지만, 두 버전이 동시에 실행되면 안 되는 경우(DB 스키마 마이그레이션 등)에 사용한다.
 - `maxSurge`: 롤링 업데이트 중 `replicas`를 초과하여 생성할 수 있는 최대 Pod 수이다. 절대값(정수) 또는 백분율로 지정한다. 기본값은 25%이다. `maxSurge: 1`이면 replicas=3일 때 최대 4개 Pod가 동시에 존재할 수 있다.
 - `maxUnavailable`: 롤링 업데이트 중 사용 불가능한 상태로 허용되는 최대 Pod 수이다. 기본값은 25%이다. `maxUnavailable: 0`이면 항상 최소 3개 Pod가 Ready 상태를 유지한다. `maxSurge`와 `maxUnavailable`이 동시에 0이 될 수 없다(업데이트가 진행되지 않음).
-- `resources.requests`: 스케줄러가 Pod를 노드에 배치할 때 참조하는 최소 보장 리소스이다. 노드의 가용 리소스가 requests를 충족하지 못하면 해당 노드에 스케줄링되지 않는다.
+- `resources.requests`: 스케줄러가 Pod를 노드에 배치할 때 참조하는 최소 보장 리소스이다. "참조한다"의 구체적 의미는 다음과 같다. 스케줄러는 후보 노드를 거르는 Predicates(필터링) 단계에서, 노드의 allocatable(노드 전체 용량에서 운영체제·kubelet용으로 예약된 reserved를 뺀, Pod가 실제로 쓸 수 있는 양) 중 이미 다른 Pod들이 requests로 잡아 둔 합을 뺀 나머지와 새 Pod의 requests를 비교한다. 예를 들어 노드 allocatable 메모리가 7Gi인데 기존 Pod들의 requests 합이 5Gi라면 남은 가용량은 2Gi다. 새 Pod가 메모리 3Gi를 requests하면 2Gi에 들어가지 않으므로 이 노드는 후보에서 제외된다. requests는 실제 사용량이 아니라 "예약 장부"라는 점이 핵심이다 — Pod가 실제로 1Gi만 쓰더라도 3Gi를 requests했다면 스케줄러 장부에서는 3Gi가 빠진다.
 - `resources.limits`: 컨테이너가 사용할 수 있는 최대 리소스이다. CPU limit 초과 시 CPU 스로틀링이 적용되고, 메모리 limit 초과 시 OOM Killer에 의해 컨테이너가 종료된다.
 - `readinessProbe`: Pod가 트래픽을 수신할 준비가 되었는지 판단한다. 실패 시 Service의 Endpoints에서 제거되어 트래픽이 전달되지 않는다. 롤링 업데이트에서 새 Pod가 Ready가 되어야 이전 Pod가 종료되므로, readinessProbe가 없으면 준비되지 않은 Pod로 트래픽이 전달될 수 있다.
 - `livenessProbe`: 컨테이너가 정상 동작 중인지 판단한다. 실패 시 kubelet이 컨테이너를 재시작한다. `initialDelaySeconds`를 너무 짧게 설정하면 애플리케이션 시작 전에 프로브가 실패하여 재시작 루프에 빠질 수 있다.
@@ -833,31 +808,21 @@ spec:
 kubectl rollout status deployment/nginx-deploy
 ```
 
-```text
-deployment "nginx-deploy" successfully rolled out
-```
+![rollout status — 배포 완료](images/m02-15-rollout.png)
 
 ```bash
 # ReplicaSet 확인 (Deployment가 생성한 ReplicaSet)
 kubectl get rs -l app=nginx
 ```
 
-```text
-NAME                      DESIRED   CURRENT   READY   AGE
-nginx-deploy-7fb96c846b   3         3         3       45s
-```
+![Deployment 가 만든 ReplicaSet](images/m02-16-rs.png)
 
 ```bash
 # Pod 상태 확인
 kubectl get pods -l app=nginx -o wide
 ```
 
-```text
-NAME                            READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE
-nginx-deploy-7fb96c846b-abc12   1/1     Running   0          45s   10.244.1.5   worker-1   <none>
-nginx-deploy-7fb96c846b-def34   1/1     Running   0          45s   10.244.2.3   worker-2   <none>
-nginx-deploy-7fb96c846b-ghi56   1/1     Running   0          45s   10.244.1.6   worker-1   <none>
-```
+![nginx Pod 배치(-o wide)](images/m02-17-pods.png)
 
 #### Rolling Update 및 Rollback
 
@@ -907,35 +872,21 @@ kubectl rollout resume deployment/nginx-deploy
 kubectl rollout status deployment/nginx-deploy
 ```
 
-```text
-Waiting for deployment "nginx-deploy" rollout to finish: 1 out of 3 new replicas have been updated...
-Waiting for deployment "nginx-deploy" rollout to finish: 2 out of 3 new replicas have been updated...
-Waiting for deployment "nginx-deploy" rollout to finish: 2 of 3 updated replicas are available...
-deployment "nginx-deploy" successfully rolled out
-```
+![이미지 업데이트 후 rollout status](images/m02-18-rollout2.png)
 
 ```bash
 # ReplicaSet 이력 확인 (이전 RS와 새 RS 공존)
 kubectl get rs -l app=nginx
 ```
 
-```text
-NAME                      DESIRED   CURRENT   READY   AGE
-nginx-deploy-5d8f57db6c   3         3         3       30s
-nginx-deploy-7fb96c846b   0         0         0       10m
-```
+![롤링 업데이트로 새/구 ReplicaSet 공존](images/m02-19-rs2.png)
 
 ```bash
 # 배포 이력 확인
 kubectl rollout history deployment/nginx-deploy
 ```
 
-```text
-deployment.apps/nginx-deploy
-REVISION  CHANGE-CAUSE
-1         <none>
-2         <none>
-```
+![rollout history — REVISION 이력](images/m02-20-history.png)
 
 `CHANGE-CAUSE`를 기록하려면 `kubectl annotate deployment/nginx-deploy kubernetes.io/change-cause="update to nginx:1.25"`를 실행하거나, `kubectl set image` 시 `--record` 플래그를 사용한다(deprecated이지만 시험에서 여전히 유효).
 
@@ -947,7 +898,9 @@ REVISION  CHANGE-CAUSE
 
 #### 등장 배경
 
-기본적으로 kube-scheduler는 리소스 가용성, Pod 분산(spread) 등의 조건으로 노드를 자동 선택한다. 그러나 특정 워크로드가 SSD 디스크, GPU, 특정 AZ(Availability Zone) 등 특수한 하드웨어/위치를 필요로 하는 경우, 수동으로 노드를 선택해야 한다. `nodeSelector`는 가장 단순한 노드 선택 메커니즘이며, 노드 레이블의 정확한 일치(equality)를 기반으로 동작한다.
+**먼저 레이블(label) 개념.** Kubernetes의 모든 오브젝트(Pod, Node, Service 등)에는 `key=value` 형태의 메타데이터인 레이블을 자유롭게 붙일 수 있다(예: 노드에 `disktype=ssd`, Pod에 `app=nginx`). 레이블 자체는 의미가 없는 꼬리표일 뿐이지만, 셀렉터(selector, "이런 레이블을 가진 오브젝트만 고른다"는 조건)와 짝을 이루면 오브젝트를 조건으로 선택하는 메커니즘이 된다. Service가 어떤 Pod로 트래픽을 보낼지, Deployment가 어떤 Pod를 관리할지도 모두 이 레이블-셀렉터 매칭으로 결정된다. nodeSelector는 그중 "노드에 붙은 레이블"로 배치 노드를 고르는 경우다.
+
+기본적으로 kube-scheduler는 리소스 가용성, Pod 분산(spread) 등의 조건으로 노드를 자동 선택한다. 그러나 특정 워크로드가 SSD 디스크, GPU, 특정 AZ(Availability Zone, 클라우드의 가용 영역) 등 특수한 하드웨어/위치를 필요로 하는 경우, 수동으로 노드를 선택해야 한다. `nodeSelector`는 가장 단순한 노드 선택 메커니즘이며, 노드 레이블의 정확한 일치(equality)를 기반으로 동작한다. 노드에 `disktype=ssd`를 붙이고 Pod의 nodeSelector에 같은 키-값을 적으면, 그 레이블을 가진 노드에만 배치된다.
 
 ```bash
 # 노드에 레이블 추가
@@ -981,31 +934,20 @@ kubectl apply -f ssd-pod.yaml
 kubectl get pod ssd-pod -o wide
 ```
 
-```text
-NAME      READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE
-ssd-pod   1/1     Running   0          10s   10.244.1.7   worker-1   <none>
-```
+![nodeAffinity disk=ssd 매칭 노드에 ssd-pod Running](images/m02-21-ssd-pod.png)
 
 ```bash
 # 매칭되는 노드가 없는 경우
 kubectl get pod ssd-pod
 ```
 
-```text
-NAME      READY   STATUS    RESTARTS   AGE
-ssd-pod   0/1     Pending   0          30s
-```
+![매칭 노드 없으면 Pending(disk=nvme affinity 재현)](images/m02-22-pending.png)
 
 ```bash
 kubectl describe pod ssd-pod | grep -A3 Events
 ```
 
-```text
-Events:
-  Type     Reason            Age   From               Message
-  ----     ------            ----  ----               -------
-  Warning  FailedScheduling  30s   default-scheduler  0/3 nodes are available: 3 node(s) didn't match Pod's node affinity/selector.
-```
+![describe Events — FailedScheduling(node affinity 불일치)](images/m02-23-failedsched.png)
 
 ---
 
@@ -1074,12 +1016,7 @@ kubectl apply -f zone-aware-deploy.yaml
 kubectl get pods -l app=zone-aware -o wide
 ```
 
-```text
-NAME                                 READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE
-zone-aware-deploy-6b8f9d7c4f-abc12   1/1     Running   0          15s   10.244.1.8   worker-1   <none>
-zone-aware-deploy-6b8f9d7c4f-def34   1/1     Running   0          15s   10.244.1.9   worker-1   <none>
-zone-aware-deploy-6b8f9d7c4f-ghi56   1/1     Running   0          15s   10.244.2.4   worker-2   <none>
-```
+![podAntiAffinity(preferred) — 가능한 노드 분산 배치](images/m02-24-zone.png)
 
 zone-a 레이블이 있는 worker-1에 2개, zone-b 레이블이 있는 worker-2에 1개가 배치된다(가중치 70:30 반영).
 
@@ -1132,12 +1069,7 @@ kubectl apply -f ha-web.yaml
 kubectl get pods -l app=ha-web -o wide
 ```
 
-```text
-NAME                      READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE
-ha-web-6b8f9d7c4f-abc12   1/1     Running   0          10s   10.244.1.10  worker-1   <none>
-ha-web-6b8f9d7c4f-def34   1/1     Running   0          10s   10.244.2.5   worker-2   <none>
-ha-web-6b8f9d7c4f-ghi56   1/1     Running   0          10s   10.244.3.3   worker-3   <none>
-```
+> **예시(참조) — 3노드 환경:** worker 가 3개면 required podAntiAffinity 로 3 Pod 가 서로 다른 노드에 1개씩 배치된다. dev 는 워커 1개라 1 Running·2 Pending 으로 재현된다(위 캡처).
 
 3개 Pod가 모두 다른 노드에 분산 배치된 것을 확인할 수 있다.
 
@@ -1146,12 +1078,7 @@ ha-web-6b8f9d7c4f-ghi56   1/1     Running   0          10s   10.244.3.3   worker
 kubectl get pods -l app=ha-web
 ```
 
-```text
-NAME                      READY   STATUS    RESTARTS   AGE
-ha-web-6b8f9d7c4f-abc12   1/1     Running   0          10s
-ha-web-6b8f9d7c4f-def34   1/1     Running   0          10s
-ha-web-6b8f9d7c4f-ghi56   0/1     Pending   0          10s
-```
+![required podAntiAffinity — 노드 수 부족 시 초과 Pod Pending(dev 1워커 실측)](images/m02-25-ha-web.png)
 
 `preferred`(soft)로 변경하면 분산을 시도하되, 노드가 부족해도 Pending이 되지 않는다.
 
@@ -1215,22 +1142,14 @@ kubectl apply -f gpu-pod.yaml
 kubectl get pod gpu-pod -o wide
 ```
 
-```text
-NAME      READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE
-gpu-pod   1/1     Running   0          5s    10.244.1.11  worker-1   <none>
-```
+![Toleration 보유 Pod 는 taint 노드에 스케줄(gpu-pod Running)](images/m02-27-gpu.png)
 
 ```bash
 # Toleration 없는 Pod가 Taint 노드에 스케줄링 시도 시
 kubectl describe pod no-toleration-pod | grep -A3 Events
 ```
 
-```text
-Events:
-  Type     Reason            Age   From               Message
-  ----     ------            ----  ----               -------
-  Warning  FailedScheduling  5s    default-scheduler  0/3 nodes are available: 1 node(s) had untolerated taint {dedicated: gpu}, ...
-```
+![Toleration 없는 Pod — untolerated taint 로 FailedScheduling](images/m02-28-untolerated.png)
 
 ---
 
@@ -1284,21 +1203,13 @@ spec:
 kubectl get daemonset log-collector -n kube-system
 ```
 
-```text
-NAME            DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-log-collector   3         3         3       3            3           <none>          30s
-```
+![log-collector DaemonSet — 노드마다 1개](images/m02-29-daemonset.png)
 
 ```bash
 kubectl get pods -n kube-system -l app=log-collector -o wide
 ```
 
-```text
-NAME                  READY   STATUS    RESTARTS   AGE   IP           NODE              NOMINATED NODE
-log-collector-abc12   1/1     Running   0          30s   10.244.0.5   control-plane     <none>
-log-collector-def34   1/1     Running   0          30s   10.244.1.12  worker-1          <none>
-log-collector-ghi56   1/1     Running   0          30s   10.244.2.6   worker-2          <none>
-```
+![DaemonSet Pod 배치(-o wide)](images/m02-30-ds-pods.png)
 
 DESIRED와 CURRENT, READY가 모두 일치하면 정상이다.
 
@@ -1353,23 +1264,13 @@ kubectl get pods --selector=job-name=pi-calculator
 kubectl get job pi-calculator
 ```
 
-```text
-NAME            COMPLETIONS   DURATION   AGE
-pi-calculator   5/5           45s        1m
-```
+![Job pi-calculator 상태](images/m02-31-job.png)
 
 ```bash
 kubectl get pods --selector=job-name=pi-calculator
 ```
 
-```text
-NAME                  READY   STATUS      RESTARTS   AGE
-pi-calculator-abc12   0/1     Completed   0          1m
-pi-calculator-def34   0/1     Completed   0          1m
-pi-calculator-ghi56   0/1     Completed   0          55s
-pi-calculator-jkl78   0/1     Completed   0          55s
-pi-calculator-mno90   0/1     Completed   0          45s
-```
+![Job 이 만든 Pod(job-name 셀렉터)](images/m02-32-job-pods.png)
 
 COMPLETIONS가 `5/5`이면 정상 완료이다.
 
@@ -1416,10 +1317,7 @@ spec:
 kubectl get cronjob db-backup
 ```
 
-```text
-NAME        SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
-db-backup   0 2 * * *   False     0        <none>          30s
-```
+![CronJob db-backup — SCHEDULE 0 2 * * *](images/m02-33-cronjob.png)
 
 ```bash
 # 수동 실행으로 테스트
@@ -1427,10 +1325,7 @@ kubectl create job --from=cronjob/db-backup db-backup-manual-001
 kubectl get jobs
 ```
 
-```text
-NAME                    COMPLETIONS   DURATION   AGE
-db-backup-manual-001    1/1           15s        20s
-```
+![CronJob 수동 실행(--from=cronjob) Job 완료](images/m02-15b-manual-job.png)
 
 ---
 
@@ -1483,18 +1378,14 @@ rm /etc/kubernetes/manifests/static-nginx.yaml
 kubectl get pods -o wide | grep static
 ```
 
-```text
-static-nginx-worker-1   1/1     Running   0          15s   10.244.1.13   worker-1   <none>
-```
+![Static Pod — 이름에 노드명 접미사(platform 실측)](images/m02-16b-static.png)
 
 ```bash
 # Static Pod인지 확인 (ownerReferences가 Node를 가리킴)
 kubectl get pod static-nginx-worker-1 -o jsonpath='{.metadata.ownerReferences[0].kind}'
 ```
 
-```text
-Node
-```
+![Static Pod 의 ownerReferences.kind=Node(노드 소속)](images/m02-17b-ownerref.png)
 
 ---
 
@@ -1545,10 +1436,7 @@ kubectl apply -f multi-container-pod.yaml
 kubectl get pod multi-container-pod
 ```
 
-```text
-NAME                  READY   STATUS    RESTARTS   AGE
-multi-container-pod   2/2     Running   0          10s
-```
+![멀티컨테이너 Pod — READY 2/2](images/m02-40-multi.png)
 
 READY 컬럼이 `2/2`인 것으로 두 컨테이너가 모두 실행 중임을 확인할 수 있다.
 
@@ -1610,10 +1498,7 @@ spec:
 kubectl get pod init-pod
 ```
 
-```text
-NAME       READY   STATUS     RESTARTS   AGE
-init-pod   0/1     Init:0/2   0          30s
-```
+![initContainers 진행 중 — STATUS Init:0/2](images/m02-41-init.png)
 
 ```bash
 # my-service 생성 후
@@ -1621,15 +1506,224 @@ kubectl create service clusterip my-service --tcp=80:80
 kubectl get pod init-pod -w
 ```
 
-```text
-NAME       READY   STATUS     RESTARTS   AGE
-init-pod   0/1     Init:0/2   0          30s
-init-pod   0/1     Init:1/2   0          35s
-init-pod   0/1     PodInitializing   0   37s
-init-pod   1/1     Running    0          38s
-```
+> **예시(참조) — initContainer 진행:** `kubectl get pod -w` 로 보면 Init:0/2 → Init:1/2 → PodInitializing → Running 으로 순차 전이한다. 초기 상태(Init:0/2)는 위 캡처 참고.
 
 STATUS 컬럼의 `Init:0/2`는 2개의 Init Container 중 0개가 완료되었음을 의미한다.
+
+---
+
+### 2.11 ConfigMap / Secret 예제
+
+> §2.10의 Init Container는 "사전 조건을 주입해야 한다"는 문제를 다뤘다. ConfigMap과 Secret은 그 연장선으로, 애플리케이션이 필요로 하는 설정값과 민감한 자격증명을 Pod 이미지와 분리해 주입하는 방법이다.
+
+#### 등장 배경
+
+**없던 시절의 고통.** 초기에는 설정값(DB 호스트, 포트, 기능 플래그)을 이미지 안에 하드코딩하거나, 컨테이너 명세의 `env` 필드에 평문으로 직접 써 넣었다. 그 결과 환경별(dev/staging/prod) 이미지를 따로 빌드해야 했고, 비밀번호가 Git 이력에 남아 보안 사고로 이어졌다.
+
+**직전 방식의 한계.** `env` 필드에 직접 값을 쓰는 방식은 배포 YAML이 곧 비밀번호 저장소가 된다. 코드 리뷰·감사 로그·Git diff에 민감 정보가 노출된다. 또 같은 설정을 여러 Deployment에 복붙하면 변경 시 수정 위치가 여러 곳으로 분산된다.
+
+**무엇이 나아졌나.** ConfigMap은 키-값 쌍 또는 파일 형태의 설정 데이터를 별도 오브젝트로 관리한다. Secret은 같은 구조이지만 값이 base64 인코딩되어 저장되고, etcd 암호화·RBAC 접근 제어·메모리 전용 tmpfs 마운트(노드 디스크에 평문 기록 없음)로 더 엄격하게 보호된다. Pod는 둘 다 `envFrom`(전체 키 일괄 주입), `env.valueFrom`(개별 키 선택 주입), `volumes`(파일로 마운트) 세 가지 방식으로 소비한다.
+
+**트레이드오프.** base64는 암호화가 아니라 인코딩이다. etcd 암호화(EncryptionConfiguration)나 외부 비밀 관리 솔루션(HashiCorp Vault, Sealed Secrets)을 쓰지 않으면 etcd 접근 권한만 있으면 Secret 값을 즉시 읽을 수 있다. 즉 "Git에는 없다"는 것이지 "클러스터 내부에서 안전하다"는 보장은 별개다.
+
+#### ConfigMap 생성
+
+```bash
+# 명령형 — 리터럴 값
+kubectl create configmap app-config \
+  --from-literal=APP_ENV=production \
+  --from-literal=APP_PORT=8080 \
+  --from-literal=LOG_LEVEL=info
+
+# 명령형 — 파일에서 (파일명이 키, 파일 내용이 값)
+kubectl create configmap nginx-conf --from-file=nginx.conf
+
+# 명령형 — 디렉터리 (각 파일이 별도 키)
+kubectl create configmap config-dir --from-file=./config/
+```
+
+**ConfigMap YAML:**
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+data:
+  APP_ENV: production      # 단순 키-값
+  APP_PORT: "8080"         # 숫자도 문자열로 저장
+  LOG_LEVEL: info
+  config.yaml: |           # 멀티라인 파일 내용을 키로 저장
+    server:
+      port: 8080
+      timeout: 30s
+```
+
+**필드 상세:**
+
+- `data`: 키-값 쌍을 저장한다. 값은 항상 문자열이다. 파이프(`|`) 문자를 쓰면 멀티라인 텍스트(설정 파일 전체)를 하나의 키에 저장할 수 있다.
+- `binaryData`: 바이너리 데이터를 base64 인코딩 값으로 저장한다. `data`와 동시에 사용할 수 있으나 같은 키를 중복 정의할 수 없다.
+
+#### Secret 생성
+
+```bash
+# 명령형 — Generic(Opaque) Secret
+kubectl create secret generic db-secret \
+  --from-literal=username=admin \
+  --from-literal=password=S3cur3P@ss!
+
+# TLS Secret (인증서 파일이 없으면 openssl로 생성)
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout tls.key -out tls.crt \
+  -subj "/CN=myapp.example.com/O=myapp"
+kubectl create secret tls my-tls-secret --cert=tls.crt --key=tls.key
+
+# Docker Registry Secret
+kubectl create secret docker-registry regcred \
+  --docker-server=registry.example.com \
+  --docker-username=myuser \
+  --docker-password=mypassword
+```
+
+**Secret YAML (Opaque):**
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+  namespace: default
+type: Opaque
+data:
+  username: YWRtaW4=       # echo -n 'admin'    | base64
+  password: UzNjdXIzUEBzcyE=  # echo -n 'S3cur3P@ss!' | base64
+stringData:
+  # stringData에 평문으로 쓰면 API 서버가 자동 base64 인코딩
+  api-key: plain-text-will-be-encoded
+```
+
+**data vs stringData:**
+
+- `data`: base64 인코딩된 값을 직접 입력한다. `echo -n 'value' | base64`로 인코딩한다(`-n`은 줄바꿈 제거, 없으면 개행까지 인코딩돼 오류).
+- `stringData`: 평문을 입력하면 API 서버가 자동으로 base64 인코딩 후 `data`로 저장한다. YAML 작성 시 편리하다. 같은 키가 `data`와 `stringData` 양쪽에 있으면 `stringData`가 우선한다.
+
+#### Pod에서 ConfigMap/Secret 사용 — 세 가지 패턴
+
+**패턴 1: envFrom — ConfigMap/Secret 전체를 환경변수로 주입**
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: env-from-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    envFrom:
+    - configMapRef:
+        name: app-config        # ConfigMap의 모든 키→환경변수
+    - secretRef:
+        name: db-secret         # Secret의 모든 키→환경변수
+```
+
+- `envFrom`은 ConfigMap/Secret의 모든 키를 한 번에 환경변수로 주입한다.
+- 키 이름이 환경변수 이름으로 그대로 사용된다. 키 이름이 유효한 환경변수 이름이어야 한다(영문자·숫자·`_`만 허용, 숫자로 시작 불가).
+- `prefix` 필드를 추가하면 `prefix`를 앞에 붙여 충돌을 방지한다(`prefix: DB_` → `DB_username`, `DB_password`).
+
+**패턴 2: env.valueFrom — 특정 키만 선택해 환경변수로 주입**
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: env-value-from-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    env:
+    - name: MY_ENV             # Pod 내부에서 쓸 환경변수 이름
+      valueFrom:
+        configMapKeyRef:
+          name: app-config     # ConfigMap 이름
+          key: APP_ENV         # ConfigMap에서 가져올 키
+    - name: DB_PASSWORD        # Pod 내부에서 쓸 환경변수 이름
+      valueFrom:
+        secretKeyRef:
+          name: db-secret      # Secret 이름
+          key: password        # Secret에서 가져올 키
+          optional: false      # true이면 Secret/키 부재 시 Pod 기동 허용(기본 false)
+```
+
+- `configMapKeyRef.key`와 `secretKeyRef.key`는 ConfigMap/Secret의 실제 키 이름이다.
+- `name`(환경변수 이름)은 자유롭게 재정의할 수 있어, 서로 다른 ConfigMap의 같은 키를 충돌 없이 주입할 수 있다.
+
+**패턴 3: volumes.configMap / volumes.secret — 파일로 마운트**
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-mount-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+    - name: config-vol
+      mountPath: /etc/app/config    # ConfigMap 내용이 파일로 마운트되는 디렉터리
+      readOnly: true
+    - name: secret-vol
+      mountPath: /etc/secrets       # Secret 내용이 파일로 마운트되는 디렉터리
+      readOnly: true
+  volumes:
+  - name: config-vol
+    configMap:
+      name: app-config
+      items:                        # 특정 키만 선택(생략하면 모든 키가 파일로 생성)
+      - key: config.yaml
+        path: app-config.yaml       # 마운트 경로 내 파일명
+  - name: secret-vol
+    secret:
+      secretName: db-secret
+      defaultMode: 0400             # 파일 권한(읽기 전용, 소유자만)
+```
+
+- `mountPath` 아래에 ConfigMap/Secret의 각 키가 **파일명**으로, 그 값이 **파일 내용**으로 마운트된다. `items`를 생략하면 ConfigMap의 모든 키가 파일로 생성된다.
+- 볼륨 마운트 방식의 장점: ConfigMap이 업데이트되면 kubelet이 일정 시간(기본 ~1분) 내에 마운트된 파일을 자동으로 갱신한다(환경변수 방식은 Pod 재시작 필요).
+- `defaultMode: 0400`은 8진수 파일 권한이다. Secret 파일은 최소 권한(소유자 읽기 전용)으로 설정하는 것이 권장된다.
+
+**검증:**
+
+```bash
+# ConfigMap/Secret 생성
+kubectl create configmap app-config \
+  --from-literal=APP_ENV=production \
+  --from-literal=APP_PORT=8080
+
+kubectl create secret generic db-secret \
+  --from-literal=username=admin \
+  --from-literal=password=S3cur3P@ss!
+
+# Pod 적용 후 환경변수 확인
+kubectl apply -f env-from-pod.yaml
+kubectl exec env-from-pod -- env | grep -E "APP_|LOG_"
+
+# 볼륨 마운트 확인
+kubectl apply -f volume-mount-pod.yaml
+kubectl exec volume-mount-pod -- ls /etc/app/config
+kubectl exec volume-mount-pod -- cat /etc/app/config/app-config.yaml
+```
+
+**장애 시나리오:**
+
+| 증상 | 원인 | 해결 |
+|------|------|------|
+| Pod `CreateContainerConfigError` | 참조한 ConfigMap/Secret이 존재하지 않음 | ConfigMap/Secret을 먼저 생성하거나 `optional: true` 지정 |
+| 환경변수가 주입되지 않음 | `envFrom`에서 키가 유효하지 않은 환경변수 이름 | 키 이름에 `-` 등 특수문자 확인, `env.valueFrom`으로 이름 재정의 |
+| Secret 값이 `base64` 그대로 출력됨 | YAML `data` 필드에 평문을 입력 | `stringData` 사용하거나 `echo -n 'value' \| base64`로 인코딩 후 `data`에 입력 |
+| 볼륨 마운트 파일이 업데이트되지 않음 | kubelet 갱신 주기(기본 ~60s) 내 아직 미적용 | `kubectl exec`로 파일 내용 재확인 또는 잠시 대기 |
+| `Forbidden: secret` | RBAC으로 Secret 접근 권한 없음 | ServiceAccount에 Secret `get` 권한 부여 |
 
 ---
 
@@ -1678,7 +1772,15 @@ spec:
 
 **필드 상세:**
 
-- `type`: 생략 시 기본값은 `ClusterIP`이다. `ClusterIP`는 클러스터 내부에서만 접근 가능한 가상 IP를 할당한다. `NodePort`는 클러스터 외부에서 `<NodeIP>:<NodePort>`로 접근할 수 있다. `LoadBalancer`는 클라우드 프로바이더의 로드밸런서를 프로비저닝한다.
+- `type`: 생략 시 기본값은 `ClusterIP`이다. `ClusterIP`는 클러스터 내부에서만 접근 가능한 가상 IP를 할당한다. `NodePort`는 클러스터 외부에서 `<NodeIP>:<NodePort>`로 접근할 수 있다. `LoadBalancer`는 클라우드 프로바이더의 로드밸런서를 프로비저닝한다. 세 타입은 포함 관계다 — NodePort는 ClusterIP를 자동으로 포함하고, LoadBalancer는 NodePort를 포함한다. 즉 상위 타입을 만들면 하위 기능도 함께 제공된다. 언제 무엇을 쓰는지는 다음과 같다.
+
+| 타입 | 노출 범위 | 포트 | 대표 사용 사례 |
+|:--|:--|:--|:--|
+| ClusterIP | 클러스터 내부 전용 | 임의(1-65535) | Pod 간 통신, 내부 마이크로서비스 호출 |
+| NodePort | 노드 IP를 통한 외부 노출 | 30000-32767 고정 | 개발·테스트, LB가 없는 환경에서의 외부 접근 |
+| LoadBalancer | 클라우드 LB의 공인 IP | 임의(1-65535) | 프로덕션 public 서비스(클라우드 환경) |
+
+온프레미스나 tart 같은 로컬 클러스터에는 클라우드 LB가 없으므로 `LoadBalancer` Service는 `EXTERNAL-IP`가 `<pending>`에 머문다. 이때는 MetalLB 같은 별도 컨트롤러를 설치하거나 NodePort/Ingress로 외부 노출을 대신한다.
 - `selector`: 이 Service가 트래픽을 전달할 Pod를 선택하는 레이블 셀렉터이다. selector가 없으면 Endpoints가 자동 생성되지 않으며, 수동으로 Endpoints 리소스를 생성해야 한다(외부 서비스 연결 시 사용).
 - `port`: Service가 노출하는 포트이다. 클러스터 내에서 `<ServiceIP>:80`으로 접근한다.
 - `targetPort`: 실제 Pod의 컨테이너가 리스닝하는 포트이다. 생략 시 `port`와 동일한 값이 사용된다. 숫자 대신 Pod에서 정의한 포트 이름(`name: http`)을 사용할 수도 있다.
@@ -1726,23 +1828,14 @@ spec:
 kubectl get svc
 ```
 
-```text
-NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
-kubernetes       ClusterIP   10.96.0.1       <none>        443/TCP        30d
-nginx-svc        ClusterIP   10.96.45.123    <none>        80/TCP         30s
-nginx-nodeport   NodePort    10.96.78.234    <none>        80:30080/TCP   25s
-nginx-headless   ClusterIP   None            <none>        80/TCP         20s
-```
+> **예시(참조):** `kubectl get svc` 의 일반적 출력 형식. 실제 Service 타입별 실측은 day11·day12 참고.
 
 ```bash
 # Endpoints 확인 (실제 Pod IP 목록)
 kubectl get endpoints nginx-svc
 ```
 
-```text
-NAME        ENDPOINTS                                    AGE
-nginx-svc   10.244.1.5:80,10.244.1.6:80,10.244.2.3:80   30s
-```
+> **예시(참조):** `kubectl get endpoints` 형식. 실측은 day11·day12 참고.
 
 ```bash
 # 클러스터 내부에서 Service 접근 테스트
@@ -1750,13 +1843,7 @@ kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
   curl -s http://nginx-svc.default.svc.cluster.local
 ```
 
-```text
-<!DOCTYPE html>
-<html>
-<head>
-<title>Welcome to nginx!</title>
-...
-```
+![backend 응답 본문(nginx 기본 페이지) — wget 으로 조회](images/m02-09b-html.png)
 
 ```bash
 # Headless Service DNS 조회 (Pod IP 직접 반환)
@@ -1764,15 +1851,7 @@ kubectl run dns-test --image=busybox:1.28 --rm -it --restart=Never -- \
   nslookup nginx-headless.default.svc.cluster.local
 ```
 
-```text
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      nginx-headless.default.svc.cluster.local
-Address 1: 10.244.1.5
-Address 2: 10.244.1.6
-Address 3: 10.244.2.3
-```
+![Headless Service 의 DNS 조회(개별 Pod IP 반환)](images/m02-63-headless-dns.png)
 
 **Endpoints가 비어있는 경우 트러블슈팅:**
 
@@ -1788,7 +1867,9 @@ Address 3: 10.244.2.3
 
 #### 등장 배경
 
-NodePort Service는 포트 범위가 제한되고(30000-32767), 각 서비스마다 별도 포트가 필요하며, L4 수준의 라우팅만 가능하다. LoadBalancer Service는 서비스마다 별도의 로드밸런서를 프로비저닝하여 비용이 증가한다. Ingress는 단일 진입점(L7 로드밸런서)으로 호스트명과 경로 기반의 라우팅을 제공하며, TLS 종료(termination)를 중앙에서 관리한다. Ingress 리소스 자체는 규칙 정의이며, 실제 동작은 Ingress Controller(nginx, traefik, HAProxy 등)가 수행한다.
+NodePort Service는 포트 범위가 제한되고(30000-32767), 각 서비스마다 별도 포트가 필요하며, L4(전송 계층, IP·포트 단위) 수준의 라우팅만 가능하다. LoadBalancer Service는 서비스마다 별도의 로드밸런서를 프로비저닝하여 비용이 증가한다.
+
+구체적 상황으로 보면 필요성이 분명해진다. 마이크로서비스 5개(auth, api, web, payment, admin)를 클라우드에 외부 공개한다고 하자. 각각에 LoadBalancer Service를 붙이면 공인 IP 5개와 로드밸런서 5대가 생기고, 클라우드 LB는 보통 개당 월 비용이 붙으므로 합산하면 수백 달러가 나간다. 게다가 "도메인 하나(`example.com`) 아래 경로로 서비스를 나눠 노출"하는 흔한 요구를 LoadBalancer만으로는 풀 수 없다. Ingress는 단일 진입점(L7, 응용 계층에서 HTTP 호스트명·URL 경로까지 보는 로드밸런서) 하나 뒤에 7계층 라우터를 두어 `auth.example.com → auth-svc`, `example.com/api → api-svc`처럼 호스트·경로로 분기한다. 결과적으로 공인 IP 1개와 LB 1대로 다섯 서비스를 노출하고 TLS 종료(termination, 암호화 해제)도 한곳에서 관리한다. Ingress 리소스 자체는 규칙 정의일 뿐이며, 실제 트래픽 분배는 Ingress Controller(nginx, traefik, HAProxy 등)가 수행한다.
 
 #### Path-based Routing
 
@@ -1932,28 +2013,13 @@ spec:
 kubectl get ingress
 ```
 
-```text
-NAME                     CLASS   HOSTS               ADDRESS        PORTS     AGE
-app-ingress              nginx   myapp.example.com    192.168.1.50   80        30s
-tls-ingress              nginx   myapp.example.com    192.168.1.50   80, 443   25s
-```
+> **예시(참조) — Ingress:** Ingress 컨트롤러(ingress-nginx 등)가 설치된 환경에서는 `kubectl get/describe ingress` 의 ADDRESS 에 로드밸런서/노드 IP 가 채워지고 HOSTS·CLASS·규칙이 표시된다. 이 저장소의 dev 클러스터에는 컨트롤러가 없어 ADDRESS 가 비어 있다(day13·day14 실측 참고). 규칙(Host→Service)·pathType 동작은 동일하다.
 
 ```bash
 kubectl describe ingress app-ingress
 ```
 
-```text
-Name:             app-ingress
-Namespace:        default
-Address:          192.168.1.50
-Ingress Class:    nginx
-Rules:
-  Host               Path  Backends
-  ----               ----  --------
-  myapp.example.com
-                     /api(/|$)(.*)   api-service:8080 (10.244.1.5:8080,10.244.2.3:8080)
-                     /web(/|$)(.*)   web-service:80 (10.244.1.6:80)
-```
+> **예시(참조) — describe ingress:** 컨트롤러 설치 환경에서의 출력. dev 는 컨트롤러가 없어 ADDRESS 가 비고 규칙만 표시된다(day13·day14 실측).
 
 Backends에 Pod IP가 표시되면 Service와 Ingress가 정상적으로 연결된 것이다. `<error: endpoints "..." not found>` 등의 메시지가 표시되면 Service 이름 또는 포트를 확인해야 한다.
 
@@ -1963,7 +2029,11 @@ Backends에 Pod IP가 표시되면 Service와 Ingress가 정상적으로 연결�
 
 #### 등장 배경
 
-기본적으로 Kubernetes 클러스터 내의 모든 Pod는 서로 제한 없이 통신할 수 있다. 이는 마이크로서비스 환경에서 보안 위험을 초래한다. 하나의 Pod가 침해되면 클러스터 내 모든 서비스에 횡적 이동(lateral movement)이 가능하다. NetworkPolicy는 네트워크 수준에서 Pod 간 트래픽을 제어하여 최소 권한 원칙을 적용한다. CNI 플러그인(Calico, Cilium, Weave Net 등)이 NetworkPolicy를 지원해야 하며, Flannel은 기본적으로 지원하지 않는다.
+기본적으로 Kubernetes 클러스터 내의 모든 Pod는 서로 제한 없이 통신할 수 있다. 이는 마이크로서비스 환경에서 보안 위험을 초래한다. 하나의 Pod가 침해되면 클러스터 내 모든 서비스로 횡적 이동(lateral movement, 공격자가 한 시스템을 발판 삼아 내부의 다른 시스템으로 옮겨 가며 권한을 넓히는 행위)이 가능하다.
+
+구체적으로 보면 이렇다. 외부에 노출된 frontend Pod의 취약점이 뚫려 공격자가 그 Pod 안에서 명령을 실행할 수 있게 됐다고 하자. NetworkPolicy가 없으면 이 Pod에서 클러스터의 모든 Pod IP 대역(예: `10.244.x.x`)으로 자유롭게 패킷을 보낼 수 있으므로, 공격자는 database Pod의 MySQL 포트(3306)를 스캔해 접속을 시도한다. DB 비밀번호가 노출되거나 인증이 허술하면 데이터 전체가 탈취된다. frontend는 원래 DB에 직접 접근할 이유가 없는데도 네트워크가 활짝 열려 있어 막을 방법이 없는 것이 문제다.
+
+NetworkPolicy는 네트워크 수준에서 Pod 간 트래픽을 제어하여 최소 권한 원칙(필요한 통신만 허용)을 적용한다. 위 예에서 "database Pod는 backend Pod로부터의 3306 인바운드만 허용"이라는 정책을 두면, 침해된 frontend가 DB로 보내는 패킷은 CNI 단계에서 폐기된다. NetworkPolicy는 CNI 플러그인(Container Network Interface, Pod 네트워킹을 담당하는 플러그인 규격. Calico, Cilium, Weave Net 등)이 지원해야 동작하며, Flannel은 기본적으로 지원하지 않아 정책을 만들어도 적용되지 않는다.
 
 #### Default Deny All (Ingress)
 
@@ -2155,9 +2225,7 @@ kubectl apply -f default-deny-ingress.yaml
 kubectl exec -it frontend-pod -- wget -qO- --timeout=3 http://backend-svc:8080
 ```
 
-```text
-wget: download timed out
-```
+![NetworkPolicy 차단 — 허용되지 않은 Pod 의 backend 접근 timeout](images/m02-61-np-deny.png)
 
 ```bash
 # allow-frontend-to-backend 정책 추가 후 통신 테스트
@@ -2166,29 +2234,21 @@ kubectl apply -f allow-frontend-to-backend.yaml
 kubectl exec -it frontend-pod -- wget -qO- --timeout=3 http://backend-svc:8080
 ```
 
-```text
-{"status":"ok","message":"Hello from backend"}
-```
+![NetworkPolicy 허용 — tier=frontend 에서 backend 접근 성공(HTTP 200)](images/m02-60-np-allow.png)
 
 ```bash
 # 허용되지 않은 Pod에서 통신 시도
 kubectl exec -it unauthorized-pod -- wget -qO- --timeout=3 http://backend-svc:8080
 ```
 
-```text
-wget: download timed out
-```
+![NetworkPolicy 차단 — timeout(재확인)](images/m02-61-np-deny.png)
 
 ```bash
 # NetworkPolicy 목록 확인
 kubectl get networkpolicy -n production
 ```
 
-```text
-NAME                         POD-SELECTOR    AGE
-default-deny-ingress         <none>          5m
-allow-frontend-to-backend    tier=backend    3m
-```
+![적용된 NetworkPolicy 목록(default-deny + allow-frontend-to-backend)](images/m02-62-np-list.png)
 
 **장애 시나리오:**
 
@@ -2289,13 +2349,7 @@ kubectl apply -f task-pod.yaml
 kubectl get pv,pvc
 ```
 
-```text
-NAME                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   AGE
-persistentvolume/task-pv   10Gi       RWO            Retain           Bound    default/task-pvc   manual         30s
-
-NAME                             STATUS   VOLUME    CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-persistentvolumeclaim/task-pvc   Bound    task-pv   10Gi       RWO            manual         25s
-```
+![정적 PV task-pv 와 task-pvc 바인딩(Bound)](images/m02-54-pv.png)
 
 STATUS가 `Bound`이면 PV와 PVC가 정상적으로 연결된 것이다. `Pending`이면 조건에 맞는 PV가 없는 것이다.
 
@@ -2310,10 +2364,7 @@ kubectl describe pvc task-pvc
 kubectl exec task-pod -- df -h /usr/share/nginx/html
 ```
 
-```text
-Filesystem      Size  Used Avail Use% Mounted on
-/dev/sda1        50G  5.2G   45G  11% /usr/share/nginx/html
-```
+![Pod 내부에서 본 마운트 볼륨 용량(df)](images/m02-55-df.png)
 
 **장애 시나리오:**
 
@@ -2331,7 +2382,9 @@ Filesystem      Size  Used Avail Use% Mounted on
 
 #### 등장 배경
 
-Static Provisioning에서는 관리자가 PV를 미리 생성해야 하며, 개발자의 PVC 요청에 맞는 PV가 없으면 수동으로 추가해야 한다. Dynamic Provisioning은 PVC 생성 시 StorageClass에 정의된 provisioner가 자동으로 PV를 생성하여 이 문제를 해결한다. 클라우드 환경에서는 AWS EBS, GCE PD, Azure Disk 등의 provisioner가 자동으로 디스크를 프로비저닝한다.
+Static Provisioning에서는 관리자가 PV(PersistentVolume, 실제 스토리지를 추상화한 클러스터 리소스)를 미리 생성해야 하며, 개발자의 PVC(PersistentVolumeClaim, 스토리지 요청서) 요청에 맞는 PV가 없으면 수동으로 추가해야 한다.
+
+이 수동 방식이 프로덕션에서 깨지는 지점은 분명하다. 관리자가 PV를 미리 10개 만들어 두면, 개발자가 11번째 PVC를 요청하는 순간 맞는 PV가 없어 그 PVC는 `Pending`에 머물고 관리자가 PV를 추가로 만들 때까지 Pod가 뜨지 못한다. 용량·접근 모드·StorageClass가 제각각인 요청을 사람이 일일이 예측해 미리 깔아 두는 것은 규모가 커질수록 불가능하다. Dynamic Provisioning은 PVC 생성 시 StorageClass에 정의된 provisioner가 그 PVC 사양에 딱 맞는 PV를 즉석에서 자동 생성하여 이 문제를 없앤다. 클라우드 환경에서는 AWS EBS, GCE PD, Azure Disk 등의 provisioner가 PVC 요청을 받아 실제 디스크를 생성하고 PV로 묶어 준다. 즉 관리자 개입 없이 수요에 따라 스토리지가 확장된다는 점이 프로덕션에서 Dynamic을 사실상 필수로 만든다.
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -2379,10 +2432,7 @@ StorageClass가 지정되지 않으면(`storageClassName` 필드 없음) 기본(
 kubectl get storageclass
 ```
 
-```text
-NAME             PROVISIONER                    RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-fast (default)   kubernetes.io/no-provisioner   Delete          WaitForFirstConsumer   true                   30s
-```
+![StorageClass 목록 — fast/manual/local-path](images/m02-56-sc.png)
 
 이름 옆의 `(default)`가 기본 StorageClass를 나타낸다.
 
@@ -2452,7 +2502,7 @@ spec:
 
 - `serviceName`: 반드시 Headless Service 이름과 일치해야 한다. 이를 통해 각 Pod에 `mysql-0.mysql-headless.default.svc.cluster.local` 형태의 고유한 DNS 이름이 부여된다.
 - Pod 생성/삭제는 순서대로 이루어진다. `mysql-0` -> `mysql-1` -> `mysql-2` 순으로 생성되며, 역순으로 삭제된다. 각 Pod는 이전 Pod가 Ready가 되어야 다음 Pod가 생성된다.
-- `volumeClaimTemplates`: 각 Pod에 대해 별도의 PVC를 자동 생성한다. `data-mysql-0`, `data-mysql-1`, `data-mysql-2`라는 이름의 PVC가 생성된다. StatefulSet을 삭제해도 PVC는 보존된다(데이터 보호). 수동으로 삭제해야 한다.
+- `volumeClaimTemplates`: 각 Pod에 대해 별도의 PVC를 자동 생성한다. `data-mysql-0`, `data-mysql-1`, `data-mysql-2`라는 이름의 PVC가 생성된다. 왜 Pod마다 전용 PVC가 필요한가. `mysql-0` Pod가 죽었다 재시작되면 StatefulSet은 같은 이름(`mysql-0`)으로 다시 띄우고, 이름이 같으니 같은 PVC(`data-mysql-0`)에 다시 바인딩한다. 따라서 재시작 전에 디스크에 써 둔 데이터를 그대로 이어받는다. 이름·스토리지가 Pod 정체성에 고정되어 있으므로 데이터베이스의 일관성과 인스턴스별 상태가 보장된다. 반면 Deployment의 Pod는 매번 무작위 이름으로 교체되고 스토리지를 공유하거나 잃으므로, 상태(stateful) 워크로드에는 부적합하다. 데이터 보호를 위해 StatefulSet을 삭제해도 PVC는 보존되며(자동 삭제되지 않음), 정리하려면 수동으로 삭제해야 한다.
 
 각 Pod(mysql-0, mysql-1, mysql-2)에 대해 별도의 PVC(data-mysql-0, data-mysql-1, data-mysql-2)가 자동 생성된다.
 
@@ -2462,32 +2512,19 @@ spec:
 kubectl get statefulset mysql
 ```
 
-```text
-NAME    READY   AGE
-mysql   3/3     2m
-```
+![StatefulSet mysql — READY 3/3](images/m02-50-sts.png)
 
 ```bash
 kubectl get pods -l app=mysql
 ```
 
-```text
-NAME      READY   STATUS    RESTARTS   AGE
-mysql-0   1/1     Running   0          2m
-mysql-1   1/1     Running   0          90s
-mysql-2   1/1     Running   0          60s
-```
+![StatefulSet Pod 순차 생성(mysql-0/1/2)](images/m02-51-sts-pods.png)
 
 ```bash
 kubectl get pvc -l app=mysql
 ```
 
-```text
-NAME           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-data-mysql-0   Bound    pvc-abc12345-6789-0123-4567-890abcdef012   10Gi       RWO            fast           2m
-data-mysql-1   Bound    pvc-bcd23456-7890-1234-5678-901abcdef123   10Gi       RWO            fast           90s
-data-mysql-2   Bound    pvc-cde34567-8901-2345-6789-012abcdef234   10Gi       RWO            fast           60s
-```
+![volumeClaimTemplate 로 Pod 별 PVC 자동 생성·Bound](images/m02-52-sts-pvc.png)
 
 ```bash
 # 개별 Pod DNS 확인
@@ -2495,17 +2532,29 @@ kubectl run dns-test --image=busybox:1.28 --rm -it --restart=Never -- \
   nslookup mysql-0.mysql-headless.default.svc.cluster.local
 ```
 
-```text
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      mysql-0.mysql-headless.default.svc.cluster.local
-Address 1: 10.244.1.14
-```
+![Headless Service 로 StatefulSet Pod 개별 DNS(mysql-0...)](images/m02-53-sts-dns.png)
 
 ---
 
 ## 5. 트러블슈팅 명령어 치트시트
+
+앞의 §1~§4는 각 리소스(설치·워크로드·네트워킹·스토리지)마다 끝에 "장애 시나리오" 표를 두어 그 리소스에 특화된 문제와 복구법을 정리했다. 이 섹션은 그와 달리 리소스 종류를 가리지 않고 클러스터 전체 상태를 빠르게 훑는 진단 도구 모음이다. 실기 시험에서 "어디가 고장 났는지 모르는" 상태에서 출발점으로 쓰는 명령들이며, 여기서 범위를 좁힌 뒤 §1~§4의 해당 리소스 장애 표로 내려가 구체적 원인을 짚는 흐름으로 사용한다.
+
+#### 단계별 장애 진단 흐름 — Pod가 Pending인 경우
+
+시험에서 "어떤 Pod가 Running이 되지 않는다"는 문제가 주어지면, 단순히 명령어 목록을 외운 것으로는 해결이 어렵다. 아래 흐름을 머릿속에 고정해두면 어떤 Pending 원인도 체계적으로 좁힐 수 있다.
+
+**1단계 — Pod 이벤트 확인(가장 먼저):** `kubectl describe pod <pod-name> -n <ns>` 출력 맨 아래의 **Events** 섹션을 읽는다. `FailedScheduling` 이벤트가 있으면 스케줄러가 적합한 노드를 찾지 못한 것이다. 메시지 본문이 그 원인을 직접 알려준다. 예: `0/2 nodes are available: 1 Insufficient cpu, 1 node(s) had taint {node-role.kubernetes.io/control-plane:NoSchedule} that the pod didn't tolerate`.
+
+**2단계 — 원인 분류:** Events 메시지로 다음 세 갈래 중 하나를 선택한다.
+- `Insufficient cpu/memory` → 노드 리소스 부족. `kubectl describe node <node>` → **Allocatable** vs **Requests** 비교. Pod의 `resources.requests`를 낮추거나 노드를 추가한다.
+- `node(s) had taint ... that the pod didn't tolerate` → Taint/Toleration 불일치. `kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints`로 각 노드의 Taint를 확인하고, Pod spec에 대응하는 `tolerations`를 추가한다.
+- `node(s) didn't match pod's node affinity/selector` → nodeSelector 또는 Node Affinity 불일치. `kubectl get nodes --show-labels`로 노드 레이블을 확인한다.
+- `persistentvolumeclaim ... not found / Unbound` → PVC가 없거나 PV에 바인딩되지 않았다. `kubectl get pvc -n <ns>` → `kubectl describe pvc <name>`으로 이유를 본다.
+
+**3단계 — 수정 후 재확인:** 원인을 수정한 뒤 `kubectl get pod <pod-name> -n <ns> -w`로 실시간 상태 변화를 관찰한다. `Pending → ContainerCreating → Running` 순서로 전환되면 정상이다. `ContainerCreating`에서 멈추면 이미지 Pull 실패(`ImagePullBackOff`)나 볼륨 마운트 실패가 원인이며, 다시 `describe`로 Events를 읽는다.
+
+이 세 단계 — **이벤트 읽기 → 원인 분류 → 수정 후 확인** — 를 지키면 시험에서 트러블슈팅 문제를 5분 이내에 처리할 수 있다.
 
 ### 5.1 클러스터 상태 확인
 
@@ -2672,24 +2721,7 @@ kubeadm certs renew all
 kubeadm certs check-expiration
 ```
 
-```text
-CERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY   EXTERNALLY MANAGED
-admin.conf                 Jan 15, 2027 09:30 UTC   363d            ca                      no
-apiserver                  Jan 15, 2027 09:30 UTC   363d            ca                      no
-apiserver-etcd-client      Jan 15, 2027 09:30 UTC   363d            ca                      no
-apiserver-kubelet-client   Jan 15, 2027 09:30 UTC   363d            ca                      no
-controller-manager.conf    Jan 15, 2027 09:30 UTC   363d            ca                      no
-etcd-healthcheck-client    Jan 15, 2027 09:30 UTC   363d            etcd-ca                 no
-etcd-peer                  Jan 15, 2027 09:30 UTC   363d            etcd-ca                 no
-etcd-server                Jan 15, 2027 09:30 UTC   363d            etcd-ca                 no
-front-proxy-client         Jan 15, 2027 09:30 UTC   363d            front-proxy-ca          no
-scheduler.conf             Jan 15, 2027 09:30 UTC   363d            ca                      no
-
-CERTIFICATE AUTHORITY   EXPIRES                  RESIDUAL TIME   EXTERNALLY MANAGED
-ca                      Jan 13, 2036 09:30 UTC   3650d           no
-etcd-ca                 Jan 13, 2036 09:30 UTC   3650d           no
-front-proxy-ca          Jan 13, 2036 09:30 UTC   3650d           no
-```
+![kubeadm certs check-expiration — 인증서 만료일(platform 실측)](images/m02-57-certs.png)
 
 ---
 
@@ -2867,6 +2899,21 @@ kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP
 ---
 
 ## 시험 시작 시 설정
+
+> **앞 섹션(§6 kubectl 치트시트)에서 다룬 명령 옵션들은 시험 환경에서도 그대로 동작한다. 단, 시험 문제마다 컨텍스트를 전환해야 한다는 점이 로컬 실습과 다르다.**
+
+CKA 실기 시험은 단일 클러스터가 아니라 문제마다 별도 컨텍스트(클러스터)로 전환하도록 요구한다. 문제 지문 첫 줄에 `kubectl config use-context <ctx>`가 항상 제시되며, 이를 실행하지 않으면 엉뚱한 클러스터에서 작업하는 실수가 발생한다. 현재 사용 가능한 컨텍스트 목록은 `kubectl config get-contexts`로 확인한다.
+
+```bash
+# 문제마다 가장 먼저 실행 — 문제 지문에 제시된 컨텍스트를 그대로 복사
+kubectl config use-context <ctx>
+
+# 현재 컨텍스트 목록 확인 (현재 활성 컨텍스트에 * 표시)
+kubectl config get-contexts
+
+# 현재 활성 컨텍스트만 확인
+kubectl config current-context
+```
 
 시험을 시작하면 다음을 먼저 실행하는 것을 권장한다:
 

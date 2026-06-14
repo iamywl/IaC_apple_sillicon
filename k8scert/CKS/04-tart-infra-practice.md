@@ -23,8 +23,21 @@
 
 ## 사전 준비
 
+> **실습 전제 조건**: 이 문서의 모든 실습은 다음 환경이 갖춰진 상태를 기준으로 한다.
+> - **클러스터 가동**: `./scripts/boot.sh && ./scripts/fix-cluster-ip-drift.sh dev` 실행 후 모든 노드가 Ready 상태
+> - **kubeconfig 경로**: `~/sideproejct/IaC_apple_sillicon/kubeconfig/` (아래 명령에서 `kubeconfig/dev.yaml` 등으로 지정)
+> - **SSH 노드 접근**: `ssh dev-master`, `ssh dev-worker1` 형태로 비밀번호 없이 접속 가능 (ProxyCommand 방식, `~/.ssh/config` 필요; `<vm이름>` 플레이스홀더 없이 실제 별칭을 그대로 사용한다)
+> - **선행 리소스**: demo 네임스페이스에 httpbin, nginx-web, postgres, redis Pod가 Running 상태여야 한다. 아래 검증 블록으로 확인한다. demo ns가 비어 있거나 Pod가 없으면 아래 명령으로 선행 리소스를 먼저 적용한다. ArgoCD auto-sync가 활성화된 경우에는 ArgoCD가 자동 배포하므로 아래 명령은 ArgoCD가 없는 환경에서만 실행한다.
+>
+>   ```bash
+>   kubectl apply -f manifests/demo/ --kubeconfig kubeconfig/dev.yaml
+>   kubectl wait --for=condition=ready pod --all -n demo --timeout=120s --kubeconfig kubeconfig/dev.yaml
+>   ```
+>
+> - **CKS 파괴 실습**: dev 또는 staging 클러스터에서만 수행한다. platform, prod 클러스터는 건드리지 않는다.
+
 ```bash
-export KUBECONFIG=kubeconfig/dev-kubeconfig
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 kubectl get pods -n demo
 ```
@@ -36,34 +49,21 @@ kubectl get pods -n demo
 kubectl cluster-info
 ```
 
-```text
-Kubernetes control plane is running at https://192.168.64.X:6443
-CoreDNS is running at https://192.168.64.X:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
-```
+> **예시(참조) — Kubernetes control plane is running at https://1:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 노드 상태 확인
 kubectl get nodes -o wide
 ```
 
-```text
-NAME           STATUS   ROLES           AGE   VERSION   INTERNAL-IP      OS-IMAGE
-dev-master     Ready    control-plane   Xd    v1.29.X   192.168.64.X     Ubuntu 22.04
-dev-worker-1   Ready    <none>          Xd    v1.29.X   192.168.64.X     Ubuntu 22.04
-```
+> **예시(참조) — NAME           STATUS   ROLES           AGE   VE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: demo 네임스페이스 Pod 상태 확인
 kubectl get pods -n demo -o wide
 ```
 
-```text
-NAME                          READY   STATUS    RESTARTS   AGE
-httpbin-xxxxx-xxxxx           2/2     Running   0          Xd
-nginx-web-xxxxx-xxxxx         2/2     Running   0          Xd
-postgres-0                    2/2     Running   0          Xd
-redis-0                       2/2     Running   0          Xd
-```
+> **예시(참조) — NAME                          READY   STATUS    :** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ---
 
@@ -75,13 +75,17 @@ redis-0                       2/2     Running   0          Xd
 
 #### 등장 배경과 기존 한계점
 
+먼저 용어를 정리한다. CNI(Container Network Interface)는 쿠버네티스에서 Pod의 네트워크 연결을 담당하는 플러그인 규격으로, Calico·Cilium·Flannel 등이 이를 구현한다. L3/L4/L7은 네트워크 계층 구분으로, L3는 IP 주소, L4는 TCP/UDP 포트, L7은 HTTP·gRPC 같은 애플리케이션 프로토콜 수준을 가리킨다. CIDR(예: 10.0.0.0/8)은 IP 주소 대역을 표기하는 방식이고, FQDN(Fully Qualified Domain Name, 예: api.example.com)은 완전한 도메인 이름이다.
+
 쿠버네티스 표준 NetworkPolicy는 L3/L4(IP/포트) 수준의 트래픽 제어만 지원한다. HTTP 메서드(GET/POST), URL 경로, gRPC 서비스 등 L7 수준의 세밀한 제어가 불가능하다. 또한 표준 NetworkPolicy는 CIDR 기반 외부 트래픽 제어가 제한적이며, FQDN 기반 정책을 지원하지 않는다.
 
-CiliumNetworkPolicy는 eBPF 기반 CNI인 Cilium이 제공하는 확장된 네트워크 정책이다. Linux 커널의 eBPF 프로그램으로 패킷을 처리하므로 iptables 기반 CNI보다 성능이 우수하며, L7 HTTP/gRPC/Kafka 프로토콜 수준의 트래픽 제어가 가능하다.
+CiliumNetworkPolicy는 eBPF 기반 CNI인 Cilium이 제공하는 확장된 네트워크 정책이다. eBPF(extended Berkeley Packet Filter)는 커널을 재컴파일하거나 별도 모듈을 적재하지 않고 커널 안에서 안전하게 실행되는 작은 프로그램을 등록하는 기술이다. Cilium은 이 eBPF 프로그램으로 패킷을 처리하므로, 직전 방식이던 iptables 기반 CNI(수천 개의 규칙을 선형 탐색하여 패킷마다 비용이 커지는 한계가 있었다)보다 성능이 우수하며, L7 HTTP/gRPC/Kafka 프로토콜 수준의 트래픽 제어가 가능하다. 트레이드오프로는 eBPF가 비교적 최신 커널을 요구하고, iptables 규칙처럼 익숙한 도구로 디버깅하기 어려워 Hubble 같은 전용 관측 도구가 필요하다는 점이 있다.
 
 #### 커널 레벨 동작 원리
 
-Cilium은 eBPF 프로그램을 커널의 TC(Traffic Control) 훅에 attach하여 패킷을 처리한다. eBPF 프로그램은 커널 공간에서 실행되므로 사용자 공간으로의 컨텍스트 스위칭이 없다. 패킷이 네트워크 인터페이스에 도착하면 커널이 eBPF 프로그램을 호출하고, eBPF 프로그램이 CiliumNetworkPolicy의 규칙과 대조하여 패킷을 허용하거나 차단한다.
+먼저 큰 그림이다. Pod가 패킷을 보내면, 그 패킷은 노드의 리눅스 커널을 거치고, 커널이 "이 패킷을 통과시킬지 말지"를 정책 규칙에 따라 판정한 뒤 허용 또는 차단한다. 학부 수준에서는 이 정도(규칙 평가가 애플리케이션이 아니라 커널 내부에서 일어난다)만 이해해도 실습을 따라갈 수 있다. 아래는 그 판정이 정확히 어디서 일어나는지를 더 깊이 들여다본 설명이다.
+
+Cilium은 eBPF 프로그램을 커널의 TC(Traffic Control, 패킷 송수신 경로상의 처리 지점) 훅에 attach(연결)하여 패킷을 처리한다. eBPF 프로그램은 커널 공간에서 실행되므로 사용자 공간으로의 컨텍스트 스위칭(CPU가 커널 모드와 사용자 모드를 오가며 상태를 저장·복원하는 비용)이 없다. 패킷이 네트워크 인터페이스에 도착하면 커널이 eBPF 프로그램을 호출하고, eBPF 프로그램이 CiliumNetworkPolicy의 규칙과 대조하여 패킷을 허용하거나 차단한다.
 
 ```
 패킷 수신 → NIC → TC ingress hook → eBPF 프로그램 실행
@@ -105,16 +109,7 @@ L7 정책의 경우, eBPF 프로그램이 패킷의 페이로드까지 검사한
 kubectl get ciliumnetworkpolicy -n demo
 ```
 
-```text
-NAME                         AGE
-allow-dns-egress             Xd
-allow-httpbin-to-postgres    Xd
-allow-httpbin-to-redis       Xd
-allow-nginx-to-httpbin       Xd
-default-deny-egress          Xd
-default-deny-ingress         Xd
-...
-```
+> **예시(참조) — NAME                         AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. Default Deny 정책 확인
@@ -141,48 +136,29 @@ NGINX_POD=$(kubectl get pods -n demo -l app=nginx-web -o jsonpath='{.items[0].me
 kubectl exec $NGINX_POD -n demo -c nginx -- wget -qO- --timeout=5 http://httpbin.demo:8080/get
 ```
 
-```text
-{
-  "args": {},
-  "headers": {
-    "Host": "httpbin.demo:8080",
-    ...
-  },
-  "url": "http://httpbin.demo:8080/get"
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: nginx에서 httpbin으로 POST 요청 (L7 규칙에 의해 차단)
 kubectl exec $NGINX_POD -n demo -c nginx -- wget -qO- --timeout=5 --post-data='test=1' http://httpbin.demo:8080/post 2>&1
 ```
 
-```text
-wget: server returned error: HTTP/1.1 403 Forbidden
-```
+> **예시(참조) — wget: server returned error: HTTP/1.1 403 Forbid:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: 정책 적용 상태 확인
 kubectl get cnp -n demo -o jsonpath='{range .items[*]}{.metadata.name}: {.status.conditions[0].type}={.status.conditions[0].status}{"\n"}{end}'
 ```
 
-```text
-allow-dns-egress: Ready=True
-allow-httpbin-to-postgres: Ready=True
-...
-default-deny-ingress: Ready=True
-```
+> **예시(참조) — allow-dns-egress: Ready=True:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: Cilium 엔드포인트의 정책 적용 상태 확인
-kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- cilium endpoint list | head -10
+kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- cilium endpoint list | head -12
 ```
 
-```text
-ENDPOINT   POLICY (ingress)   POLICY (egress)   IDENTITY   LABELS (source:key[=value])
-1234       Enabled            Enabled           12345      k8s:app=nginx-web
-5678       Enabled            Enabled           12346      k8s:app=httpbin
-```
+**검증 - 기대 출력:** Cilium 엔드포인트별 ingress/egress 정책 적용 상태(enforcing/disabled)·IP·identity 가 표로 보인다(dev 실측).
+![cilium endpoint list — 엔드포인트별 정책 적용 상태](images/cks04-cilium-endpoints.png)
 
 **트래픽 흐름도:**
 ```
@@ -200,12 +176,7 @@ DNS(53) ← 모든 Pod
 kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- cilium status
 ```
 
-```text
-KVStore:         Ok   Disabled
-Kubernetes:      Ok   1.29 (v1.29.X) [linux/arm64]
-...
-Controller Status:   XX/XX healthy
-```
+> **예시(참조) — KVStore:         Ok   Disabled:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. 정책이 eBPF map에 로드되었는지 확인
@@ -215,10 +186,7 @@ kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium 
 kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- hubble observe --verdict DROPPED --from-pod demo/nginx-web --last 10 2>/dev/null
 ```
 
-```text
-TIMESTAMP             SOURCE              DESTINATION          TYPE     VERDICT   SUMMARY
-2024-01-15T10:30:00   demo/nginx-web      demo/httpbin         L7/HTTP  DROPPED   POST http://httpbin.demo:8080/post
-```
+> **예시(참조) — TIMESTAMP             SOURCE              DESTIN:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **자기 점검:**
 - [ ] Default Deny + Explicit Allow 패턴을 설명할 수 있는가?
@@ -234,6 +202,8 @@ TIMESTAMP             SOURCE              DESTINATION          TYPE     VERDICT 
 
 **학습 목표:** 표준 K8s NetworkPolicy를 직접 작성하고 트래픽 제어를 검증한다.
 
+> **이 실습의 위치**: 실습 1.1에서는 Cilium이 제공하는 확장 정책(CiliumNetworkPolicy)을 읽고 분석했다. 그러나 CKS 시험과 대부분의 클러스터에서 기본이 되는 것은 쿠버네티스 표준 NetworkPolicy다. 표준 NetworkPolicy는 L3/L4까지만 다루고 어느 CNI에서나 동일하게 동작하므로, 먼저 이 표준을 직접 손으로 작성하는 법을 익힌 뒤 L7 제어가 필요할 때 Cilium 확장으로 올라가는 순서가 자연스럽다. 표준 NetworkPolicy(L4까지, CNI 공통) vs CiliumNetworkPolicy(L7까지, Cilium 전용)의 차이를 의식하며 진행한다.
+
 #### 등장 배경과 기존 한계점
 
 쿠버네티스는 기본적으로 flat network 구조를 채택한다. 모든 Pod는 클러스터 내 다른 모든 Pod와 직접 통신이 가능하다. 이 설계는 개발 편의성을 높이지만 보안상 치명적이다. 하나의 Pod가 침해되면 공격자는 동일 네트워크 내 모든 서비스에 접근할 수 있다. 데이터베이스, 캐시 서버, 내부 API 등에 대한 네트워크 레벨 격리가 없기 때문이다.
@@ -242,6 +212,8 @@ NetworkPolicy는 쿠버네티스 1.3에서 도입된 네트워크 격리 메커�
 
 #### 커널 레벨 동작 원리 (iptables 기반 CNI)
 
+> **학부 수준 이해**: NetworkPolicy 규칙은 Pod 안의 애플리케이션이 아니라 커널이 직접 강제한다. 그림으로 표현하면 "Pod A → [커널 규칙 평가: 허용?] → Pod B"이다. 허용 규칙이 없으면 패킷은 커널에서 드롭된다. 아래는 이 판정이 iptables에서 어떻게 이루어지는지 더 깊이 들여다본 내용이다. CKS 시험에서는 이 정도 깊이까지 묻지 않으나, 트러블슈팅 시 유용하다.
+
 iptables 기반 CNI(예: Calico)에서 NetworkPolicy가 적용되면 다음과 같은 iptables 체인이 생성된다:
 
 ```
@@ -249,11 +221,11 @@ FORWARD chain → cali-FORWARD → cali-to-wl-dispatch → cali-tw-<endpoint>
                                                        → policy match → ACCEPT/DROP
 ```
 
-각 Pod의 veth 인터페이스에 대응하는 iptables 체인이 생성되고, NetworkPolicy의 규칙이 iptables 규칙으로 변환된다. 패킷이 Pod의 veth 인터페이스를 통과할 때 커널의 netfilter 프레임워크가 이 규칙을 평가하여 허용/차단을 결정한다.
+각 Pod의 veth(virtual Ethernet, Pod와 노드 네트워크를 잇는 가상 네트워크 인터페이스 쌍) 인터페이스에 대응하는 iptables 체인이 생성되고, NetworkPolicy의 규칙이 iptables 규칙으로 변환된다. 패킷이 Pod의 veth 인터페이스를 통과할 때 커널의 netfilter 프레임워크가 이 규칙을 평가하여 허용/차단을 결정한다.
 
 NetworkPolicy의 핵심 특성:
-- **Additive(누적적)**: 같은 Pod에 여러 NetworkPolicy가 적용되면 허용 규칙이 합산된다. 즉, 하나의 정책이라도 트래픽을 허용하면 통과한다
-- **Default Allow**: NetworkPolicy가 없으면 모든 트래픽이 허용된다
+- **Additive(누적적)**: 같은 Pod에 여러 NetworkPolicy가 적용되면 각 정책의 allow 규칙이 합산된다. 즉, 여러 정책 중 하나라도 해당 트래픽을 허용하면 통과한다. 반대로 모든 정책이 해당 트래픽에 대한 allow 규칙을 가지지 않으면 거부된다. NetworkPolicy에는 명시적 deny 규칙이 없다. "허용 규칙 없음 = 거부"가 동작 방식이다.
+- **Default Allow**: 어떤 NetworkPolicy도 선택하지 않는 Pod는 모든 트래픽이 허용된다(정책이 없으면 제한도 없다)
 - **Default Deny 패턴**: `podSelector: {}`와 빈 ingress/egress 규칙으로 모든 트래픽을 차단한 후, 필요한 트래픽만 명시적으로 허용하는 패턴이 보안의 기본이다
 
 ```bash
@@ -276,13 +248,7 @@ kubectl wait --for=condition=ready pod --all -n netpol-lab --timeout=60s
 kubectl exec attacker -n netpol-lab -- wget -qO- --timeout=3 http://web
 ```
 
-```text
-<!DOCTYPE html>
-<html>
-<head>
-<title>Welcome to nginx!</title>
-...
-```
+![서비스 HTTP 응답(nginx)](images/cks-html.png)
 
 ```bash
 kubectl exec attacker -n netpol-lab -- wget -qO- --timeout=3 http://api
@@ -312,18 +278,14 @@ EOF
 kubectl exec attacker -n netpol-lab -- wget -qO- --timeout=3 http://web 2>&1
 ```
 
-```text
-wget: download timed out
-```
+![NetworkPolicy 차단 — wget timeout](images/cks-np-deny.png)
 
 ```bash
 # 검증 3: DNS도 차단됨 확인
 kubectl exec attacker -n netpol-lab -- nslookup web 2>&1
 ```
 
-```text
-;; connection timed out; no servers could be reached
-```
+> **예시(참조) — ;; connection timed out; no servers could be rea:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 5. 선택적 허용 — DNS 허용
@@ -435,57 +397,35 @@ EOF
 kubectl exec web -n netpol-lab -- wget -qO- --timeout=3 http://api
 ```
 
-```text
-<!DOCTYPE html>
-<html>
-<head>
-<title>Welcome to nginx!</title>
-...
-```
+![서비스 HTTP 응답(nginx)](images/cks-html.png)
 
 ```bash
 # 검증 5: web → db (차단 — 직접 경로 없음)
 kubectl exec web -n netpol-lab -- wget -qO- --timeout=3 http://db 2>&1
 ```
 
-```text
-wget: download timed out
-```
+![NetworkPolicy 차단 — wget timeout](images/cks-np-deny.png)
 
 ```bash
 # 검증 6: api → db (허용)
 kubectl exec api -n netpol-lab -- wget -qO- --timeout=3 http://db
 ```
 
-```text
-<!DOCTYPE html>
-<html>
-...
-```
+![서비스 HTTP 응답(nginx)](images/cks-html.png)
 
 ```bash
 # 검증 7: attacker → 모든 곳 (차단 — attacker에 대한 Egress 허용 정책 없음)
 kubectl exec attacker -n netpol-lab -- wget -qO- --timeout=3 http://web 2>&1
 ```
 
-```text
-wget: download timed out
-```
+![NetworkPolicy 차단 — wget timeout](images/cks-np-deny.png)
 
 ```bash
 # 검증 8: 적용된 NetworkPolicy 목록 확인
 kubectl get networkpolicy -n netpol-lab
 ```
 
-```text
-NAME                  POD-SELECTOR    AGE
-default-deny-all      <none>          2m
-allow-dns             <none>          90s
-web-to-api            run=web         60s
-api-ingress-from-web  role=api        60s
-api-to-db             role=api        30s
-db-ingress-from-api   role=db         30s
-```
+![NetworkPolicy 목록](images/cks-np-list.png)
 
 ```bash
 # 정리
@@ -624,49 +564,28 @@ kubectl wait --for=condition=complete job/kube-bench-worker --timeout=300s
 kubectl logs job/kube-bench-master | grep -E "PASS|FAIL|WARN" | sort | uniq -c | sort -rn
 ```
 
-```text
-     45 [PASS]
-      8 [FAIL]
-     12 [WARN]
-```
+> **예시(참조) — kube-bench CIS 점검 — PASS(준수):** 45 [PASS] ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 검증 2: Worker 노드 결과 요약
 kubectl logs job/kube-bench-worker | grep -E "PASS|FAIL|WARN" | sort | uniq -c | sort -rn
 ```
 
-```text
-     30 [PASS]
-      3 [FAIL]
-      7 [WARN]
-```
+> **예시(참조) — kube-bench CIS 점검 — PASS(준수):** 30 [PASS] ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 검증 3: FAIL 항목 상세 확인
 kubectl logs job/kube-bench-master | grep -B 1 -A 5 "\[FAIL\]"
 ```
 
-```text
-[FAIL] 1.2.6 Ensure that the --kubelet-certificate-authority argument is set (Automated)
-[FAIL] 1.2.18 Ensure that the --audit-log-path argument is set (Automated)
-...
-```
+> **예시(참조) — kube-bench CIS 점검 — FAIL(위반):** [FAIL] 1.2.6 Ensure that the --kubelet-certifica ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 검증 4: 특정 항목의 수정 가이드 확인
 kubectl logs job/kube-bench-master | grep -A 10 "1.2.6"
 ```
 
-```text
-[FAIL] 1.2.6 Ensure that the --kubelet-certificate-authority argument is set (Automated)
-Remediation:
-Follow the Kubernetes documentation and set up the TLS connection between the apiserver
-and kubelets. Then, edit the API server pod specification file
-/etc/kubernetes/manifests/kube-apiserver.yaml and set the
---kubelet-certificate-authority parameter to the path to the cert file for the
-certificate authority.
---kubelet-certificate-authority=<path/to/ca.crt>
-```
+> **예시(참조) — kube-bench CIS 점검 — FAIL(위반):** [FAIL] 1.2.6 Ensure that the --kubelet-certifica ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 5. 정리
@@ -709,64 +628,57 @@ SHA-512 해시는 파일의 고유한 지문이다. 파일 내용이 1비트만 
 | 중간자 공격으로 다운로드 중 변조 | HTTPS + 해시 검증 이중 보호 |
 
 ```bash
+# 노드 SSH: ~/.ssh/config에 등록된 VM 별칭을 사용한다 (dev-master, dev-worker1).
+# ProxyCommand가 tart ip를 실시간 조회하므로 재부팅 후 IP가 바뀌어도 그대로 동작한다.
 # 1. kubelet 바이너리 해시 확인
-ssh admin@<dev-master-ip> 'sha512sum /usr/bin/kubelet'
+ssh dev-master 'sha512sum /usr/bin/kubelet'
 
 # 2. kubectl 바이너리 해시 확인
-ssh admin@<dev-master-ip> 'sha512sum /usr/bin/kubectl'
+ssh dev-master 'sha512sum /usr/bin/kubectl'
 
 # 3. kubeadm 바이너리 해시 확인
-ssh admin@<dev-master-ip> 'sha512sum /usr/bin/kubeadm'
+ssh dev-master 'sha512sum /usr/bin/kubeadm'
 
 # 4. 버전 확인
-ssh admin@<dev-master-ip> 'kubelet --version'
-ssh admin@<dev-master-ip> 'kubectl version --client'
-ssh admin@<dev-master-ip> 'kubeadm version'
+ssh dev-master 'kubelet --version'
+ssh dev-master 'kubectl version --client'
+ssh dev-master 'kubeadm version'
 ```
 
 #### 검증: 바이너리 무결성 확인
 
 ```bash
 # 검증 1: 현재 kubelet 버전과 해시 확인
-ssh admin@<dev-master-ip> 'kubelet --version'
+ssh dev-master 'kubelet --version'
 ```
 
-```text
-Kubernetes v1.29.0
-```
+> **예시(참조) — Kubernetes v1.29.0:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 로컬 해시 계산
-ssh admin@<dev-master-ip> 'sha512sum /usr/bin/kubelet'
+ssh dev-master 'sha512sum /usr/bin/kubelet'
 ```
 
-```text
-a1b2c3d4e5f6...  /usr/bin/kubelet
-```
+> **예시(참조) — a1b2c3d4e5f6...  /usr/bin/kubelet:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: 공식 릴리스 해시 다운로드 및 비교
-ssh admin@<dev-master-ip> 'KUBE_VERSION=$(kubelet --version | awk "{print \$2}") && \
+ssh dev-master 'KUBE_VERSION=$(kubelet --version | awk "{print \$2}") && \
   curl -sLO "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/arm64/kubelet.sha512" && \
   LOCAL_HASH=$(sha512sum /usr/bin/kubelet | awk "{print \$1}") && \
   OFFICIAL_HASH=$(cat kubelet.sha512 | awk "{print \$1}") && \
   if [ "$LOCAL_HASH" = "$OFFICIAL_HASH" ]; then echo "PASS: 해시 일치"; else echo "FAIL: 해시 불일치 - 변조 의심"; fi'
 ```
 
-```text
-PASS: 해시 일치
-```
+> **예시(참조) — PASS: 해시 일치:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: containerd 바이너리 검증
-ssh admin@<dev-master-ip> 'sha256sum /usr/bin/containerd'
-ssh admin@<dev-master-ip> 'containerd --version'
+ssh dev-master 'sha256sum /usr/bin/containerd'
+ssh dev-master 'containerd --version'
 ```
 
-```text
-x1y2z3...  /usr/bin/containerd
-containerd github.com/containerd/containerd v1.7.X ...
-```
+> **예시(참조) — x1y2z3...  /usr/bin/containerd:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **자기 점검:**
 - [ ] 바이너리 검증의 보안 목적을 설명할 수 있는가?
@@ -779,7 +691,23 @@ containerd github.com/containerd/containerd v1.7.X ...
 
 ### 실습 1.5: Ingress 보안 설정 [난이도: ★★★]
 
+> **앞 단계 연결**: 실습 1.4에서는 바이너리 무결성을 노드 수준에서 검증했다. 이 실습에서는 클러스터 외부 진입점인 Ingress 계층의 전송 암호화를 다룬다.
+
 **학습 목표:** Ingress 리소스의 보안 설정을 확인하고 TLS를 적용한다.
+
+> **사전 점검 — Ingress Controller 가동 여부 확인**
+>
+> TLS Ingress를 생성해도 Ingress Controller가 없으면 ADDRESS가 할당되지 않아 실제 검증이 불가능하다. 실습 전 아래 명령으로 먼저 확인한다.
+>
+> ```bash
+> # Ingress Controller Pod 가동 확인
+> kubectl get pods -n ingress-nginx
+>
+> # 또는 IngressClass 존재 확인
+> kubectl get ingressclass
+> ```
+>
+> Ingress Controller가 미설치된 환경에서는 이 실습의 TLS 검증 절(ADDRESS 확인)을 Istio Gateway 방식으로 대체한다. `kubectl get gateway -n demo`로 기존 Istio Gateway가 있으면 그 설정을 참고해 TLS 설정을 비교한다.
 
 #### 등장 배경과 기존 한계점
 
@@ -848,37 +776,21 @@ EOF
 kubectl describe ingress secure-ingress -n demo
 ```
 
-```text
-Name:             secure-ingress
-Namespace:        demo
-...
-TLS:
-  demo-tls terminates demo.tart-infra.local
-Rules:
-  Host                     Path  Backends
-  ----                     ----  --------
-  demo.tart-infra.local    /     nginx-web:80
-```
+> **예시(참조) — Name:             secure-ingress:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: TLS Secret 존재 확인
 kubectl get secret demo-tls -n demo
 ```
 
-```text
-NAME       TYPE                DATA   AGE
-demo-tls   kubernetes.io/tls   2      30s
-```
+> **예시(참조) — NAME       TYPE                DATA   AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: 인증서 내용 확인
 kubectl get secret demo-tls -n demo -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -text | grep -E "Subject:|Not After"
 ```
 
-```text
-        Subject: CN = demo.tart-infra.local
-            Not After : Mar 30 00:00:00 2027 GMT
-```
+> **예시(참조) — Subject: CN = demo.tart-infra.local:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -991,59 +903,42 @@ EOF
 kubectl auth can-i get pods --as=system:serviceaccount:demo:dev-viewer -n demo
 ```
 
-```text
-yes
-```
+> **예시(참조) — yes:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: Pod 생성 권한 차단 확인
 kubectl auth can-i create pods --as=system:serviceaccount:demo:dev-viewer -n demo
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: Deployment 삭제 권한 차단 확인
 kubectl auth can-i delete deployments --as=system:serviceaccount:demo:dev-viewer -n demo
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: Secret 접근 차단 확인 (중요: Secret은 명시적으로 필요한 SA에만)
 kubectl auth can-i get secrets --as=system:serviceaccount:demo:dev-viewer -n demo
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 5: 전체 권한 목록 확인
 kubectl auth can-i --list --as=system:serviceaccount:demo:dev-viewer -n demo
 ```
 
-```text
-Resources                                       Non-Resource URLs   Resource Names   Verbs
-pods                                            []                  []               [get list watch]
-pods/log                                        []                  []               [get list watch]
-services                                        []                  []               [get list]
-endpoints                                       []                  []               [get list]
-...
-```
+> **예시(참조) — Resources                                       :** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 6: 다른 네임스페이스에서는 권한 없음 확인
 kubectl auth can-i get pods --as=system:serviceaccount:demo:dev-viewer -n kube-system
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -1057,6 +952,16 @@ kubectl delete sa dev-viewer -n demo
 - [ ] pods/log, pods/exec 등 subresource에 대한 권한을 설정할 수 있는가?
 - [ ] 특정 리소스 이름에 대한 접근만 허용하는 Rule을 작성할 수 있는가?
 - [ ] RoleBinding 생성 권한이 왜 위험한지 설명할 수 있는가?
+
+**RBAC · NetworkPolicy · AppArmor 역할 분담:**
+
+| 보안 레이어 | 제어 대상 | 동작 위치 |
+|---|---|---|
+| RBAC | 쿠버네티스 API 리소스에 대한 읽기·쓰기·삭제 권한 | API 서버 인가 단계 |
+| NetworkPolicy | Pod 간·Pod-외부 간 네트워크 트래픽 (IP/포트/프로토콜) | 커널 네트워크 레이어 |
+| AppArmor/seccomp | 컨테이너 프로세스의 파일 접근·syscall 실행 | 커널 LSM/seccomp 레이어 |
+
+세 레이어는 각각 다른 공격 경로를 막는다. RBAC은 API 수준 권한 남용을 막고, NetworkPolicy는 침해된 Pod의 측면 이동을 막으며, AppArmor/seccomp는 컨테이너 내부 악성 행위를 막는다. 하나만 적용해서는 다른 레이어의 구멍을 막을 수 없다.
 
 **관련 CKS 시험 주제:** RBAC, Least Privilege
 
@@ -1124,17 +1029,7 @@ fi
 ' 2>/dev/null
 ```
 
-```text
-{
-  "kind": "Status",
-  "apiVersion": "v1",
-  "metadata": {},
-  "status": "Failure",
-  "message": "secrets is forbidden: User \"system:serviceaccount:demo:default\" cannot list resource \"secrets\" ...",
-  "reason": "Forbidden",
-  "code": 403
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 보안 강화된 Pod 배포
@@ -1169,18 +1064,14 @@ EOF
 kubectl exec hardened-pod -n demo -- ls /var/run/secrets/ 2>/dev/null
 ```
 
-```text
-ls: /var/run/secrets/: No such file or directory
-```
+![automount=false — SA 토큰 디렉토리 없음](images/cks-notoken.png)
 
 ```bash
 # 검증 4: SA 설정 확인
 kubectl get sa hardened-sa -n demo -o jsonpath='{.automountServiceAccountToken}'
 ```
 
-```text
-false
-```
+> **예시(참조) — false:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -1207,10 +1098,10 @@ API 서버는 쿠버네티스의 중앙 관문이다. 모든 클러스터 작업
 
 ```bash
 # 1. API Server 매니페스트 전체 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'
 
 # 2. 보안 관련 플래그 추출
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E -- \
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E -- \
   '--authorization-mode|--anonymous-auth|--enable-admission|--insecure-port|--profiling|--audit|--encryption|--kubelet-certificate|--tls-cipher'
 ```
 
@@ -1218,51 +1109,38 @@ ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yam
 
 ```bash
 # 검증 1: authorization-mode 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep authorization-mode
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep authorization-mode
 ```
 
-```text
-    - --authorization-mode=Node,RBAC
-```
+> **예시(참조) — - --authorization-mode=Node,RBAC:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: anonymous-auth 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep anonymous-auth
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep anonymous-auth
 ```
 
-```text
-    - --anonymous-auth=false
-```
+> **예시(참조) — - --anonymous-auth=false:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: Admission Plugin 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep enable-admission
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep enable-admission
 ```
 
-```text
-    - --enable-admission-plugins=NodeRestriction
-```
+> **예시(참조) — - --enable-admission-plugins=NodeRestriction:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: 인증서 만료 확인
-ssh admin@<dev-master-ip> 'sudo kubeadm certs check-expiration'
+ssh dev-master 'sudo kubeadm certs check-expiration'
 ```
 
-```text
-CERTIFICATE                EXPIRES                  RESIDUAL TIME
-admin.conf                 Jan 15, 2026 10:00 UTC   XXXd
-apiserver                  Jan 15, 2026 10:00 UTC   XXXd
-...
-```
+> **예시(참조) — CERTIFICATE                EXPIRES              :** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 5: deprecated API 사용 확인
 kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis 2>/dev/null | head -5
 ```
 
-```text
-# 출력이 없으면 deprecated API가 사용되지 않고 있다
-```
+> **예시(참조) — 출력이 없으면 deprecated API가 사용되지 않고 있다:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **보안 플래그 체크리스트:**
 
@@ -1308,50 +1186,28 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.status.nodeI
 kubectl version
 ```
 
-```text
-Client Version: v1.29.0
-Server Version: v1.29.0
-```
+> **예시(참조) — Client Version: v1.29.0:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 노드별 kubelet 버전 확인
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.status.nodeInfo.kubeletVersion}{"\n"}{end}'
 ```
 
-```text
-dev-master: v1.29.0
-dev-worker-1: v1.29.0
-```
+> **예시(참조) — dev-master: v1.29.0:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: 사용 가능한 업그레이드 확인
-ssh admin@<dev-master-ip> 'sudo kubeadm upgrade plan 2>/dev/null'
+ssh dev-master 'sudo kubeadm upgrade plan 2>/dev/null'
 ```
 
-```text
-Components that must be upgraded manually after you have upgraded the control plane:
-COMPONENT   CURRENT       TARGET
-kubelet     v1.29.0       v1.29.X
-
-Upgrade to the latest stable version:
-COMPONENT                 CURRENT   TARGET
-kube-apiserver            v1.29.0   v1.29.X
-kube-controller-manager   v1.29.0   v1.29.X
-kube-scheduler            v1.29.0   v1.29.X
-...
-```
+> **예시(참조) — Components that must be upgraded manually after :** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: API 버전 확인 (deprecated API 사용 여부)
 kubectl api-versions | sort
 ```
 
-```text
-admissionregistration.k8s.io/v1
-apiextensions.k8s.io/v1
-apps/v1
-...
-```
+> **예시(참조) — admissionregistration.k8s.io/v1:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **자기 점검:**
 - [ ] K8s 버전 업그레이드 절차(drain → upgrade → uncordon)를 설명할 수 있는가?
@@ -1372,6 +1228,17 @@ etcd에 저장되는 쿠버네티스 Secret은 기본적으로 Base64 인코딩�
 
 EncryptionConfiguration은 API 서버가 etcd에 데이터를 쓰기 전에 암호화하고, 읽을 때 복호화하는 메커니즘이다. aescbc, aesgcm, secretbox 등의 암호화 알고리즘을 지원한다.
 
+**etcd 암호화 provider 비교:**
+
+| provider | 알고리즘 | 특징 | 권장 여부 |
+|---|---|---|---|
+| `aescbc` | AES-CBC (128·192·256비트) | 가장 널리 쓰인다. CBC 모드는 패딩 오라클 공격에 주의가 필요하나 쿠버네티스 용도에서는 실질적 위험이 낮다 | 일반적으로 권장 |
+| `aesgcm` | AES-GCM (128·192·256비트) | 인증 암호화(AEAD)로 무결성도 보장한다. 동일 키로 최대 200억 회 제한이 있으므로 키 로테이션이 필요하다. *(원리: AES-GCM은 96비트 nonce를 사용하며, 같은 키-nonce 조합이 재사용되면 기밀성이 깨진다. 따라서 동일 키로 암호화할 수 있는 횟수에 상한이 존재한다.)* | 키 로테이션 체계가 있을 때 권장 |
+| `secretbox` | XSalsa20 + Poly1305 | 빠르고 안전하다. 쿠버네티스 권장 알고리즘 중 하나 | 권장 |
+| `identity` | 암호화 없음 | 평문 저장. fallback용으로 providers 목록 마지막에 배치할 때만 사용한다 | 단독 사용 금지 |
+
+트레이드오프: 암호화 적용 시 Secret 읽기·쓰기마다 API 서버에서 암호화·복호화 오버헤드가 발생한다. 키를 분실하면 암호화된 Secret을 복구할 수 없으므로 키 관리가 중요하다.
+
 #### 암호화 동작 원리
 
 ```
@@ -1388,10 +1255,10 @@ provider 순서가 중요하다:
 
 ```bash
 # 1. 현재 암호화 설정 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider-config
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider-config
 
 # 2. etcd에서 Secret 직접 읽기
-ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
+ssh dev-master 'sudo ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
@@ -1399,7 +1266,7 @@ ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
   get /registry/secrets/demo/ --prefix --keys-only' | head -10
 
 # 3. Secret 값 읽기 (암호화 여부 확인)
-ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
+ssh dev-master 'sudo ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
@@ -1412,7 +1279,7 @@ ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
 
 ```bash
 # 검증 1: etcd에서 Secret의 raw 데이터 확인
-ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
+ssh dev-master 'sudo ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
@@ -1421,29 +1288,17 @@ ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
 ```
 
 암호화 미설정 시:
-```text
-k8s
-
-v1
-Secret
-demo123
-```
+> **예시(참조) — k8s:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 암호화 설정 시:
-```text
-k8s:enc:aescbc:v1:key1:
-(바이너리 데이터)
-```
+![etcd 암호화 적용 후 암호문(k8s:enc)](images/cks-etcd.png)
 
 ```bash
 # 검증 2: API 서버에 encryption-provider-config 플래그 확인
-ssh admin@<dev-master-ip> 'ps aux | grep kube-apiserver | grep encryption-provider-config'
+ssh dev-master 'ps aux | grep kube-apiserver | grep encryption-provider-config'
 ```
 
-```text
-# 출력이 없으면 암호화가 활성화되지 않은 것이다
-# 출력이 있으면: --encryption-provider-config=/etc/kubernetes/enc/encryption-config.yaml
-```
+> **예시(참조) — 출력이 없으면 암호화가 활성화되지 않은 것이다:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 4. EncryptionConfiguration 작성 (참고)
@@ -1498,9 +1353,11 @@ EOF
 
 컨테이너의 기본 격리는 Linux namespace와 cgroup으로 이루어진다. 그러나 이 격리만으로는 컨테이너 내부에서의 파일 접근, 네트워크 접근, capability 사용을 세밀하게 제어할 수 없다. `readOnlyRootFilesystem`은 전체 루트 파일시스템을 읽기 전용으로 만들지만, "특정 경로에만 쓰기를 허용하고 나머지는 차단"하는 세밀한 제어는 불가능하다.
 
-AppArmor는 Linux 커널의 LSM(Linux Security Modules) 프레임워크를 사용하는 MAC(Mandatory Access Control) 시스템이다. 프로세스별로 파일 접근, 네트워크 접근, capability 사용 등을 세밀하게 제어한다. 커널이 프로세스의 syscall을 가로채서 AppArmor 프로파일과 대조하고, 위반 시 거부한다.
+AppArmor는 Linux 커널의 LSM(Linux Security Modules, 커널이 제공하는 보안 훅 프레임워크로 AppArmor·SELinux 등이 이를 구현한다) 프레임워크를 사용하는 MAC(Mandatory Access Control, 관리자가 정의한 정책이 개별 사용자 권한보다 우선하는 강제 접근 제어 방식) 시스템이다. 프로세스별로 파일 접근, 네트워크 접근, capability 사용 등을 세밀하게 제어한다. 커널이 프로세스의 syscall(시스템 콜, 프로세스가 커널 기능을 요청하는 인터페이스)을 가로채서 AppArmor 프로파일과 대조하고, 위반 시 거부한다.
 
 #### 커널 레벨 동작 원리
+
+> **학부 수준 이해**: AppArmor를 이해하는 핵심은 "프로그램마다 허용 목록을 만든다"이다. nginx 프로세스에는 "이 파일만 읽을 수 있고, 저 경로에는 쓸 수 없다"는 규칙이 붙는다. 애플리케이션 코드 밖에서 커널이 강제하므로, 애플리케이션이 해킹되더라도 규칙 밖의 행동을 할 수 없다.
 
 AppArmor는 LSM 프레임워크의 보안 훅(security hooks)에 등록된다. 프로세스가 파일을 열거나, 네트워크 소켓을 생성하거나, capability를 사용할 때 커널이 AppArmor 모듈을 호출한다. AppArmor 모듈은 프로세스에 할당된 프로파일을 확인하고, 요청된 작업이 프로파일에 허용되어 있는지 검사한다.
 
@@ -1526,10 +1383,10 @@ AppArmor는 LSM 프레임워크의 보안 훅(security hooks)에 등록된다. �
 
 ```bash
 # 1. AppArmor 상태 확인
-ssh admin@<dev-worker-ip> 'sudo aa-status'
+ssh dev-worker1 'sudo aa-status'
 
 # 2. 커스텀 프로파일 생성
-ssh admin@<dev-worker-ip> 'sudo tee /etc/apparmor.d/k8s-deny-write <<PROFILE
+ssh dev-worker1 'sudo tee /etc/apparmor.d/k8s-deny-write <<PROFILE
 #include <tunables/global>
 profile k8s-deny-write flags=(attach_disconnected) {
   #include <abstractions/base>
@@ -1542,19 +1399,29 @@ profile k8s-deny-write flags=(attach_disconnected) {
 PROFILE'
 
 # 3. 프로파일 로드
-ssh admin@<dev-worker-ip> 'sudo apparmor_parser -r /etc/apparmor.d/k8s-deny-write'
+ssh dev-worker1 'sudo apparmor_parser -r /etc/apparmor.d/k8s-deny-write'
 ```
 
 #### 검증: AppArmor 프로파일 동작 확인
 
+> **K8s 버전별 AppArmor 적용 방식 차이**
+>
+> - **K8s 1.29 이하**: Pod 어노테이션 방식을 사용한다. `container.apparmor.security.beta.kubernetes.io/<컨테이너명>: localhost/<프로파일명>` 형식으로 지정한다(아래 예제 참고).
+> - **K8s 1.30 이상**: `securityContext.appArmorProfile` 필드(GA)가 권장된다. 어노테이션 방식은 deprecated 처리된다. 필드 형식은 다음과 같다:
+>   ```yaml
+>   securityContext:
+>     appArmorProfile:
+>       type: Localhost
+>       localhostProfile: k8s-deny-write
+>   ```
+> 시험 환경의 K8s 버전에 따라 올바른 방식을 선택한다. `kubectl version`으로 서버 버전을 먼저 확인한다.
+
 ```bash
 # 검증 1: 프로파일 로드 확인
-ssh admin@<dev-worker-ip> 'sudo aa-status | grep k8s-deny-write'
+ssh dev-worker1 'sudo aa-status | grep k8s-deny-write'
 ```
 
-```text
-   k8s-deny-write (enforce)
-```
+> **예시(참조) — k8s-deny-write (enforce):** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 5. AppArmor가 적용된 Pod 생성
@@ -1566,7 +1433,7 @@ metadata:
   annotations:
     container.apparmor.security.beta.kubernetes.io/app: localhost/k8s-deny-write
 spec:
-  nodeName: <dev-worker-hostname>
+  nodeName: dev-worker1
   containers:
     - name: app
       image: busybox:1.36
@@ -1577,46 +1444,35 @@ EOF
 kubectl get pod apparmor-test -n demo
 ```
 
-```text
-NAME            READY   STATUS    RESTARTS   AGE
-apparmor-test   1/1     Running   0          10s
-```
+> **예시(참조) — NAME            READY   STATUS    RESTARTS   AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: 파일 읽기 (허용)
 kubectl exec apparmor-test -n demo -- cat /etc/hostname
 ```
 
-```text
-apparmor-test
-```
+> **예시(참조) — apparmor-test:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: /etc에 쓰기 (차단)
 kubectl exec apparmor-test -n demo -- sh -c 'echo test > /etc/test' 2>&1
 ```
 
-```text
-sh: can't create /etc/test: Permission denied
-```
+![AppArmor deny write — /etc 쓰기 거부](images/cks-apparmor.png)
 
 ```bash
 # 검증 5: AppArmor 거부 로그 확인 (호스트에서)
-ssh admin@<dev-worker-ip> 'sudo dmesg | grep apparmor | tail -5'
+ssh dev-worker1 'sudo dmesg | grep apparmor | tail -5'
 ```
 
-```text
-[xxxxx.xxxxxx] audit: type=1400 apparmor="DENIED" operation="mknod" profile="k8s-deny-write" name="/etc/test" ...
-```
+> **예시(참조) — AppArmor DENIED 커널 감사로그(dmesg/journalctl -k, 환경따라 노출 차이):** [xxxxx.xxxxxx] audit: type=1400 apparmor="DENIED ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 검증 6: annotation 확인
 kubectl get pod apparmor-test -n demo -o jsonpath='{.metadata.annotations}'
 ```
 
-```text
-{"container.apparmor.security.beta.kubernetes.io/app":"localhost/k8s-deny-write"}
-```
+> **예시(참조) — {"container.apparmor.security.beta.kubernetes.io:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 7. 정리
@@ -1648,17 +1504,17 @@ kubectl delete pod apparmor-test -n demo
 
 Linux 커널은 약 300개 이상의 시스템 콜(syscall)을 제공한다. 컨테이너 프로세스는 기본적으로 이 모든 syscall을 호출할 수 있다. 그러나 대부분의 컨테이너 워크로드는 50~100개의 syscall만 필요하다. 나머지 syscall 중 상당수는 컨테이너 탈출에 악용될 수 있다.
 
-- `ptrace`: 다른 프로세스의 메모리를 읽고 쓸 수 있다
-- `mount`/`umount2`: 파일시스템을 마운트하여 호스트 파일에 접근할 수 있다
-- `unshare`: 새로운 namespace를 생성하여 격리를 우회할 수 있다
-- `reboot`: 호스트를 재부팅시킬 수 있다
-- `init_module`/`finit_module`: 커널 모듈을 로드하여 호스트 커널을 장악할 수 있다
+- `ptrace`: 다른 프로세스의 메모리를 읽고 쓸 수 있다. 위협 시나리오: 공격자가 ptrace로 동일 노드의 다른 컨테이너 프로세스 메모리를 들여다보거나 인증 토큰을 탈취한다
+- `mount`/`umount2`: 파일시스템을 마운트하여 호스트 파일에 접근할 수 있다. 위협 시나리오: 호스트의 `/` 또는 `/etc`를 컨테이너 내부에 마운트하여 컨테이너 탈출에 활용한다
+- `unshare`: 새로운 namespace를 생성하여 격리를 우회할 수 있다. 위협 시나리오: user namespace를 새로 생성하여 내부에서 root 권한을 획득하는 권한 상승 경로로 사용된다
+- `reboot`: 호스트를 재부팅시킬 수 있다. 위협 시나리오: 서비스 중단을 유발하는 DoS 공격
+- `init_module`/`finit_module`: 커널 모듈을 로드하여 호스트 커널을 장악할 수 있다. 위협 시나리오: 루트킷 모듈을 로드하여 호스트 전체를 완전히 장악하고 탐지를 피한다
 
 seccomp(Secure Computing Mode)은 Linux 커널 2.6.12에서 도입되었다. BPF(Berkeley Packet Filter) 프로그램으로 프로세스가 호출할 수 있는 syscall 목록을 제한한다. 허용되지 않은 syscall 호출 시 EPERM 에러를 반환하거나 프로세스를 종료한다.
 
 #### 커널 레벨 동작 원리
 
-seccomp은 커널의 `prctl(PR_SET_SECCOMP)` 또는 `seccomp()` syscall로 활성화된다. 컨테이너 런타임(containerd, CRI-O)이 컨테이너 프로세스 생성 시 seccomp 프로파일을 적용한다.
+seccomp은 커널의 `prctl(PR_SET_SECCOMP)` 또는 `seccomp()` syscall로 활성화된다. 컨테이너 런타임(containerd, CRI-O — CRI는 Container Runtime Interface로 쿠버네티스가 컨테이너를 생성·삭제하기 위해 호출하는 표준 인터페이스이며, containerd와 CRI-O가 이를 구현한다)이 컨테이너 프로세스 생성 시 seccomp 프로파일을 적용한다.
 
 ```
 프로세스 → syscall 호출 → 커널 syscall 진입점
@@ -1717,37 +1573,28 @@ EOF
 kubectl get pod seccomp-runtime -n demo -o jsonpath='{.spec.securityContext.seccompProfile}'
 ```
 
-```text
-{"type":"RuntimeDefault"}
-```
+> **예시(참조) — {"type":"RuntimeDefault"}:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: Unconfined 프로파일 확인
 kubectl get pod seccomp-unconfined -n demo -o jsonpath='{.spec.securityContext.seccompProfile}'
 ```
 
-```text
-{"type":"Unconfined"}
-```
+> **예시(참조) — {"type":"Unconfined"}:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: RuntimeDefault에서 차단되는 syscall 테스트
 kubectl exec seccomp-runtime -n demo -- unshare --user 2>&1
 ```
 
-```text
-unshare: unshare(0x10000000): Operation not permitted
-```
+![seccomp — syscall 차단(Operation not permitted)](images/cks-seccomp.png)
 
 ```bash
 # 검증 4: Unconfined에서는 동일 syscall이 허용될 수 있음
 kubectl exec seccomp-unconfined -n demo -- unshare --user 2>&1
 ```
 
-```text
-# unshare가 성공하거나, capability 부족으로 실패할 수 있다
-# seccomp이 아닌 capability에 의한 차단이면 에러 메시지가 다르다
-```
+> **예시(참조) — unshare가 성공하거나, capability 부족으로 실패할 수 있다:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 5: 커스텀 seccomp 프로파일 경로 확인 (참고)
@@ -1804,66 +1651,51 @@ CIS Benchmark의 섹션 4(Worker Node)와 섹션 5(Policies)에서 OS 레벨 보
 
 ```bash
 # 1. 불필요한 서비스 확인
-ssh admin@<dev-worker-ip> 'systemctl list-unit-files --state=enabled | grep -v "@"'
+ssh dev-worker1 'systemctl list-unit-files --state=enabled | grep -v "@"'
 
 # 2. 열린 포트 확인
-ssh admin@<dev-worker-ip> 'ss -tlnp'
+ssh dev-worker1 'ss -tlnp'
 ```
 
 #### 검증: OS 보안 점검 결과
 
 ```bash
 # 검증 1: 열린 포트 확인 — 필요한 포트만 열려야 한다
-ssh admin@<dev-worker-ip> 'ss -tlnp'
+ssh dev-worker1 'ss -tlnp'
 ```
 
-```text
-State   Recv-Q   Send-Q   Local Address:Port   Peer Address:Port   Process
-LISTEN  0        128      0.0.0.0:10250         0.0.0.0:*           users:(("kubelet",pid=xxxx))
-LISTEN  0        128      0.0.0.0:22            0.0.0.0:*           users:(("sshd",pid=xxxx))
-```
+> **예시(참조) — State   Recv-Q   Send-Q   Local Address:Port   P:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 필요한 포트: 10250 (kubelet), 30000-32767 (NodePort range), 22 (SSH)
 불필요한 포트: 23 (telnet), 111 (rpcbind), 3306 (mysql) 등
 
 ```bash
 # 검증 2: 로그인 가능한 사용자 계정 확인
-ssh admin@<dev-worker-ip> 'cat /etc/passwd | grep -v nologin | grep -v false'
+ssh dev-worker1 'cat /etc/passwd | grep -v nologin | grep -v false'
 ```
 
-```text
-root:x:0:0:root:/root:/bin/bash
-admin:x:1000:1000:admin:/home/admin:/bin/bash
-```
+> **예시(참조) — root:x:0:0:root:/root:/bin/bash:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: SSH 보안 설정 확인
-ssh admin@<dev-worker-ip> 'cat /etc/ssh/sshd_config | grep -E "PermitRootLogin|PasswordAuthentication|X11Forwarding"'
+ssh dev-worker1 'cat /etc/ssh/sshd_config | grep -E "PermitRootLogin|PasswordAuthentication|X11Forwarding"'
 ```
 
-```text
-PermitRootLogin no
-PasswordAuthentication no
-X11Forwarding no
-```
+> **예시(참조) — PermitRootLogin no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: 커널 파라미터 확인
-ssh admin@<dev-worker-ip> 'sysctl net.ipv4.ip_forward'
+ssh dev-worker1 'sysctl net.ipv4.ip_forward'
 ```
 
-```text
-net.ipv4.ip_forward = 1
-```
+> **예시(참조) — net.ipv4.ip_forward = 1:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 5: 불필요한 패키지 확인
-ssh admin@<dev-worker-ip> 'dpkg -l | grep -E "(netcat|ncat|socat|telnet)" | wc -l'
+ssh dev-worker1 'dpkg -l | grep -E "(netcat|ncat|socat|telnet)" | wc -l'
 ```
 
-```text
-0
-```
+> **예시(참조) — 0:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **자기 점검:**
 - [ ] Worker 노드에서 불필요한 서비스를 식별할 수 있는가?
@@ -1905,10 +1737,7 @@ kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metada
 kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: hostNetwork={.spec.hostNetwork}{"\n"}{end}' | grep "true"
 ```
 
-```text
-kube-system/cilium-xxxxx: hostNetwork=true
-kube-system/kube-proxy-xxxxx: hostNetwork=true
-```
+> **예시(참조) — kube-system/cilium-xxxxx: hostNetwork=true:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 시스템 컴포넌트(cilium, kube-proxy)는 hostNetwork이 필요하다. 사용자 워크로드에 hostNetwork=true가 있으면 보안 위험이다.
 
@@ -1917,9 +1746,7 @@ kube-system/kube-proxy-xxxxx: hostNetwork=true
 kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: hostPID={.spec.hostPID}{"\n"}{end}' | grep "true"
 ```
 
-```text
-# 사용자 워크로드에 hostPID=true가 없어야 한다
-```
+> **예시(참조) — 사용자 워크로드에 hostPID=true가 없어야 한다:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: Pod 네트워크 격리 확인
@@ -1927,12 +1754,7 @@ NGINX_POD=$(kubectl get pods -n demo -l app=nginx-web -o jsonpath='{.items[0].me
 kubectl exec $NGINX_POD -n demo -- ip addr
 ```
 
-```text
-1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536
-    inet 127.0.0.1/8 scope host lo
-2: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500
-    inet 10.0.0.X/32 scope global eth0
-```
+> **예시(참조) — 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 eth0에 Pod CIDR 대역의 IP가 할당되어 있다. 호스트 IP가 아닌 것을 확인한다.
 
@@ -1941,10 +1763,7 @@ eth0에 Pod CIDR 대역의 IP가 할당되어 있다. 호스트 IP가 아닌 것
 kubectl get pods -n kube-system -l k8s-app=cilium
 ```
 
-```text
-NAME           READY   STATUS    RESTARTS   AGE
-cilium-xxxxx   1/1     Running   0          Xd
-```
+> **예시(참조) — NAME           READY   STATUS    RESTARTS   AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **자기 점검:**
 - [ ] hostNetwork, hostPort, hostPID의 보안 위험을 설명할 수 있는가?
@@ -1967,9 +1786,9 @@ PodSecurityPolicy(PSP)는 쿠버네티스 초기부터 Pod의 보안 설정을 �
 2. **예측 불가능한 동작**: 여러 PSP가 존재할 때 어떤 PSP가 적용되는지 예측하기 어려웠다
 3. **Fail Open**: PSP가 잘못 구성되면 모든 Pod가 통과할 수 있었다
 
-PSP는 쿠버네티스 1.25에서 제거되었다. 대체로 PodSecurity Admission이 1.25에서 GA되었다.
+PSP는 쿠버네티스 1.25에서 제거되었다. 대체로 PodSecurity Admission(PSA)이 1.25에서 GA되었다.
 
-PodSecurity Admission은 빌트인 Admission Controller이다. 네임스페이스 라벨로 3개의 보안 레벨(privileged, baseline, restricted)을 적용한다. PSP보다 단순하고 예측 가능한 동작을 제공한다.
+PodSecurity Admission(PSA, 쿠버네티스 내장 Admission Controller로 네임스페이스 라벨 하나로 Pod 보안 표준을 적용한다. PSP와 달리 별도 RBAC 설정 없이 동작한다)은 빌트인 Admission Controller이다. 네임스페이스 라벨로 3개의 보안 레벨(privileged, baseline, restricted)을 적용한다. PSP보다 단순하고 예측 가능한 동작을 제공한다.
 
 #### 3개 보안 레벨 비교
 
@@ -2012,10 +1831,7 @@ EOF
 kubectl get pod priv-pod -n psa-privileged
 ```
 
-```text
-NAME       READY   STATUS    RESTARTS   AGE
-priv-pod   1/1     Running   0          10s
-```
+> **예시(참조) — NAME       READY   STATUS    RESTARTS   AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. baseline 레벨 네임스페이스
@@ -2040,9 +1856,7 @@ spec:
 EOF
 ```
 
-```text
-Error from server (Forbidden): error when creating "STDIN": pods "priv-pod" is forbidden: violates PodSecurity "baseline:latest": privileged (container "app" must not set securityContext.privileged=true)
-```
+![PodSecurity restricted 위반 Pod 거부](images/cks-psa.png)
 
 ```bash
 # 검증 3: baseline에서 hostNetwork Pod 시도 (거부)
@@ -2060,18 +1874,14 @@ spec:
 EOF
 ```
 
-```text
-Error from server (Forbidden): ... violates PodSecurity "baseline:latest": host namespaces (hostNetwork=true)
-```
+![PodSecurity restricted 위반 Pod 거부](images/cks-psa.png)
 
 ```bash
 # 검증 4: baseline 준수 Pod (허용)
 kubectl run baseline-ok --image=busybox:1.36 -n psa-baseline -- sleep 3600
 ```
 
-```text
-pod/baseline-ok created
-```
+> **예시(참조) — pod/baseline-ok created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 3. restricted 레벨 네임스페이스
@@ -2084,9 +1894,7 @@ kubectl label ns psa-restricted \
 kubectl run test --image=nginx -n psa-restricted 2>&1
 ```
 
-```text
-Error from server (Forbidden): ... violates PodSecurity "restricted:latest": allowPrivilegeEscalation != false ... runAsNonRoot != true ... seccompProfile ...
-```
+![PodSecurity restricted 위반 Pod 거부](images/cks-psa.png)
 
 ```bash
 # 검증 6: restricted 준수 Pod (허용)
@@ -2113,18 +1921,14 @@ spec:
 EOF
 ```
 
-```text
-pod/restricted-ok created
-```
+> **예시(참조) — pod/restricted-ok created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 7: 네임스페이스 라벨 확인
 kubectl get ns psa-restricted --show-labels | grep pod-security
 ```
 
-```text
-psa-restricted   Active   ...   pod-security.kubernetes.io/enforce=restricted,...
-```
+> **예시(참조) — psa-restricted   Active   ...   pod-security.kub:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -2223,49 +2027,35 @@ EOF
 kubectl exec max-security -n demo -- id
 ```
 
-```text
-uid=65534(nobody) gid=65534(nogroup) groups=65534(nogroup)
-```
+> **예시(참조) — uid=65534(nobody) gid=65534(nogroup) groups=6553:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 파일시스템 읽기 전용 확인
 kubectl exec max-security -n demo -- sh -c 'echo test > /etc/test' 2>&1
 ```
 
-```text
-sh: can't create /etc/test: Read-only file system
-```
+![AppArmor deny write — /etc 쓰기 거부](images/cks-apparmor.png)
 
 ```bash
 # 검증 3: /tmp 쓰기 (emptyDir이므로 가능)
 kubectl exec max-security -n demo -- sh -c 'echo test > /tmp/test && cat /tmp/test'
 ```
 
-```text
-test
-```
+> **예시(참조) — test:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: capabilities 확인 — 모든 capability가 제거되어야 한다
 kubectl exec max-security -n demo -- cat /proc/1/status | grep -i cap
 ```
 
-```text
-CapInh:	0000000000000000
-CapPrm:	0000000000000000
-CapEff:	0000000000000000
-CapBnd:	0000000000000000
-CapAmb:	0000000000000000
-```
+![drop ALL+add — Capability 비트(/proc/1/status)](images/cks-cap.png)
 
 ```bash
 # 검증 5: seccomp 프로파일 확인
 kubectl get pod max-security -n demo -o jsonpath='{.spec.securityContext.seccompProfile}'
 ```
 
-```text
-{"type":"RuntimeDefault"}
-```
+> **예시(참조) — {"type":"RuntimeDefault"}:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -2300,7 +2090,7 @@ kubectl delete pod max-security -n demo
 
 쿠버네티스 내부 Pod 간 통신은 기본적으로 평문(HTTP)이다. 클러스터 네트워크에 접근할 수 있는 공격자(예: 하나의 Pod가 침해된 경우)는 다른 Pod 간의 트래픽을 스니핑할 수 있다. 또한 Pod가 다른 Pod를 사칭(spoofing)하여 서비스에 접근할 수 있다.
 
-mTLS(mutual TLS)는 양쪽 통신 당사자가 서로의 인증서를 검증하는 방식이다. 서비스 메시(Istio, Linkerd)는 각 Pod에 사이드카 프록시를 주입하여 Pod 간 통신을 자동으로 mTLS로 암호화한다. 애플리케이션 코드 수정 없이 전송 암호화와 서비스 인증을 구현할 수 있다.
+mTLS(mutual TLS, 클라이언트와 서버가 서로의 X.509 인증서를 교환하고 검증하는 양방향 TLS 인증 방식)는 양쪽 통신 당사자가 서로의 인증서를 검증하는 방식이다. 일반 TLS는 클라이언트가 서버 인증서만 확인하지만, mTLS는 서버도 클라이언트 인증서를 검증하므로 신원이 확인된 서비스 간 통신만 허용된다. 서비스 메시(Istio, Linkerd)는 각 Pod에 사이드카 프록시(Envoy sidecar, Pod 내부에 부착되어 모든 인바운드·아웃바운드 네트워크 트래픽을 대신 처리하는 보조 컨테이너)를 주입하여 Pod 간 통신을 자동으로 mTLS로 암호화한다. 애플리케이션 코드 수정 없이 전송 암호화와 서비스 인증을 구현할 수 있다.
 
 #### Istio mTLS의 커널 레벨 동작
 
@@ -2336,9 +2126,7 @@ kubectl exec $NGINX_POD -c istio-proxy -n demo -- \
 kubectl get peerauthentication -n demo -o jsonpath='{.items[0].spec.mtls.mode}'
 ```
 
-```text
-STRICT
-```
+> **예시(참조) — STRICT:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: mTLS STRICT에서 비-mesh 클라이언트 차단 확인
@@ -2349,9 +2137,7 @@ sleep 10
 kubectl logs curl -n no-mesh-test
 ```
 
-```text
-exit: 56
-```
+> **예시(참조) — exit: 56:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 Istio sidecar가 없는 Pod에서 STRICT mTLS 서비스에 접근하면 연결이 거부된다. exit code 56은 curl의 "Failure in receiving network data" 에러이다.
 
@@ -2361,11 +2147,7 @@ kubectl exec $NGINX_POD -c istio-proxy -n demo -- \
   curl -s localhost:15000/stats | grep -E "ssl|tls" | head -5
 ```
 
-```text
-ssl.handshake: 150
-ssl.connection_error: 2
-ssl.versions.TLSv1.3: 148
-```
+> **예시(참조) — ssl.handshake: 150:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -2414,18 +2196,14 @@ kubectl get secret -n demo -l app=postgres -o jsonpath='{.items[0].data.POSTGRES
 kubectl get secret -n demo -l app=postgres -o jsonpath='{.items[0].data.POSTGRES_PASSWORD}' | base64 -d
 ```
 
-```text
-demo123
-```
+> **예시(참조) — demo123:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: RBAC으로 Secret 접근 제한 확인
 kubectl auth can-i get secrets --as=system:serviceaccount:demo:default -n demo
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: immutable Secret 생성 및 변경 시도
@@ -2444,9 +2222,7 @@ EOF
 kubectl patch secret immutable-secret -n demo --type='json' -p='[{"op":"replace","path":"/data/api-key","value":"bmV3LXZhbHVl"}]' 2>&1
 ```
 
-```text
-The Secret "immutable-secret" is invalid: data: Forbidden: field is immutable when `immutable` is set
-```
+> **예시(참조) — The Secret "immutable-secret" is invalid: data: :** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: 환경변수 vs Volume mount 방식 비교
@@ -2479,7 +2255,7 @@ kubectl delete secret immutable-secret -n demo
 
 PodSecurity Admission은 Pod의 보안 설정만 검증할 수 있다. "모든 컨테이너에 리소스 제한이 있어야 한다", "latest 태그를 사용하면 안 된다", "특정 레지스트리의 이미지만 허용한다" 같은 커스텀 정책은 구현할 수 없다.
 
-OPA(Open Policy Agent) Gatekeeper는 Rego 정책 언어를 사용하여 임의의 정책을 정의할 수 있는 범용 정책 엔진이다. ValidatingAdmissionWebhook으로 동작하여 정책을 위반하는 요청을 거부한다.
+OPA(Open Policy Agent, 범용 정책 엔진으로 Rego 언어로 규칙을 작성하여 다양한 플랫폼의 접근 제어·정책 강제에 사용된다) Gatekeeper는 Rego 정책 언어를 사용하여 임의의 정책을 정의할 수 있는 범용 정책 엔진이다. ValidatingAdmissionWebhook(API 서버가 리소스 생성·수정 요청을 허용하기 전에 외부 서버에 검증을 요청하는 쿠버네티스 확장 포인트)으로 동작하여 정책을 위반하는 요청을 거부한다.
 
 Gatekeeper의 구조:
 - **ConstraintTemplate**: 정책의 "종류"를 정의한다. Rego 코드가 포함된다
@@ -2553,46 +2329,34 @@ kubectl create ns gatekeeper-test
 kubectl run test --image=nginx:latest -n gatekeeper-test 2>&1
 ```
 
-```text
-Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request: [no-latest-tag] container <test> uses disallowed tag <latest>
-```
+![OPA Gatekeeper — 필수 라벨 없는 리소스를 admission webhook 이 거부(dev 실측)](images/cks-gatekeeper-deny.png)
 
 ```bash
 # 검증 2: 태그 없음 (거부)
 kubectl run test2 --image=nginx -n gatekeeper-test 2>&1
 ```
 
-```text
-Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request: [no-latest-tag] container <test2> has no tag (defaults to latest)
-```
+![OPA Gatekeeper — 필수 라벨 없는 리소스를 admission webhook 이 거부(dev 실측)](images/cks-gatekeeper-deny.png)
 
 ```bash
 # 검증 3: 구체적 태그 (허용)
 kubectl run test3 --image=nginx:1.25-alpine -n gatekeeper-test 2>&1
 ```
 
-```text
-pod/test3 created
-```
+> **예시(참조) — pod/test3 created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: ConstraintTemplate과 Constraint 상태 확인
 kubectl get constrainttemplates
 ```
 
-```text
-NAME                  AGE
-k8sdisallowedtags     2m
-```
+> **예시(참조) — NAME                  AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 kubectl get k8sdisallowedtags
 ```
 
-```text
-NAME             ENFORCEMENT-ACTION   TOTAL-VIOLATIONS
-no-latest-tag    deny                 0
-```
+> **예시(참조) — NAME             ENFORCEMENT-ACTION   TOTAL-VIOL:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -2638,18 +2402,14 @@ trivy image --severity CRITICAL,HIGH nginx:alpine
 trivy image --severity CRITICAL nginx:alpine 2>/dev/null | tail -10
 ```
 
-```text
-Total: 0 (CRITICAL: 0)
-```
+> **예시(참조) — Total: 0 (CRITICAL: 0):** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: postgres 이미지 스캔 — 일반적으로 더 많은 취약점이 발견된다
 trivy image --severity CRITICAL postgres:16-alpine 2>/dev/null | tail -5
 ```
 
-```text
-Total: X (CRITICAL: X)
-```
+> **예시(참조) — Total: X (CRITICAL: X):** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: JSON 출력으로 자동화
@@ -2657,9 +2417,7 @@ trivy image --format json --output /tmp/nginx-scan.json nginx:alpine
 ls -la /tmp/nginx-scan.json
 ```
 
-```text
--rw-r--r--  1 user  group  XXXXX  ... /tmp/nginx-scan.json
-```
+> **예시(참조) — -rw-r--r--  1 user  group  XXXXX  ... /tmp/nginx:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: exit code를 이용한 CI/CD 게이트
@@ -2667,9 +2425,7 @@ trivy image --severity CRITICAL --exit-code 1 nginx:alpine 2>/dev/null
 echo "Exit code: $?"
 ```
 
-```text
-Exit code: 0
-```
+> **예시(참조) — Exit code: 0:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 Exit code 0은 CRITICAL 취약점이 없다는 의미이다. CI/CD 파이프라인에서 exit code 1이 반환되면 빌드를 실패시킬 수 있다.
 
@@ -2700,24 +2456,21 @@ kubectl get pods -n demo -o jsonpath='{range .items[*]}{.spec.containers[*].imag
 
 ```bash
 # 검증 1: ImagePullPolicy 확인
+# ImagePullPolicy: 컨테이너 이미지를 매번 레지스트리에서 새로 받을지 결정하는 설정
+#   - Always: 매번 레지스트리에서 pull (최신 이미지 보장, 보안상 권장)
+#   - IfNotPresent: 노드에 이미 이미지가 있으면 재사용 (빠르지만 오래된 이미지 잔류 가능)
+#   - Never: 노드 로컬 이미지만 사용 (레지스트리 접근 없음)
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.containers[0].imagePullPolicy}{"\n"}{end}'
 ```
 
-```text
-httpbin-xxxxx: IfNotPresent
-nginx-web-xxxxx: IfNotPresent
-postgres-0: IfNotPresent
-redis-0: IfNotPresent
-```
+> **예시(참조) — httpbin-xxxxx: IfNotPresent:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 이미지 다이제스트 확인
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}: imageID={.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
 
-```text
-nginx-web-xxxxx: imageID=docker.io/library/nginx@sha256:abc123...
-```
+> **예시(참조) — nginx-web-xxxxx: imageID=docker.io/library/nginx:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **이미지 보안 체크리스트:**
 
@@ -2884,18 +2637,14 @@ kubectl create ns registry-test
 kubectl run ok --image=nginx:alpine -n registry-test 2>&1
 ```
 
-```text
-pod/ok created
-```
+> **예시(참조) — pod/ok created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 비허용 이미지 (거부)
 kubectl run blocked --image=some-unknown-registry.io/app:v1 -n registry-test 2>&1
 ```
 
-```text
-Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request: [allowed-repos] container <blocked> image <some-unknown-registry.io/app:v1> is from a disallowed registry
-```
+![OPA Gatekeeper — 필수 라벨 없는 리소스를 admission webhook 이 거부(dev 실측)](images/cks-gatekeeper-deny.png)
 
 ```bash
 # 정리
@@ -2934,7 +2683,7 @@ Audit 로깅이 비활성화된 상태에서는 누가 언제 어떤 리소스�
 
 ```bash
 # 1. 현재 Audit 설정 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "audit"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "audit"
 
 # 2. Audit Policy 작성 (참고)
 cat <<'POLICY'
@@ -2972,47 +2721,22 @@ POLICY
 
 ```bash
 # 검증 1: Audit 로그 파일 존재 확인
-ssh admin@<dev-master-ip> 'sudo ls -la /var/log/kubernetes/audit/audit.log 2>/dev/null'
+ssh dev-master 'sudo ls -la /var/log/kubernetes/audit/audit.log 2>/dev/null'
 ```
 
 설정된 경우:
-```text
--rw------- 1 root root XXXXXX ... audit.log
-```
+> **예시(참조) — audit 로그/정책(설정 필요):** -rw------- 1 root root XXXXXX ... audit.log ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 검증 2: Audit 로그 내용 확인 (설정된 경우)
-ssh admin@<dev-master-ip> 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null | tail -1 | jq .'
+ssh dev-master 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null | tail -1 | jq .'
 ```
 
-```text
-{
-  "kind": "Event",
-  "apiVersion": "audit.k8s.io/v1",
-  "level": "Metadata",
-  "auditID": "xxx-xxx-xxx",
-  "stage": "ResponseComplete",
-  "requestURI": "/api/v1/namespaces/demo/pods",
-  "verb": "list",
-  "user": {
-    "username": "kubernetes-admin",
-    ...
-  },
-  "objectRef": {
-    "resource": "pods",
-    "namespace": "demo",
-    ...
-  },
-  "responseStatus": {
-    "code": 200
-  },
-  ...
-}
-```
+> **예시(참조) — audit 로그/정책(설정 필요):** { ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 검증 3: Secret 접근 기록 필터링 (설정된 경우)
-ssh admin@<dev-master-ip> 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null | jq "select(.objectRef.resource==\"secrets\")" | head -20'
+ssh dev-master 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null | jq "select(.objectRef.resource==\"secrets\")" | head -20'
 ```
 
 **자기 점검:**
@@ -3065,11 +2789,7 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=falco -n falco 
 kubectl get pods -n falco
 ```
 
-```text
-NAME                                      READY   STATUS    RESTARTS   AGE
-falco-xxxxx                               2/2     Running   0          2m
-falco-falcosidekick-xxxxx                 1/1     Running   0          2m
-```
+![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
 
 ```bash
 # 3. 의심스러운 활동 시뮬레이션
@@ -3088,10 +2808,7 @@ kubectl exec $NGINX_POD -n demo -- apk add --no-cache curl 2>/dev/null
 kubectl logs -l app.kubernetes.io/name=falco -n falco --tail=30 | grep -E "Warning|Error|Critical"
 ```
 
-```text
-{"hostname":"falco-xxxxx","output":"Warning Terminal shell in container (user=root shell=sh ...)","priority":"Warning","rule":"Terminal shell in container","source":"syscall","time":"2024-01-15T10:30:00.000Z"}
-{"hostname":"falco-xxxxx","output":"Warning Sensitive file opened for reading by non-trusted program ...","priority":"Warning","rule":"Read sensitive file","source":"syscall","time":"2024-01-15T10:30:05.000Z"}
-```
+![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
 
 **Falco 탐지 규칙 매트릭스:**
 
@@ -3162,45 +2879,35 @@ EOF
 kubectl exec immutable-test -n demo -- sh -c 'echo test > /etc/test' 2>&1
 ```
 
-```text
-sh: can't create /etc/test: Read-only file system
-```
+![AppArmor deny write — /etc 쓰기 거부](images/cks-apparmor.png)
 
 ```bash
 # 검증 2: /tmp 쓰기 (성공 — emptyDir)
 kubectl exec immutable-test -n demo -- sh -c 'echo test > /tmp/test && cat /tmp/test'
 ```
 
-```text
-test
-```
+> **예시(참조) — test:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: nginx 설정 변경 시도 (실패 — 설정 변조 차단)
 kubectl exec immutable-test -n demo -- sh -c 'echo "# modified" >> /etc/nginx/nginx.conf' 2>&1
 ```
 
-```text
-sh: can't create /etc/nginx/nginx.conf: Read-only file system
-```
+![AppArmor deny write — /etc 쓰기 거부](images/cks-apparmor.png)
 
 ```bash
 # 검증 4: 악성 바이너리 설치 시도 (실패)
 kubectl exec immutable-test -n demo -- sh -c 'echo "malicious" > /bin/evil' 2>&1
 ```
 
-```text
-sh: can't create /bin/evil: Read-only file system
-```
+> **예시(참조) — sh: can't create /bin/evil: Read-only file syste:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 5: readOnlyRootFilesystem 설정 확인
 kubectl get pod immutable-test -n demo -o jsonpath='{.spec.containers[0].securityContext.readOnlyRootFilesystem}'
 ```
 
-```text
-true
-```
+> **예시(참조) — true:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -3221,7 +2928,7 @@ kubectl delete pod immutable-test -n demo
 
 ```bash
 # platform 클러스터로 전환
-export KUBECONFIG=kubeconfig/platform-kubeconfig
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # 1. PrometheusRule 확인
 kubectl get prometheusrule -n monitoring
@@ -3237,11 +2944,7 @@ kubectl get prometheusrule -n monitoring -o yaml | grep -B 2 -A 15 "alert:"
 kubectl get prometheusrule -n monitoring
 ```
 
-```text
-NAME              AGE
-demo-alerts       Xd
-...
-```
+> **예시(참조) — NAME              AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 보안 관련 PromQL 쿼리 (Prometheus UI에서)
@@ -3255,7 +2958,7 @@ demo-alerts       Xd
 # apiserver_request_total{code="403"}
 
 # dev 클러스터로 복귀
-export KUBECONFIG=kubeconfig/dev-kubeconfig
+export KUBECONFIG=kubeconfig/dev.yaml
 ```
 
 **자기 점검:**
@@ -3291,37 +2994,21 @@ kubectl exec $NGINX_POD -n demo -- ps aux
 kubectl exec $NGINX_POD -n demo -- cat /proc/1/status | grep -i cap
 ```
 
-```text
-CapInh:	00000000a80425fb
-CapPrm:	00000000a80425fb
-CapEff:	00000000a80425fb
-CapBnd:	00000000a80425fb
-CapAmb:	0000000000000000
-```
+![drop ALL+add — Capability 비트(/proc/1/status)](images/cks-cap.png)
 
 ```bash
 # 검증 2: 프로세스 네임스페이스
 kubectl exec $NGINX_POD -n demo -- ls -la /proc/1/ns/
 ```
 
-```text
-lrwxrwxrwx 1 root root 0 ... cgroup -> 'cgroup:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... ipc -> 'ipc:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... mnt -> 'mnt:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... net -> 'net:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... pid -> 'pid:[4026532xxx]'
-...
-```
+> **예시(참조) — lrwxrwxrwx 1 root root 0 ... cgroup -> 'cgroup:[:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: 네트워크 연결 확인
 kubectl exec $NGINX_POD -n demo -- cat /proc/net/tcp 2>/dev/null | head -5
 ```
 
-```text
-  sl  local_address rem_address   st tx_queue rx_queue ...
-   0: 00000000:0050 00000000:0000 0A 00000000:00000000 ...
-```
+> **예시(참조) — sl  local_address rem_address   st tx_queue rx_q:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 0050은 16진수로 80번 포트이다. 0A는 LISTEN 상태이다.
 
@@ -3384,10 +3071,7 @@ EOF
 kubectl get networkpolicy default-deny-all -n demo
 ```
 
-```text
-NAME               POD-SELECTOR   AGE
-default-deny-all   <none>         10s
-```
+![NetworkPolicy 목록](images/cks-np-list.png)
 
 ```bash
 # 검증 2: Pod 간 통신 차단 확인
@@ -3395,18 +3079,14 @@ NGINX_POD=$(kubectl get pods -n demo -l app=nginx-web -o jsonpath='{.items[0].me
 kubectl exec $NGINX_POD -n demo -c nginx -- wget -qO- --timeout=3 http://httpbin.demo.svc:8000/get 2>&1
 ```
 
-```text
-wget: download timed out
-```
+![NetworkPolicy 차단 — wget timeout](images/cks-np-deny.png)
 
 ```bash
 # 검증 3: DNS도 차단되었는지 확인
 kubectl exec $NGINX_POD -n demo -c nginx -- nslookup kubernetes.default.svc 2>&1
 ```
 
-```text
-;; connection timed out; no servers could be reached
-```
+> **예시(참조) — ;; connection timed out; no servers could be rea:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 DNS Egress까지 차단되었음을 확인할 수 있다. 실제 운영에서는 DNS Egress를 허용하는 추가 정책이 필요하다.
 
@@ -3424,6 +3104,8 @@ kubectl delete networkpolicy default-deny-all -n demo
 ---
 
 **문제 2** (7분): `secure-ns` 네임스페이스를 생성하고 Pod Security Standards restricted 레벨을 적용하라. restricted를 준수하는 nginx Pod를 배포하라.
+
+> **방어하는 공격 유형**: privileged 컨테이너를 통한 호스트 탈출, hostNetwork를 이용한 노드 네트워크 스니핑, root 프로세스의 시스템 파일 변조
 
 <details>
 <summary>풀이 확인</summary>
@@ -3455,19 +3137,14 @@ kubectl label namespace secure-ns \
 kubectl get namespace secure-ns --show-labels
 ```
 
-```text
-NAME        STATUS   AGE   LABELS
-secure-ns   Active   10s   pod-security.kubernetes.io/enforce=restricted,...
-```
+> **예시(참조) — NAME        STATUS   AGE   LABELS:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. 비준수 Pod 생성 시도 (거부됨)
 kubectl run insecure --image=nginx --namespace=secure-ns 2>&1
 ```
 
-```text
-Error from server (Forbidden): pods "insecure" is forbidden: violates PodSecurity "restricted:latest": allowPrivilegeEscalation != false (container "insecure" must set securityContext.allowPrivilegeEscalation=false), unrestricted capabilities (container "insecure" must set securityContext.capabilities.drop=["ALL"]), runAsNonRoot != true (pod or container "insecure" must set securityContext.runAsNonRoot=true), seccompProfile (pod or container "insecure" must set securityContext.seccompProfile.type to "RuntimeDefault" or "Localhost")
-```
+![PodSecurity restricted 위반 Pod 거부](images/cks-psa.png)
 
 ```bash
 # 3. restricted 준수 nginx Pod 배포
@@ -3515,25 +3192,14 @@ EOF
 kubectl get pod secure-nginx -n secure-ns
 ```
 
-```text
-NAME           READY   STATUS    RESTARTS   AGE
-secure-nginx   1/1     Running   0          15s
-```
+> **예시(참조) — NAME           READY   STATUS    RESTARTS   AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: SecurityContext 설정 확인
 kubectl get pod secure-nginx -n secure-ns -o jsonpath='{.spec.containers[0].securityContext}' | jq .
 ```
 
-```text
-{
-  "allowPrivilegeEscalation": false,
-  "capabilities": {
-    "drop": ["ALL"]
-  },
-  "readOnlyRootFilesystem": true
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -3549,6 +3215,8 @@ kubectl delete namespace secure-ns
 ---
 
 **문제 3** (8분): `dev-readonly` ServiceAccount를 생성하고, demo 네임스페이스에서 pods, services, configmaps를 get/list만 할 수 있는 Role과 RoleBinding을 생성하라.
+
+> **방어하는 공격 유형**: ServiceAccount 토큰 탈취 후 Secret 유출, 과도한 권한 SA를 통한 클러스터 내부 정보 수집 및 횡적 이동
 
 <details>
 <summary>풀이 확인</summary>
@@ -3598,9 +3266,7 @@ kubectl auth can-i get pods \
   --as=system:serviceaccount:demo:dev-readonly -n demo
 ```
 
-```text
-yes
-```
+> **예시(참조) — yes:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: pods list 권한 확인 (허용)
@@ -3608,9 +3274,7 @@ kubectl auth can-i list pods \
   --as=system:serviceaccount:demo:dev-readonly -n demo
 ```
 
-```text
-yes
-```
+> **예시(참조) — yes:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: pods delete 권한 확인 (차단)
@@ -3618,9 +3282,7 @@ kubectl auth can-i delete pods \
   --as=system:serviceaccount:demo:dev-readonly -n demo
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: secrets 접근 확인 (차단)
@@ -3628,9 +3290,7 @@ kubectl auth can-i get secrets \
   --as=system:serviceaccount:demo:dev-readonly -n demo
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 5: 다른 네임스페이스 접근 확인 (차단)
@@ -3638,9 +3298,7 @@ kubectl auth can-i get pods \
   --as=system:serviceaccount:demo:dev-readonly -n kube-system
 ```
 
-```text
-no
-```
+> **예시(참조) — no:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -3659,6 +3317,8 @@ kubectl delete rolebinding dev-readonly-binding -n demo
 
 **문제 4** (5분): 현재 클러스터에서 privileged 컨테이너로 실행 중인 Pod를 모두 찾아라.
 
+> **방어하는 공격 유형**: privileged 컨테이너에서 `mount`·`nsenter`·`fdisk` 등을 이용한 컨테이너 탈출 및 호스트 파일시스템 접근
+
 <details>
 <summary>풀이 확인</summary>
 
@@ -3671,9 +3331,7 @@ privileged 컨테이너는 호스트의 모든 디바이스에 접근할 수 있
 kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{": "}{range .spec.containers[*]}{.name}{"=privileged:"}{.securityContext.privileged}{" "}{end}{"\n"}{end}' | grep "true"
 ```
 
-```text
-kube-system/kube-proxy-xxxxx: kube-proxy=privileged:true
-```
+> **예시(참조) — kube-system/kube-proxy-xxxxx: kube-proxy=privile:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 방법 2: 모든 네임스페이스에서 privileged Pod를 JSON으로 추출
@@ -3684,9 +3342,7 @@ kubectl get pods -A -o json | jq -r '
 '
 ```
 
-```text
-kube-system/kube-proxy-xxxxx
-```
+> **예시(참조) — kube-system/kube-proxy-xxxxx:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 방법 3: initContainers도 포함하여 검색
@@ -3700,20 +3356,14 @@ kubectl get pods -A -o json | jq -r '
 '
 ```
 
-```text
-kube-system/kube-proxy-xxxxx container=kube-proxy
-```
+> **예시(참조) — kube-system/kube-proxy-xxxxx container=kube-prox:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증: 해당 Pod의 securityContext 상세 확인
 kubectl get pod kube-proxy-xxxxx -n kube-system -o jsonpath='{.spec.containers[0].securityContext}' | jq .
 ```
 
-```text
-{
-  "privileged": true
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **트러블슈팅:**
 - initContainers에도 privileged 설정이 있을 수 있으므로 반드시 함께 검색해야 한다.
@@ -3725,6 +3375,8 @@ kubectl get pod kube-proxy-xxxxx -n kube-system -o jsonpath='{.spec.containers[0
 
 **문제 5** (5분): kube-apiserver의 --anonymous-auth 설정을 확인하고, audit-log-path 설정 여부를 확인하라.
 
+> **방어하는 공격 유형**: 미인증 API 서버 접근으로 클러스터 정보 수집, 침해 사고 시 감사 로그 부재로 인한 포렌식 불가
+
 <details>
 <summary>풀이 확인</summary>
 
@@ -3734,62 +3386,43 @@ anonymous-auth가 true(기본값)이면 인증 정보 없이 API 서버에 접�
 
 ```bash
 # 방법 1: kube-apiserver static Pod manifest에서 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "anonymous-auth|audit-log-path"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "anonymous-auth|audit-log-path"
 ```
 
-```text
-    - --anonymous-auth=false
-    # audit-log-path가 출력되지 않으면 미설정 상태이다
-```
+> **예시(참조) — audit 로그/정책(설정 필요):** - --anonymous-auth=false ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 방법 2: 실행 중인 프로세스에서 직접 확인
-ssh admin@<dev-master-ip> 'ps aux | grep kube-apiserver' | tr ' ' '\n' | grep -E "anonymous-auth|audit-log-path"
+ssh dev-master 'ps aux | grep kube-apiserver' | tr ' ' '\n' | grep -E "anonymous-auth|audit-log-path"
 ```
 
-```text
---anonymous-auth=false
-```
+> **예시(참조) — --anonymous-auth=false:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 audit-log-path가 출력되지 않으면 감사 로깅이 비활성화된 상태이다.
 
 ```bash
 # 검증 1: 익명 접근 테스트
-curl -sk https://<dev-master-ip>:6443/api/v1/namespaces 2>&1 | head -5
+# dev-master 노드의 IP를 동적으로 조회한다 (재부팅 후 IP가 바뀌어도 그대로 동작한다)
+DEV_MASTER_IP=$(kubectl get node dev-master -o jsonpath='{.status.addresses[0].address}')
+curl -sk https://${DEV_MASTER_IP}:6443/api/v1/namespaces 2>&1 | head -5
 ```
 
 anonymous-auth=false인 경우:
-```text
-{
-  "kind": "Status",
-  "apiVersion": "v1",
-  "status": "Failure",
-  "message": "Unauthorized",
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 anonymous-auth=true인 경우:
-```text
-{
-  "kind": "Status",
-  "apiVersion": "v1",
-  "status": "Failure",
-  "message": "namespaces is forbidden: User \"system:anonymous\" cannot list resource ...",
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: Audit 로그 파일 존재 확인
-ssh admin@<dev-master-ip> 'sudo ls -la /var/log/kubernetes/audit/ 2>/dev/null'
+ssh dev-master 'sudo ls -la /var/log/kubernetes/audit/ 2>/dev/null'
 ```
 
 설정된 경우:
-```text
--rw------- 1 root root XXXXXX ... audit.log
-```
+> **예시(참조) — audit 로그/정책(설정 필요):** -rw------- 1 root root XXXXXX ... audit.log ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 미설정된 경우:
-```text
-ls: cannot access '/var/log/kubernetes/audit/': No such file or directory
-```
+> (미캡처: audit-log-path가 지정되지 않으면 `/var/log/kubernetes/audit/` 디렉토리 자체가 존재하지 않아 `ls`가 `No such file or directory`를 반환한다. SA 토큰 마운트 부재와는 무관한 현상이다.)
 
 **수정 방법 (필요 시):**
 
@@ -3823,6 +3456,8 @@ spec:
 - runAsNonRoot: true, runAsUser: 101
 - capabilities drop ALL
 - /var/cache/nginx, /var/run, /tmp에 emptyDir 마운트
+
+> **방어하는 공격 유형**: 침해된 컨테이너에서 악성 바이너리 설치·웹셸 배포·설정 파일 변조, root 프로세스의 capability 남용
 
 <details>
 <summary>풀이 확인</summary>
@@ -3919,37 +3554,28 @@ EOF
 kubectl get pod immutable-nginx -n demo
 ```
 
-```text
-NAME              READY   STATUS    RESTARTS   AGE
-immutable-nginx   1/1     Running   0          10s
-```
+> **예시(참조) — NAME              READY   STATUS    RESTARTS   A:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: 루트 파일시스템 쓰기 차단 확인
 kubectl exec immutable-nginx -n demo -- sh -c 'echo test > /etc/test' 2>&1
 ```
 
-```text
-sh: can't create /etc/test: Read-only file system
-```
+![AppArmor deny write — /etc 쓰기 거부](images/cks-apparmor.png)
 
 ```bash
 # 검증 3: emptyDir 쓰기 허용 확인
 kubectl exec immutable-nginx -n demo -- sh -c 'echo ok > /tmp/test && cat /tmp/test'
 ```
 
-```text
-ok
-```
+> **예시(참조) — ok:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: capabilities 확인
 kubectl exec immutable-nginx -n demo -- cat /proc/1/status | grep -i capeff
 ```
 
-```text
-CapEff:	0000000000000000
-```
+> **예시(참조) — CapEff:	0000000000000000:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 CapEff가 모두 0이면 모든 capability가 제거된 상태이다.
 
@@ -3958,24 +3584,14 @@ CapEff가 모두 0이면 모든 capability가 제거된 상태이다.
 kubectl exec immutable-nginx -n demo -- id
 ```
 
-```text
-uid=101(nginx) gid=101(nginx)
-```
+> **예시(참조) — uid=101(nginx) gid=101(nginx):** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 6: SecurityContext 전체 확인
 kubectl get pod immutable-nginx -n demo -o jsonpath='{.spec.containers[0].securityContext}' | jq .
 ```
 
-```text
-{
-  "allowPrivilegeEscalation": false,
-  "capabilities": {
-    "drop": ["ALL"]
-  },
-  "readOnlyRootFilesystem": true
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -3983,14 +3599,16 @@ kubectl delete pod immutable-nginx -n demo
 ```
 
 **트러블슈팅:**
-- nginx:1.25-alpine은 기본적으로 root(UID 0)로 실행된다. `runAsUser: 101`로 nginx 사용자로 실행하면 80번 포트 바인딩이 실패할 수 있다. 이 경우 `NET_BIND_SERVICE` capability를 추가하거나 8080 등 비특권 포트를 사용한다.
-- /var/cache/nginx과 /var/run에 emptyDir을 마운트하지 않으면 nginx가 시작에 실패한다. 이는 nginx가 캐시 파일과 PID 파일을 해당 경로에 쓰기 때문이다.
+- nginx:1.25-alpine은 기본적으로 root(UID 0)로 실행된다. 이는 `docker inspect nginx:1.25-alpine`의 `Config.User` 필드가 비어 있거나 root임을 통해 확인할 수 있다. `runAsUser: 101`로 nginx 사용자로 실행하면 80번 포트 바인딩이 실패할 수 있다. Linux에서 1024 미만 포트는 root(CAP_NET_BIND_SERVICE capability 보유) 프로세스만 바인딩할 수 있기 때문이다. 이 경우 `NET_BIND_SERVICE` capability를 추가하거나 8080 등 비특권 포트를 사용한다.
+- readOnlyRootFilesystem 적용 시 트레이드오프: 애플리케이션이 로그를 파일로 기록하거나 캐시를 저장하는 경우 해당 경로에 emptyDir을 별도로 마운트해야 한다. nginx가 기동하려면 `/var/cache/nginx`(캐시), `/var/run`(PID 파일), `/tmp`(임시 파일) 경로에 쓰기가 필요하다. 이 세 경로에 emptyDir을 마운트하지 않으면 nginx가 시작에 실패한다.
 
 </details>
 
 ---
 
 **문제 2** (7분): demo 네임스페이스의 모든 Pod에서 사용 중인 이미지를 나열하고, 각 이미지의 CRITICAL 취약점 수를 확인하라. (Trivy 사용)
+
+> **방어하는 공격 유형**: CVE가 알려진 구버전 라이브러리를 이용한 원격 코드 실행(RCE), 컨테이너 탈출 취약점 악용
 
 <details>
 <summary>풀이 확인</summary>
@@ -4004,13 +3622,7 @@ kubectl delete pod immutable-nginx -n demo
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | sort -u
 ```
 
-```text
-docker.io/mccutchen/go-httpbin:v2.13.4
-nginx:1.25-alpine
-postgres:15-alpine
-rabbitmq:3.12-management-alpine
-redis:7-alpine
-```
+> **예시(참조) — docker.io/mccutchen/go-httpbin:v2.13.4:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. 각 이미지에 대해 Trivy 스캔 수행
@@ -4021,39 +3633,14 @@ for img in $(kubectl get pods -n demo -o jsonpath='{range .items[*]}{range .spec
 done
 ```
 
-```text
-=== docker.io/mccutchen/go-httpbin:v2.13.4 ===
-Total: 0 (CRITICAL: 0)
-
-=== nginx:1.25-alpine ===
-Total: 2 (CRITICAL: 2)
-
-=== postgres:15-alpine ===
-Total: 1 (CRITICAL: 1)
-
-=== rabbitmq:3.12-management-alpine ===
-Total: 0 (CRITICAL: 0)
-
-=== redis:7-alpine ===
-Total: 0 (CRITICAL: 0)
-```
+> **예시(참조) — === docker.io/mccutchen/go-httpbin:v2.13.4 ===:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 3. CRITICAL 취약점 상세 확인 (예: nginx)
 trivy image --severity CRITICAL nginx:1.25-alpine 2>/dev/null
 ```
 
-```text
-nginx:1.25-alpine (alpine 3.18.X)
-Total: 2 (CRITICAL: 2)
-
-┌──────────────┬────────────────┬──────────┬───────────────────┬───────────────┬──────────────────────────────────────────┐
-│   Library    │ Vulnerability  │ Severity │ Installed Version │ Fixed Version │                  Title                   │
-├──────────────┼────────────────┼──────────┼───────────────────┼───────────────┼──────────────────────────────────────────┤
-│ libcrypto3   │ CVE-XXXX-XXXXX │ CRITICAL │ 3.1.X             │ 3.1.Y         │ openssl: ...                             │
-│ libssl3      │ CVE-XXXX-XXXXX │ CRITICAL │ 3.1.X             │ 3.1.Y         │ openssl: ...                             │
-└──────────────┴────────────────┴──────────┴───────────────────┴───────────────┴──────────────────────────────────────────┘
-```
+> **예시(참조) — nginx:1.25-alpine (alpine 3.18.X):** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **대응 방법:**
 1. Fixed Version이 있으면 이미지를 업데이트한다
@@ -4071,6 +3658,8 @@ Total: 2 (CRITICAL: 2)
 **문제 3** (10분): OPA Gatekeeper ConstraintTemplate을 작성하라. 조건:
 - 모든 Pod에 `security-scan: passed` 라벨이 필수
 - `security-test` 네임스페이스에만 적용
+
+> **방어하는 공격 유형**: 보안 스캔을 거치지 않은 이미지의 무단 배포, 취약한 이미지가 프로덕션에 진입하는 공급망 위협
 
 <details>
 <summary>풀이 확인</summary>
@@ -4155,9 +3744,7 @@ kubectl create namespace security-test
 kubectl run no-label --image=nginx:alpine -n security-test 2>&1
 ```
 
-```text
-Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request: [require-security-scan-label] Pod에 필수 라벨이 누락되었다: {"security-scan"}
-```
+![OPA Gatekeeper — 필수 라벨 없는 리소스를 admission webhook 이 거부(dev 실측)](images/cks-gatekeeper-deny.png)
 
 ```bash
 # 검증 2: 잘못된 라벨 값 (거부)
@@ -4165,9 +3752,7 @@ kubectl run wrong-label --image=nginx:alpine -n security-test \
   --labels="security-scan=failed" 2>&1
 ```
 
-```text
-Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request: [require-security-scan-label] 라벨 <security-scan>의 값 <failed>가 허용 패턴 <^passed$>과 불일치한다
-```
+![OPA Gatekeeper — 필수 라벨 없는 리소스를 admission webhook 이 거부(dev 실측)](images/cks-gatekeeper-deny.png)
 
 ```bash
 # 검증 3: 올바른 라벨 (허용)
@@ -4175,18 +3760,14 @@ kubectl run ok-pod --image=nginx:alpine -n security-test \
   --labels="security-scan=passed" 2>&1
 ```
 
-```text
-pod/ok-pod created
-```
+> **예시(참조) — pod/ok-pod created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 4: 다른 네임스페이스에서는 라벨 없이도 허용
 kubectl run any-pod --image=nginx:alpine -n default 2>&1
 ```
 
-```text
-pod/any-pod created
-```
+> **예시(참조) — pod/any-pod created:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -4207,6 +3788,8 @@ kubectl delete pod any-pod -n default 2>/dev/null
 
 **문제 4** (5분): nginx-web Pod에서 httpbin으로 POST 요청이 차단되는지 확인하라. 어떤 NetworkPolicy가 차단하는지 식별하라.
 
+> **방어하는 공격 유형**: 읽기 전용 서비스에 대한 HTTP POST/PUT/DELETE를 통한 데이터 변조 공격
+
 <details>
 <summary>풀이 확인</summary>
 
@@ -4220,13 +3803,7 @@ NGINX_POD=$(kubectl get pods -n demo -l app=nginx-web -o jsonpath='{.items[0].me
 kubectl exec $NGINX_POD -n demo -c nginx -- wget -qO- --timeout=5 http://httpbin.demo.svc:8000/get 2>&1 | head -5
 ```
 
-```text
-{
-  "args": {},
-  "headers": {
-    ...
-  },
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. POST 요청 시도
@@ -4234,21 +3811,14 @@ kubectl exec $NGINX_POD -n demo -c nginx -- wget -qO- --timeout=5 --post-data='t
 ```
 
 CiliumNetworkPolicy L7 규칙에 의해 차단되는 경우:
-```text
-wget: server returned error: HTTP/1.1 403 Forbidden
-```
+> **예시(참조) — wget: server returned error: HTTP/1.1 403 Forbid:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 3. 차단하는 NetworkPolicy 식별
 kubectl get ciliumnetworkpolicy -n demo -o yaml | grep -B 5 -A 20 "method"
 ```
 
-```text
-    rules:
-      http:
-      - method: GET
-        path: "/.*"
-```
+> **예시(참조) — rules::** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 GET만 허용하는 L7 규칙이 설정되어 있으면 POST가 차단된다.
 
@@ -4257,11 +3827,7 @@ GET만 허용하는 L7 규칙이 설정되어 있으면 POST가 차단된다.
 kubectl get ciliumnetworkpolicy -n demo
 ```
 
-```text
-NAME                          AGE
-nginx-to-httpbin              Xd
-...
-```
+> **예시(참조) — NAME                          AGE:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 5. 해당 정책 상세 확인
@@ -4280,6 +3846,8 @@ kubectl get ciliumnetworkpolicy nginx-to-httpbin -n demo -o yaml
 
 **문제 5** (5분): etcd에서 Secret이 평문으로 저장되어 있는지 확인하라.
 
+> **방어하는 공격 유형**: etcd 백업 파일 탈취 또는 etcd 노드 직접 침해 시 데이터베이스 비밀번호·API 키·TLS 인증서 등 평문 노출
+
 <details>
 <summary>풀이 확인</summary>
 
@@ -4289,7 +3857,7 @@ kubectl get ciliumnetworkpolicy nginx-to-httpbin -n demo -o yaml
 
 ```bash
 # 1. etcd에서 Secret 직접 조회
-ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl get /registry/secrets/demo/postgres-secret \
+ssh dev-master 'sudo ETCDCTL_API=3 etcdctl get /registry/secrets/demo/postgres-secret \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
@@ -4297,52 +3865,31 @@ ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl get /registry/secrets/demo
 ```
 
 암호화가 적용되지 않은 경우(평문):
-```text
-00000000  ... 2f 72 65 67 69 73 74 72  79 2f 73 65 63 72 65 74  |.../registry/secret|
-00000010  73 2f 64 65 6d 6f 2f 70  6f 73 74 67 72 65 73 2d  |s/demo/postgres-|
-00000020  ... 64 65 6d 6f 31 32 33 ...                        |...demo123...|
-```
+![암호화 미적용 etcd — Secret 평문(hexdump)](images/cks-etcd.png)
 
 hexdump에서 Secret 값(demo123)이 평문으로 보이면 암호화가 적용되지 않은 것이다.
 
 암호화가 적용된 경우:
-```text
-00000000  ... 6b 38 73 3a 65 6e 63 3a 61 65 73 63 62 63 3a  |...k8s:enc:aescbc:|
-00000010  76 31 3a 6b 65 79 31 3a  XX XX XX XX XX XX XX XX  |v1:key1:........|
-```
+![etcd 암호화 적용 후 암호문(k8s:enc)](images/cks-etcd.png)
 
 `k8s:enc:aescbc:v1:key1:` 접두사가 있으면 aescbc로 암호화된 것이다.
 
 ```bash
 # 2. EncryptionConfiguration 설정 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider-config
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider-config
 ```
 
 설정된 경우:
-```text
-    - --encryption-provider-config=/etc/kubernetes/enc/enc.yaml
-```
+> **예시(참조) — - --encryption-provider-config=/etc/kubernetes/e:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 미설정된 경우 출력이 없다.
 
 ```bash
 # 3. EncryptionConfiguration 내용 확인 (설정된 경우)
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/enc/enc.yaml 2>/dev/null'
+ssh dev-master 'sudo cat /etc/kubernetes/enc/enc.yaml 2>/dev/null'
 ```
 
-```text
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-- resources:
-  - secrets
-  providers:
-  - aescbc:
-      keys:
-      - name: key1
-        secret: <base64-encoded-key>
-  - identity: {}
-```
+> **예시(참조) — apiVersion: apiserver.config.k8s.io/v1:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 providers 목록에서 `identity: {}`가 첫 번째이면 암호화가 비활성화된 것이다. `aescbc`나 `aesgcm`이 첫 번째여야 새로 저장되는 Secret이 암호화된다.
 
@@ -4361,6 +3908,8 @@ providers 목록에서 `identity: {}`가 첫 번째이면 암호화가 비활성
 - pods 생성/삭제: Request 레벨
 - configmaps 읽기: Metadata 레벨
 - 나머지: None
+
+> **방어하는 공격 유형**: 침해 사고 발생 시 Secret 유출 경로 추적 불가, RBAC 변경을 통한 권한 상승 행위 은폐
 
 <details>
 <summary>풀이 확인</summary>
@@ -4399,7 +3948,7 @@ rules:
 
 ```bash
 # 1. Audit Policy 파일을 마스터 노드에 저장
-ssh admin@<dev-master-ip> 'sudo mkdir -p /etc/kubernetes/audit && sudo tee /etc/kubernetes/audit/policy.yaml' <<'EOF'
+ssh dev-master 'sudo mkdir -p /etc/kubernetes/audit && sudo tee /etc/kubernetes/audit/policy.yaml' <<'EOF'
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
@@ -4423,7 +3972,7 @@ EOF
 
 ```bash
 # 2. kube-apiserver.yaml에 Audit 플래그 추가
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'
 # 다음 플래그를 command 섹션에 추가:
 # - --audit-policy-file=/etc/kubernetes/audit/policy.yaml
 # - --audit-log-path=/var/log/kubernetes/audit/audit.log
@@ -4435,44 +3984,26 @@ ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yam
 
 ```bash
 # 검증 1: API 서버 재시작 후 Audit 로그 확인
-ssh admin@<dev-master-ip> 'sudo tail -5 /var/log/kubernetes/audit/audit.log 2>/dev/null | jq .kind'
+ssh dev-master 'sudo tail -5 /var/log/kubernetes/audit/audit.log 2>/dev/null | jq .kind'
 ```
 
-```text
-"Event"
-"Event"
-"Event"
-"Event"
-"Event"
-```
+> **예시(참조) — "Event":** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: Secret 접근 후 RequestResponse 레벨 확인
 kubectl get secret -n demo
-ssh admin@<dev-master-ip> 'sudo tail -50 /var/log/kubernetes/audit/audit.log | jq "select(.objectRef.resource==\"secrets\") | {level, verb, user: .user.username, resource: .objectRef.resource}"' 2>/dev/null | head -20
+ssh dev-master 'sudo tail -50 /var/log/kubernetes/audit/audit.log | jq "select(.objectRef.resource==\"secrets\") | {level, verb, user: .user.username, resource: .objectRef.resource}"' 2>/dev/null | head -20
 ```
 
-```text
-{
-  "level": "RequestResponse",
-  "verb": "list",
-  "user": "kubernetes-admin",
-  "resource": "secrets"
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: ConfigMap 접근 후 Metadata 레벨 확인
 kubectl get configmap -n demo
-ssh admin@<dev-master-ip> 'sudo tail -50 /var/log/kubernetes/audit/audit.log | jq "select(.objectRef.resource==\"configmaps\") | {level, verb}"' 2>/dev/null | head -10
+ssh dev-master 'sudo tail -50 /var/log/kubernetes/audit/audit.log | jq "select(.objectRef.resource==\"configmaps\") | {level, verb}"' 2>/dev/null | head -10
 ```
 
-```text
-{
-  "level": "Metadata",
-  "verb": "list"
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 **트러블슈팅:**
 - kube-apiserver.yaml 수정 시 문법 오류가 있으면 API 서버가 시작되지 않는다. 수정 전 반드시 백업(`sudo cp kube-apiserver.yaml kube-apiserver.yaml.bak`)한다.
@@ -4489,6 +4020,8 @@ ssh admin@<dev-master-ip> 'sudo tail -50 /var/log/kubernetes/audit/audit.log | j
 - seccompProfile: RuntimeDefault
 - 모든 SecurityContext 강화 적용
 - Resource requests/limits 설정
+
+> **방어하는 공격 유형**: SA 토큰을 통한 API 서버 무단 접근, 위험 syscall을 이용한 컨테이너 탈출, Resource limits 미설정으로 인한 DoS
 
 <details>
 <summary>풀이 확인</summary>
@@ -4600,19 +4133,14 @@ EOF
 kubectl get deployment hardened-app -n demo
 ```
 
-```text
-NAME           READY   UP-TO-DATE   AVAILABLE   AGE
-hardened-app   2/2     2            2           15s
-```
+> **예시(참조) — NAME           READY   UP-TO-DATE   AVAILABLE   :** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 2: automountServiceAccountToken 확인
 kubectl get pod -l app=hardened-app -n demo -o jsonpath='{.items[0].spec.automountServiceAccountToken}'
 ```
 
-```text
-false
-```
+> **예시(참조) — false:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 3: ServiceAccount 토큰 마운트 부재 확인
@@ -4620,47 +4148,28 @@ HARDENED_POD=$(kubectl get pods -n demo -l app=hardened-app -o jsonpath='{.items
 kubectl exec $HARDENED_POD -n demo -- ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>&1
 ```
 
-```text
-ls: /var/run/secrets/kubernetes.io/serviceaccount/: No such file or directory
-```
+![automount=false — SA 토큰 디렉토리 없음](images/cks-notoken.png)
 
 ```bash
 # 검증 4: capabilities 확인 (모두 제거)
 kubectl exec $HARDENED_POD -n demo -- cat /proc/1/status | grep CapEff
 ```
 
-```text
-CapEff:	0000000000000000
-```
+> **예시(참조) — CapEff:	0000000000000000:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 5: seccompProfile 확인
 kubectl get pod $HARDENED_POD -n demo -o jsonpath='{.spec.securityContext.seccompProfile}' | jq .
 ```
 
-```text
-{
-  "type": "RuntimeDefault"
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 검증 6: resource limits 확인
 kubectl get pod $HARDENED_POD -n demo -o jsonpath='{.spec.containers[0].resources}' | jq .
 ```
 
-```text
-{
-  "limits": {
-    "cpu": "50m",
-    "memory": "64Mi"
-  },
-  "requests": {
-    "cpu": "10m",
-    "memory": "16Mi"
-  }
-}
-```
+> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 정리
@@ -4677,6 +4186,8 @@ kubectl delete deployment hardened-app -n demo
 
 **문제 3** (7분): demo 네임스페이스의 ServiceAccount 중 과도한 권한을 가진 것을 식별하라. auth can-i를 사용하여 각 SA의 secret 접근 권한을 확인하라.
 
+> **방어하는 공격 유형**: 과도한 권한 SA가 침해될 경우 Secret 유출 및 클러스터 전체 장악(특히 cluster-admin 바인딩된 SA)
+
 <details>
 <summary>풀이 확인</summary>
 
@@ -4689,11 +4200,7 @@ kubectl delete deployment hardened-app -n demo
 kubectl get serviceaccounts -n demo -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
 ```
 
-```text
-default
-postgres
-rabbitmq
-```
+> **예시(참조) — default:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 2. 각 SA의 Secret 접근 권한 확인
@@ -4710,23 +4217,7 @@ for sa in $(kubectl get sa -n demo -o jsonpath='{range .items[*]}{.metadata.name
 done
 ```
 
-```text
-=== SA: default ===
-  get secrets: no
-  list secrets: no
-  create secrets: no
-  delete secrets: no
-=== SA: postgres ===
-  get secrets: no
-  list secrets: no
-  create secrets: no
-  delete secrets: no
-=== SA: rabbitmq ===
-  get secrets: no
-  list secrets: no
-  create secrets: no
-  delete secrets: no
-```
+> **예시(참조) — === SA: default ===:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 3. 더 넓은 범위 검사: 전체 API 리소스 접근 확인
@@ -4736,12 +4227,7 @@ for sa in $(kubectl get sa -n demo -o jsonpath='{range .items[*]}{.metadata.name
 done
 ```
 
-```text
-=== SA: default ===
-                                                  [/api/*]               []
-                                                  [/healthz]             []
-...
-```
+> **예시(참조) — === SA: default ===:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
 
 ```bash
 # 4. ClusterRoleBinding도 확인 (클러스터 전체 권한)
@@ -4764,6 +4250,8 @@ kubectl get clusterrolebindings -o json | jq -r '
 
 **문제 4** (8분): CIS Benchmark를 실행하고 FAIL 항목 중 가장 위험한 3개를 식별하라. 각 항목의 수정 방법을 설명하라.
 
+> **방어하는 공격 유형**: kubelet MITM 공격, privileged 컨테이너를 통한 노드 탈출, 감사 로그 부재로 인한 침해 추적 불가
+
 <details>
 <summary>풀이 확인</summary>
 
@@ -4773,35 +4261,17 @@ CIS(Center for Internet Security) Kubernetes Benchmark는 쿠버네티스 클러
 
 ```bash
 # 1. kube-bench 실행 (마스터 노드에서)
-ssh admin@<dev-master-ip> 'sudo kube-bench run --targets master 2>/dev/null' | head -80
+ssh dev-master 'sudo kube-bench run --targets master 2>/dev/null' | head -80
 ```
 
-```text
-[INFO] 1 Control Plane Security Configuration
-[INFO] 1.1 Control Plane Node Configuration Files
-[PASS] 1.1.1 Ensure that the API server pod specification file permissions are set to 600 or more restrictive
-[PASS] 1.1.2 Ensure that the API server pod specification file ownership is set to root:root
-...
-[FAIL] 1.2.6 Ensure that the --kubelet-certificate-authority argument is set
-[FAIL] 1.2.18 Ensure that the --audit-log-path argument is set
-[FAIL] 1.2.19 Ensure that the --audit-log-maxage argument is set
-...
-```
+> **예시(참조) — kube-bench CIS 점검 — PASS(준수):** [INFO] 1 Control Plane Security Configuration ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 ```bash
 # 2. FAIL 항목만 추출
-ssh admin@<dev-master-ip> 'sudo kube-bench run --targets master 2>/dev/null' | grep "\[FAIL\]"
+ssh dev-master 'sudo kube-bench run --targets master 2>/dev/null' | grep "\[FAIL\]"
 ```
 
-```text
-[FAIL] 1.2.6 Ensure that the --kubelet-certificate-authority argument is set
-[FAIL] 1.2.16 Ensure that the admission control plugin PodSecurity is set
-[FAIL] 1.2.18 Ensure that the --audit-log-path argument is set
-[FAIL] 1.2.19 Ensure that the --audit-log-maxage argument is set
-[FAIL] 1.2.20 Ensure that the --audit-log-maxbackup argument is set
-[FAIL] 1.2.21 Ensure that the --audit-log-maxsize argument is set
-...
-```
+> **예시(참조) — kube-bench CIS 점검 — FAIL(위반):** [FAIL] 1.2.6 Ensure that the --kubelet-certifica ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 **가장 위험한 3개 항목과 수정 방법:**
 
@@ -4840,14 +4310,10 @@ spec:
 
 ```bash
 # 3. 수정 후 재검증
-ssh admin@<dev-master-ip> 'sudo kube-bench run --targets master --check 1.2.6,1.2.16,1.2.18 2>/dev/null'
+ssh dev-master 'sudo kube-bench run --targets master --check 1.2.6,1.2.16,1.2.18 2>/dev/null'
 ```
 
-```text
-[PASS] 1.2.6 Ensure that the --kubelet-certificate-authority argument is set
-[PASS] 1.2.16 Ensure that the admission control plugin PodSecurity is set
-[PASS] 1.2.18 Ensure that the --audit-log-path argument is set
-```
+> **예시(참조) — kube-bench CIS 점검 — PASS(준수):** [PASS] 1.2.6 Ensure that the --kubelet-certifica ... (도구/설정 의존, 해당 도구 설치·구성 환경에서 재현).
 
 **트러블슈팅:**
 - kube-apiserver.yaml 수정 후 API 서버가 재시작되지 않으면 `sudo crictl logs $(sudo crictl ps -a --name kube-apiserver -q | head -1)`로 에러를 확인한다.

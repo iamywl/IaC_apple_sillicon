@@ -131,46 +131,28 @@ spec:
 kubectl get statefulset mysql
 ```
 
-```text
-NAME    READY   AGE
-mysql   3/3     2m
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Pod 이름이 순서대로 생성되었는지 확인
 kubectl get pods -l app=mysql
 ```
 
-```text
-NAME      READY   STATUS    RESTARTS   AGE
-mysql-0   1/1     Running   0          2m
-mysql-1   1/1     Running   0          90s
-mysql-2   1/1     Running   0          60s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 개별 PVC 확인
 kubectl get pvc
 ```
 
-```text
-NAME           STATUS   VOLUME   CAPACITY   ACCESS MODES   AGE
-data-mysql-0   Bound    pv-xx    10Gi       RWO            2m
-data-mysql-1   Bound    pv-yy    10Gi       RWO            90s
-data-mysql-2   Bound    pv-zz    10Gi       RWO            60s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # DNS 확인 (임시 Pod에서 nslookup 실행)
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup mysql-0.mysql-headless.default.svc.cluster.local
 ```
 
-```text
-Server:    10.96.0.10
-Address:   10.96.0.10:53
-Name:      mysql-0.mysql-headless.default.svc.cluster.local
-Address:   10.244.1.5
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **스케일링 동작**
 
@@ -214,23 +196,34 @@ kubectl patch statefulset mysql --type='json' -p='[{"op":"replace","path":"/spec
 kubectl get pvc -l app=mysql
 ```
 
-```text
-NAME           STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-data-mysql-0   Pending                                                      30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 원인 확인
 kubectl describe pvc data-mysql-0
 ```
 
-```text
-Events:
-  Warning  ProvisioningFailed  5s  persistentvolume-controller
-    storageclass.storage.k8s.io "standard" not found
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 해결: StorageClass를 생성하거나, volumeClaimTemplates에 올바른 storageClassName을 지정한다.
+
+**확인 문제:**
+
+<details><summary>정답 확인</summary>
+
+1. StatefulSet을 삭제하면 연결된 PVC도 함께 삭제되는가?
+
+   **정답: 아니다.** StatefulSet을 삭제해도 `volumeClaimTemplates`로 생성된 PVC는 자동으로 삭제되지 않는다. 데이터 보존을 위한 안전 장치이며, 수동으로 `kubectl delete pvc <name>`을 실행해야 한다.
+
+2. `podManagementPolicy: Parallel`로 설정하면 어떤 보장이 사라지는가?
+
+   **정답:** Pod 생성·삭제의 순서 보장이 사라진다. 모든 Pod가 동시에 생성/삭제된다. 순서 의존적 애플리케이션(MySQL, ZooKeeper 등)에서는 사용하면 안 된다.
+
+3. StatefulSet에서 `serviceName` 필드에 지정한 Headless Service가 없으면 어떻게 되는가?
+
+   **정답:** StatefulSet 자체는 생성되지만, Pod의 DNS 레코드(`<pod>.<svc>.<ns>.svc.cluster.local`)가 작동하지 않는다. Headless Service를 StatefulSet보다 먼저 생성해야 한다.
+
+</details>
 
 ---
 
@@ -257,7 +250,11 @@ DaemonSet 컨트롤러는 주기적으로 클러스터의 노드 목록을 확�
 
 **내부 동작 상세:**
 
-쿠버네티스 1.12 이전에는 DaemonSet 컨트롤러가 Pod의 `spec.nodeName`을 직접 설정하여 스케줄러를 우회하였다. 이 방식은 스케줄러의 리소스 확인, taint/toleration 처리 등을 건너뛰는 문제가 있었다. 1.12 이후로는 `nodeAffinity`를 사용하여 스케줄러를 통해 배치한다. 이를 통해:
+쿠버네티스 1.12 이전에는 DaemonSet 컨트롤러가 Pod의 `spec.nodeName`을 직접 설정하여 스케줄러를 우회하였다. 이 방식은 스케줄러의 리소스 확인, taint/toleration 처리 등을 건너뛰는 문제가 있었다. 1.12 이후로는 `nodeAffinity`를 사용하여 스케줄러를 통해 배치한다.
+
+> **nodeName vs nodeAffinity**: `nodeName`은 스케줄러를 완전히 건너뛰고 특정 노드에 직접 할당하므로 해당 노드의 리소스 가용성이나 taint를 확인하지 않는다. `nodeAffinity`는 스케줄러가 조건을 평가한 뒤 할당하므로 리소스 가용성, taint/toleration(§1.3 참조), unschedulable 상태를 모두 존중한다. DaemonSet은 1.12부터 후자 방식을 사용한다.
+
+이를 통해:
 
 - 스케줄러가 리소스 가용성을 확인한다.
 - taint/toleration이 올바르게 처리된다.
@@ -308,32 +305,21 @@ spec:
 kubectl get daemonset monitoring-agent -n monitoring
 ```
 
-```text
-NAME               DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-monitoring-agent   2         2         2       2            2           disk=ssd        30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 각 Pod가 어떤 노드에 배포되었는지 확인
 kubectl get pods -n monitoring -o wide -l app=monitoring-agent
 ```
 
-```text
-NAME                     READY   STATUS    NODE
-monitoring-agent-abc12   1/1     Running   node1
-monitoring-agent-def34   1/1     Running   node3
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # disk=ssd 레이블이 있는 노드 확인
 kubectl get nodes -l disk=ssd
 ```
 
-```text
-NAME    STATUS   ROLES    AGE
-node1   Ready    <none>   10d
-node3   Ready    <none>   10d
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **tolerations를 사용한 컨트롤 플레인 노드 배포**
 
@@ -377,22 +363,14 @@ spec:
 kubectl get pods -n kube-system -l app=fluentd -o wide
 ```
 
-```text
-NAME            READY   STATUS    NODE
-fluentd-abc12   1/1     Running   control-plane
-fluentd-def34   1/1     Running   node1
-fluentd-ghi56   1/1     Running   node2
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # DESIRED와 CURRENT가 클러스터 전체 노드 수와 일치하는지 확인
 kubectl get ds fluentd -n kube-system
 ```
 
-```text
-NAME      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   AGE
-fluentd   3         3         3       3            3           1m
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **DaemonSet 업데이트 전략**
 
@@ -428,6 +406,24 @@ DaemonSet의 `maxUnavailable`은 Deployment와 달리 노드 수 기준으로 �
 - DaemonSet Pod가 `Pending` 상태이면 노드의 리소스가 부족한 것이다. `kubectl describe pod`로 이벤트를 확인하여 원인을 파악해야 한다.
 - `nodeSelector`를 변경하면 더 이상 매칭되지 않는 노드의 Pod는 자동으로 제거되고, 새로 매칭되는 노드에는 Pod가 생성된다.
 - DaemonSet Pod는 `kubectl drain` 시 기본적으로 evict 대상이다. `--ignore-daemonsets` 플래그를 사용하면 DaemonSet Pod를 무시하고 drain을 진행한다.
+
+**확인 문제:**
+
+<details><summary>정답 확인</summary>
+
+1. 클러스터에 노드가 5개 있을 때 DaemonSet의 `DESIRED` 값은 얼마인가?
+
+   **정답: 5.** DaemonSet은 (nodeSelector/affinity에 매칭되는) 모든 노드에 정확히 하나의 Pod를 배포한다. nodeSelector로 범위를 제한하면 그 수만큼이 된다.
+
+2. DaemonSet에서 `maxSurge`를 사용할 수 있는가?
+
+   **정답: 아니다.** DaemonSet은 노드당 정확히 하나의 Pod만 허용하므로 `maxSurge`(기존 Pod보다 더 많은 수를 일시적으로 실행)는 의미가 없다. `maxUnavailable`만 지원된다.
+
+3. `kubectl drain` 실행 시 DaemonSet Pod를 함께 제거하려면 어떻게 하는가?
+
+   **정답:** 기본적으로 `kubectl drain`은 DaemonSet Pod를 evict하지 않는다. DaemonSet Pod를 무시하고 drain을 진행하려면 `--ignore-daemonsets` 플래그를 사용한다. DaemonSet Pod까지 함께 삭제하려면 `--ignore-daemonsets=false`를 사용하지만, 다른 노드에서 해당 DaemonSet Pod가 없게 되어 모니터링/네트워크에 공백이 생길 수 있다.
+
+</details>
 
 ---
 
@@ -499,9 +495,7 @@ kubectl taint nodes node1 env=production:NoSchedule-
 kubectl describe node node1 | grep -A3 Taints
 ```
 
-```text
-Taints:             env=production:NoSchedule
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # taint 제거 후 확인
@@ -509,12 +503,11 @@ kubectl taint nodes node1 env=production:NoSchedule-
 kubectl describe node node1 | grep -A3 Taints
 ```
 
-```text
-node/node1 untainted
-Taints:             <none>
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **Toleration 설정 방법**
+
+아래 예제는 `kubectl apply -f`로 바로 실행 가능한 완전한 Pod 매니페스트이다. `.spec.tolerations` 부분만 다른 리소스에 이식할 수도 있다.
 
 ```yaml
 apiVersion: v1
@@ -561,19 +554,14 @@ spec:
 kubectl get pod production-app -o wide
 ```
 
-```text
-NAME             READY   STATUS    NODE
-production-app   1/1     Running   node1
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # toleration이 올바르게 설정되었는지 확인
 kubectl get pod production-app -o jsonpath='{.spec.tolerations}'
 ```
 
-```text
-[{"effect":"NoSchedule","key":"env","operator":"Equal","value":"production"}]
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **모든 taint를 허용하는 toleration**
 
@@ -599,13 +587,31 @@ tolerations:
 - `PreferNoSchedule`은 soft 제약이므로, 다른 노드에 자리가 없으면 해당 노드에 스케줄될 수 있다. 반드시 거부해야 하는 경우 `NoSchedule`을 사용해야 한다.
 - 쿠버네티스는 자동으로 다음 taint를 노드에 추가한다: `node.kubernetes.io/not-ready`, `node.kubernetes.io/unreachable`. 기본적으로 Pod에는 이 taint에 대한 toleration이 300초(5분)로 설정되어 있다.
 
+**확인 문제:**
+
+<details><summary>정답 확인</summary>
+
+1. `NoSchedule`과 `NoExecute`의 차이는 무엇인가?
+
+   **정답:** `NoSchedule`은 taint 추가 이후 새로운 Pod만 차단하며, 이미 실행 중인 Pod에는 영향을 주지 않는다. `NoExecute`는 새로운 Pod 차단뿐 아니라 이미 실행 중인 Pod까지 퇴출(evict)한다. toleration에 `tolerationSeconds`가 설정된 Pod는 해당 시간 후에 퇴출된다.
+
+2. Taint/Toleration은 Pod를 특정 노드에 배치하는 것을 보장하는가?
+
+   **정답: 아니다.** Toleration은 해당 taint가 있는 노드에 배치될 수 있는 조건을 충족할 뿐, 반드시 그 노드에 배치되는 것은 아니다. 특정 노드에 Pod를 강제 배치하려면 `nodeSelector`나 `nodeAffinity`를 함께 사용해야 한다.
+
+3. 노드에 여러 taint가 설정된 경우, Pod는 어떤 조건에서 스케줄될 수 있는가?
+
+   **정답:** Pod의 toleration이 노드의 모든 taint를 커버해야 한다. 하나의 taint라도 매칭되는 toleration이 없으면 NoSchedule/NoExecute 효과에 따라 스케줄이 거부되거나 퇴출된다.
+
+</details>
+
 ---
 
 ### 1.4 RBAC (Role-Based Access Control)
 
 #### 배경: 기존 인가 방식의 한계
 
-쿠버네티스 초기에는 ABAC(Attribute-Based Access Control)를 사용하였다. ABAC는 정책 파일을 JSON으로 작성하여 API 서버 시작 시 로드하는 방식이다. 정책을 변경하려면 파일을 수정하고 API 서버를 재시작해야 하므로 운영이 어렵다. RBAC는 쿠버네티스 API 리소스(Role, RoleBinding)로 정책을 관리하므로, `kubectl apply`로 즉시 반영할 수 있다.
+쿠버네티스 초기에는 ABAC(Attribute-Based Access Control, 속성 기반 접근 제어: 사용자·리소스·환경 등의 속성 조합으로 접근을 허용하거나 거부하는 방식)를 사용하였다. ABAC는 정책 파일을 JSON으로 작성하여 API 서버 시작 시 로드하는 방식이다. 정책을 변경하려면 파일을 수정하고 API 서버를 재시작해야 한다. 예를 들어 100개 팀에 ABAC 정책을 추가할 때마다 API 서버를 재시작하면 클러스터 전체가 수십 초간 다운되어 운영 클러스터에서는 사실상 사용이 불가능하다. RBAC는 쿠버네티스 API 리소스(Role, RoleBinding)로 정책을 관리하므로, `kubectl apply`로 즉시 반영할 수 있다.
 
 #### 동작 원리
 
@@ -663,23 +669,14 @@ kubectl apply -f rbac.yaml
 
 **검증**
 
+> `kubectl auth can-i` 명령의 `--as=<user>` 플래그는 특정 사용자 또는 서비스어카운트로 가장(impersonate)하여 권한을 확인한다. 실제 토큰 없이도 RBAC 규칙이 올바르게 적용되었는지 검증할 때 사용한다. 형식: `kubectl auth can-i <verb> <resource> --as=<user>` 또는 `--as=system:serviceaccount:<namespace>:<sa-name>`.
+
 ```bash
 # Role 확인
 kubectl get role pod-reader -n demo -o yaml | grep -A10 "rules:"
 ```
 
-```text
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  - pods/log
-  verbs:
-  - get
-  - list
-  - watch
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # RoleBinding 확인
@@ -687,26 +684,20 @@ kubectl get rolebinding read-pods -n demo -o jsonpath='{.subjects[0].name}'
 echo ""
 ```
 
-```text
-app-sa
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 권한 테스트 (can-i)
 kubectl auth can-i get pods -n demo --as=system:serviceaccount:demo:app-sa
 ```
 
-```text
-yes
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl auth can-i delete pods -n demo --as=system:serviceaccount:demo:app-sa
 ```
 
-```text
-no
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -734,6 +725,8 @@ no
 비자발적 중단: 노드 장애, OOM, 하드웨어 고장 (PDB가 보호하지 않음)
 
 #### 동작 원리
+
+**Eviction API:** Pod를 삭제하는 전용 엔드포인트(`/eviction` 서브리소스)이다. 일반 `kubectl delete pod`는 PDB를 무시하고 Pod를 즉시 삭제하지만, Eviction API를 통한 퇴출(`kubectl drain` 포함)은 PDB 조건을 먼저 확인하고 조건이 위반되면 HTTP 429(Too Many Requests)를 반환하여 퇴출을 거부한다.
 
 PDB는 Eviction API를 통해 동작한다:
 
@@ -769,10 +762,7 @@ kubectl apply -f pdb.yaml
 kubectl get pdb webapp-pdb -n demo
 ```
 
-```text
-NAME         MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
-webapp-pdb   2               N/A               1                     10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 `ALLOWED DISRUPTIONS`는 현재 상태에서 추가로 중단할 수 있는 Pod 수이다. replicas=3이고 minAvailable=2이면, 최대 1개 Pod를 중단할 수 있다.
 
@@ -780,14 +770,7 @@ webapp-pdb   2               N/A               1                     10s
 kubectl describe pdb webapp-pdb -n demo | grep -A5 "Status:"
 ```
 
-```text
-Status:
-    Conditions:
-      ...
-    Current Healthy:   3
-    Desired Healthy:   2
-    Disruptions Allowed:  1
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **장애 시나리오 — PDB가 drain을 블로킹하는 경우:**
 
@@ -796,11 +779,7 @@ Status:
 kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 ```
 
-```text
-evicting pod demo/webapp-xxx
-error when evicting pods/"webapp-xxx" -n "demo" (will retry after 5s):
-Cannot evict pod as it would violate the pod's disruption budget.
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 이 상태에서 drain은 무한 대기한다. 해결 방법:
 1. PDB의 minAvailable을 낮추거나
@@ -827,15 +806,17 @@ Cannot evict pod as it would violate the pod's disruption budget.
 
 #### 배경: 기존 한계
 
-쿠버네티스 1.23 이전에는 ServiceAccount를 생성하면 자동으로 Secret(영구 토큰)이 생성되었다. 이 토큰은 만료되지 않아, 유출 시 무기한으로 API에 접근할 수 있는 심각한 보안 위험이 있었다. 1.24부터 TokenRequest API를 통한 시간 제한(기본 1시간) 토큰이 기본값이 되었다. projected volume을 통해 kubelet이 토큰을 주기적으로 갱신한다.
+쿠버네티스 1.23 이전에는 ServiceAccount를 생성하면 자동으로 Secret(영구 토큰)이 생성되었다. 이 토큰은 만료되지 않아, 유출 시 무기한으로 API에 접근할 수 있는 심각한 보안 위험이 있었다. 1.24부터 TokenRequest API를 통한 시간 제한(기본 1시간) 토큰이 기본값이 되었다. projected volume을 통해 서비스어카운트 토큰 컨트롤러가 토큰을 주기적으로 갱신한다.
+
+> **Projected Volume**: 여러 출처(ServiceAccount 토큰, CA 인증서, 네임스페이스 등)의 정보를 하나의 마운트 포인트로 합쳐서 제공하는 가상 볼륨이다. 각 출처를 별도 볼륨으로 마운트하면 경로가 분산되는 문제를 해결한다.
 
 #### 동작 원리
 
 1. Pod가 생성되면 ServiceAccount Admission Controller가 `serviceAccountName` 필드를 확인한다 (미지정 시 `default` SA).
 2. `automountServiceAccountToken`이 true(기본값)이면, projected volume을 Pod spec에 주입한다.
-3. kubelet이 TokenRequest API를 호출하여 시간 제한 토큰을 발급받는다.
+3. **서비스어카운트 토큰 컨트롤러(serviceaccount token controller)**가 주기적으로 TokenRequest API를 호출하여 시간 제한 토큰을 발급하고, kubelet은 이를 파일 시스템에 기록한다.
 4. 토큰을 `/var/run/secrets/kubernetes.io/serviceaccount/token`에 파일로 마운트한다.
-5. 토큰 만료 전에 kubelet이 자동으로 새 토큰을 발급받아 파일을 갱신한다.
+5. 토큰 만료 전에 서비스어카운트 토큰 컨트롤러가 자동으로 새 토큰을 발급하고, kubelet이 파일을 갱신한다.
 6. 같은 경로에 `ca.crt`(API 서버 CA 인증서)와 `namespace`(현재 네임스페이스) 파일도 마운트된다.
 
 **검증:**
@@ -846,20 +827,14 @@ kubectl run sa-test --image=busybox:1.36 -n demo --restart=Never -- sleep 3600
 kubectl exec sa-test -n demo -- ls /var/run/secrets/kubernetes.io/serviceaccount/
 ```
 
-```text
-ca.crt
-namespace
-token
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 토큰 내용 일부 확인 (JWT)
 kubectl exec sa-test -n demo -- cat /var/run/secrets/kubernetes.io/serviceaccount/token | cut -d. -f2 | base64 -d 2>/dev/null | head -c 200
 ```
 
-```text
-{"aud":["https://kubernetes.default.svc.cluster.local"],"exp":1704110400,"iat":1704067200,"iss":"https://kubernetes.default.svc.cluster.local","kubernetes.io":{"namespace":"demo","pod":{"name":"sa-test"...
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 `exp` 필드가 존재하여 토큰 만료 시간이 설정되어 있다.
 
@@ -870,9 +845,7 @@ kubectl run sa-nomount --image=busybox:1.36 -n demo --restart=Never \
 kubectl exec sa-nomount -n demo -- ls /var/run/secrets/ 2>&1
 ```
 
-```text
-ls: /var/run/secrets/: No such file or directory
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -891,6 +864,8 @@ ls: /var/run/secrets/: No such file or directory
 ---
 
 ## Part 2: 추가 실전 예제
+
+이 파트는 Part 1의 개념을 완전한 프로덕션급 YAML로 연결하는 예제 모음이다. Part 1을 읽은 후 YAML 작성 연습용으로 활용하고, Part 3~4는 시험 직전 속도 연습용이다. 예제 1(StatefulSet)은 Part 1 §1.1, 예제 3(CronJob)은 Part 3 예제5와 개념이 겹치지만 여기서는 완전한 YAML과 검증 명령 작성에 초점을 맞춘다.
 
 ---
 
@@ -970,32 +945,21 @@ spec:
 kubectl get sts mysql
 ```
 
-```text
-NAME    READY   AGE
-mysql   3/3     3m
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 생성된 PVC 확인 (Pod별 개별 PVC)
 kubectl get pvc
 ```
 
-```text
-NAME                 STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-mysql-data-mysql-0   Bound    pv-xx    10Gi       RWO            standard       3m
-mysql-data-mysql-1   Bound    pv-yy    10Gi       RWO            standard       2m
-mysql-data-mysql-2   Bound    pv-zz    10Gi       RWO            standard       1m
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 개별 Pod DNS 접근 확인 (같은 네임스페이스 내에서)
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup mysql-0.mysql-headless
 ```
 
-```text
-Name:      mysql-0.mysql-headless.default.svc.cluster.local
-Address:   10.244.1.5
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # MySQL 연결 확인
@@ -1003,13 +967,7 @@ kubectl run mysql-client --image=mysql:8.0 --rm -it --restart=Never -- \
   mysql -h mysql-0.mysql-headless -u root -prootpassword -e "SELECT 1"
 ```
 
-```text
-+---+
-| 1 |
-+---+
-| 1 |
-+---+
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1026,7 +984,7 @@ kubectl run mysql-client --image=mysql:8.0 --rm -it --restart=Never -- \
 
 #### 등장 배경
 
-Deployment로 모니터링 에이전트를 배포하면, 스케줄러가 Pod를 특정 노드에 집중 배치할 수 있다. 노드가 추가되어도 자동으로 에이전트가 배포되지 않는다. DaemonSet은 모든(또는 특정) 노드에 정확히 하나의 Pod를 실행하는 워크로드 리소스이다. 노드가 추가되면 자동으로 Pod가 생성되고, 제거되면 자동으로 삭제된다.
+Deployment로 모니터링 에이전트를 배포하면 두 가지 문제가 발생한다. 첫째, 스케줄러가 리소스 가용성 기준으로 배치하므로 특정 노드에 Pod가 집중되거나 일부 노드에는 배포되지 않는다. 둘째, 클러스터에 노드가 추가될 때 관리자가 수동으로 `kubectl scale`을 실행하거나 별도의 자동화 스크립트를 운용해야 한다. 이전에는 호스트의 cron이나 Ansible 같은 외부 도구로 에이전트를 노드에 직접 설치하는 방식을 사용했는데, 컨테이너 라이프사이클과 분리되어 버전 관리가 어렵고 노드 드레인 시 에이전트가 함께 종료되지 않는 문제가 있었다. DaemonSet은 모든(또는 특정) 노드에 정확히 하나의 Pod를 실행하며, 노드가 추가되면 자동으로 Pod가 생성되고 제거되면 자동으로 삭제된다.
 
 **내부 동작 원리:**
 
@@ -1077,22 +1035,14 @@ spec:
 kubectl get daemonset node-exporter -n monitoring
 ```
 
-```text
-NAME            DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-node-exporter   3         3         3       3            3           <none>           30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 모든 노드에 Pod가 하나씩 배치되었는지 확인
 kubectl get pods -n monitoring -l app=node-exporter -o wide
 ```
 
-```text
-NAME                  READY   STATUS    RESTARTS   AGE   IP            NODE
-node-exporter-abc12   1/1     Running   0          30s   10.244.0.5    control-plane
-node-exporter-def34   1/1     Running   0          30s   10.244.1.5    worker1
-node-exporter-ghi56   1/1     Running   0          30s   10.244.2.5    worker2
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1108,7 +1058,7 @@ node-exporter-ghi56   1/1     Running   0          30s   10.244.2.5    worker2
 
 #### 등장 배경
 
-데이터 백업, 로그 정리, 리포트 생성 등은 주기적으로 실행되어야 한다. 기존에는 외부 스케줄러(cron)나 별도 운영 도구에 의존하였다. CronJob은 쿠버네티스 내에서 cron 표현식 기반 스케줄링을 제공하며, Job의 생성/실패 관리를 자동으로 수행한다.
+데이터 백업, 로그 정리, 리포트 생성 등은 주기적으로 실행되어야 한다. 기존에는 VM이나 호스트의 crontab에 직접 스크립트를 등록하거나, Jenkins 같은 별도 CI 도구를 운용하였다. 이 방식은 스케줄 실행 이력과 실패 감지가 어렵고, 실행 환경이 클러스터 외부에 분산되어 배포 일관성이 깨지는 문제가 있었다. CronJob은 쿠버네티스 내에서 cron 표현식 기반 스케줄링을 제공하며, 실패 시 Job 재시도와 실행 이력 관리(`successfulJobsHistoryLimit`, `failedJobsHistoryLimit`)를 자동으로 수행한다.
 
 **내부 동작 원리:**
 
@@ -1120,6 +1070,8 @@ CronJob 컨트롤러는 매 10초마다 모든 CronJob을 검사한다:
    - `Forbid`: 이전 Job이 실행 중이면 새 Job을 건너뜀
    - `Replace`: 이전 Job을 삭제하고 새 Job을 생성
 4. `successfulJobsHistoryLimit`(기본 3)과 `failedJobsHistoryLimit`(기본 1)에 따라 이전 Job을 정리한다.
+
+> **startingDeadlineSeconds**: 스케줄 시간을 놓쳤을 경우, 이 초 이내라면 Job을 생성하고 초과하면 스킵한다. 기본값은 0(제한 없음)이다. 예: 매 2시간마다 실행되는 CronJob이 5시간 동안 클러스터가 가동 중지되었을 때, `startingDeadlineSeconds: 3600`이면 마지막 스케줄 시점에서 이미 3600초 이상 지났으므로 재기동 후 밀린 Job이 스킵된다. 가동 중지 후 밀린 실행이 폭발적으로 쌓이는 것을 방지하는 안전 장치이다.
 
 ```yaml
 apiVersion: batch/v1
@@ -1152,28 +1104,19 @@ kubectl create job --from=cronjob/db-backup manual-backup
 kubectl get jobs
 ```
 
-```text
-NAME            COMPLETIONS   DURATION   AGE
-manual-backup   1/1           8s         15s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl logs job/manual-backup
 ```
 
-```text
-Backup started at Mon Jan 1 00:00:00 UTC 2024
-Backup completed
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl get cronjob db-backup
 ```
 
-```text
-NAME        SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
-db-backup   0 2 * * *     False     0        <none>          30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1190,6 +1133,8 @@ db-backup   0 2 * * *     False     0        <none>          30s
 #### 등장 배경
 
 트래픽이 급증할 때 수동으로 `kubectl scale`을 실행하면 대응이 늦다. 트래픽이 줄어든 후에도 replicas를 축소하지 않으면 리소스가 낭비된다. HPA는 CPU/메모리 사용률이나 커스텀 메트릭을 기반으로 Deployment의 replicas를 자동으로 조정한다.
+
+> **선행 조건 — metrics-server:** HPA는 Metrics API(`metrics.k8s.io`)를 통해 CPU/메모리 사용률을 조회한다. metrics-server(각 노드의 kubelet cAdvisor가 수집한 자원 사용량을 Metrics API로 노출하는 컴포넌트)가 클러스터에 설치되어 있지 않으면 HPA는 메트릭을 읽지 못하고 `TARGETS: <unknown>/70%` 상태가 된다. 이 저장소 tart 클러스터에 metrics-server가 설치되지 않은 경우 `kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`로 설치한 뒤 실습한다.
 
 **내부 동작 원리:**
 
@@ -1229,22 +1174,13 @@ spec:
 kubectl get hpa webapp-hpa
 ```
 
-```text
-NAME         REFERENCE          TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-webapp-hpa   Deployment/webapp   35%/70%   2         10        2          30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe hpa webapp-hpa | grep -A3 "Conditions:"
 ```
 
-```text
-Conditions:
-  Type            Status  Reason              Message
-  ----            ------  ------              -------
-  AbleToScale     True    ReadyForNewScale    recommended size matches current size
-  ScalingActive   True    ValidMetricFound    the HPA was able to successfully calculate a replica count
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1260,7 +1196,7 @@ Conditions:
 
 #### 등장 배경
 
-Deployment는 항상 실행 상태를 유지하도록 설계되어 있다. 데이터 마이그레이션, 배치 처리, 초기 설정 등 한 번 실행하고 종료되는 작업에는 적합하지 않다. Job은 Pod가 성공적으로 완료될 때까지 실행을 보장하는 워크로드이다.
+배치 작업을 Deployment로 실행하면 Pod가 완료(exit 0)되어도 `restartPolicy: Always`에 의해 계속 재시작된다. 완료 상태가 없으므로 리소스를 낭비하고, 몇 번 성공했는지 추적할 방법도 없다. Job은 `completions` 조건을 충족하면 종료하고 더 이상 재시작하지 않는다. 이전에 대안으로 사용하던 `restartPolicy: Never` + Deployment 조합은 완료를 판단하는 컨트롤러가 없어 중간 실패 시 재시도를 보장할 수 없었다. Job 컨트롤러는 Pod 실패를 감지하면 `backoffLimit` 범위 내에서 자동으로 새 Pod를 생성하여 재시도를 보장한다.
 
 ```yaml
 apiVersion: batch/v1
@@ -1270,6 +1206,7 @@ metadata:
 spec:
   completions: 5           # 총 5개 Pod가 성공해야 완료
   parallelism: 2           # 동시에 2개 Pod 실행
+  completionMode: Indexed  # 각 Pod에 0-based 순서 인덱스(0~4)가 부여된다. 기본값(NonIndexed)에서는 JOB_COMPLETION_INDEX가 설정되지 않는다
   backoffLimit: 3
   template:
     spec:
@@ -1291,29 +1228,14 @@ spec:
 kubectl get job data-migration -w
 ```
 
-```text
-NAME             COMPLETIONS   DURATION   AGE
-data-migration   0/5           3s         3s
-data-migration   1/5           6s         6s
-data-migration   2/5           9s         9s
-data-migration   3/5           12s        12s
-data-migration   4/5           15s        15s
-data-migration   5/5           18s        18s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 병렬 실행 확인
 kubectl get pods -l job-name=data-migration
 ```
 
-```text
-NAME                     READY   STATUS      RESTARTS   AGE
-data-migration-0-abc     0/1     Completed   0          18s
-data-migration-1-def     0/1     Completed   0          18s
-data-migration-2-ghi     0/1     Completed   0          12s
-data-migration-3-jkl     0/1     Completed   0          12s
-data-migration-4-mno     0/1     Completed   0          6s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1329,6 +1251,16 @@ data-migration-4-mno     0/1     Completed   0          6s
 #### 등장 배경
 
 초기 쿠버네티스에서는 관리자가 수동으로 PV를 생성하고, 사용자가 PVC로 바인딩하는 정적 프로비저닝만 가능하였다. 동적 프로비저닝은 PVC 생성 시 StorageClass에 지정된 프로비저너가 자동으로 PV를 생성하여, 관리자의 수동 작업을 제거한다.
+
+**PV·PVC·StorageClass 3자 관계:**
+
+- **PV (PersistentVolume)**: 실제 스토리지 자원(디스크, NFS 등)을 추상화한 클러스터 수준 리소스이다. 정적 프로비저닝에서는 관리자가 수동으로 PV를 먼저 생성한다.
+- **PVC (PersistentVolumeClaim)**: 사용자가 스토리지를 요청하는 리소스이다. 용량·접근 모드·StorageClass를 선언하면 적합한 PV에 바인딩된다.
+- **StorageClass**: 프로비저너(CSI 드라이버 등)와 프로비저닝 파라미터를 정의하는 리소스이다. PVC가 StorageClass를 지정하면 프로비저너가 PV를 자동 생성한다(동적 프로비저닝).
+
+3단계 흐름: `PVC (요청) → StorageClass (프로비저너 선택) → PV (자동 생성 및 바인딩)`.
+
+정적 프로비저닝(관리자가 PV를 수동 생성 후 PVC가 바인딩)과 달리, 동적 프로비저닝에서는 PVC 생성만으로 PV가 자동 생성되므로 규모가 큰 클러스터에서 운영 부담이 크게 줄어든다.
 
 **내부 동작 원리:**
 
@@ -1358,19 +1290,13 @@ spec:
 kubectl get pvc app-data
 ```
 
-```text
-NAME       STATUS   VOLUME     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-app-data   Bound    pv-abc12   5Gi        RWO            standard       10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl get pv pv-abc12
 ```
 
-```text
-NAME       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   AGE
-pv-abc12   5Gi        RWO            Delete           Bound    default/app-data   standard       10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1387,6 +1313,8 @@ pv-abc12   5Gi        RWO            Delete           Bound    default/app-data 
 #### 등장 배경
 
 멀티 테넌트 환경에서 네임스페이스 A의 Pod가 네임스페이스 B의 데이터베이스에 무단 접근하면 데이터 유출이 발생할 수 있다. NetworkPolicy의 `namespaceSelector`를 사용하면 특정 네임스페이스에서 오는 트래픽만 허용할 수 있다.
+
+> **주의: NetworkPolicy는 CNI 플러그인이 NetworkPolicy를 지원해야 실제 트래픽 차단이 이루어진다.** 이 저장소에서는 Cilium을 CNI로 사용한다(`scripts/install.sh`가 Cilium을 설치). Cilium 없이 NetworkPolicy 리소스를 적용하면 API 오브젝트는 생성되지만 트래픽 차단이 전혀 동작하지 않는다. 기본 CNI(flannel, kubenet 등)는 NetworkPolicy를 구현하지 않으므로, 직접 구축한 클러스터에서 실습 시 반드시 CNI가 NetworkPolicy를 지원하는지 확인한다(`kubectl get pods -n kube-system | grep cilium`).
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -1421,23 +1349,13 @@ spec:
 kubectl get networkpolicy allow-from-frontend-ns -n backend
 ```
 
-```text
-NAME                     POD-SELECTOR      AGE
-allow-from-frontend-ns   app=api-server    10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe networkpolicy allow-from-frontend-ns -n backend | grep -A10 "Allowing ingress"
 ```
 
-```text
-  Allowing ingress traffic:
-    To Port: 8080/TCP
-    From:
-      NamespaceSelector: purpose=frontend
-    From:
-      PodSelector: role=web
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ---
 
@@ -1482,17 +1400,17 @@ spec:
 kubectl describe pod java-app | grep -E "Startup:|Liveness:|Readiness:"
 ```
 
-```text
-    Startup:    exec [cat /tmp/healthy] delay=0s timeout=1s period=5s #success=1 #failure=30
-    Liveness:   http-get http://:8080/actuator/health/liveness delay=0s timeout=1s period=10s #success=1 #failure=3
-    Readiness:  http-get http://:8080/actuator/health/readiness delay=0s timeout=1s period=5s #success=1 #failure=3
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **내부 동작 순서:**
 1. Pod 시작 -> Startup Probe만 활성화 (5초 간격, 최대 150초)
 2. Startup 성공 -> Liveness(10초 간격) + Readiness(5초 간격) 활성화
 3. Readiness 성공 -> Endpoint에 추가, 트래픽 수신 시작
 4. Liveness 실패 3회 연속 -> 컨테이너 재시작
+
+**Startup Probe 동작 확인:**
+
+Pod 시작 직후 30초 동안은 `/tmp/healthy` 파일이 없으므로 Startup Probe가 실패한다. 이 구간에 `kubectl describe pod java-app | grep -i "startup\|warning"` 으로 이벤트를 확인하면 `Startup probe failed` 메시지가 반복된다. 30초 후 파일이 생성되면 Startup Probe가 성공하고, 이후 `kubectl get pod java-app` 의 READY 컬럼이 `0/1` 에서 `1/1` 로 전환된다. 이 시퀀스를 통해 Startup Probe가 초기화 완료 전에 Liveness Probe가 컨테이너를 재시작하는 것을 막는 역할을 직접 확인할 수 있다.
 
 ---
 
@@ -1541,21 +1459,13 @@ kubectl get pod test -n quota-demo -o jsonpath='{.spec.containers[0].resources}'
 echo ""
 ```
 
-```text
-{"limits":{"cpu":"200m","memory":"256Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe resourcequota ns-quota -n quota-demo | grep -E "requests|limits|pods"
 ```
 
-```text
-  limits.cpu       200m  8
-  limits.memory    256Mi  16Gi
-  pods             1     20
-  requests.cpu     100m  4
-  requests.memory  128Mi  8Gi
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ---
 
@@ -1612,25 +1522,13 @@ spec:
 kubectl get ingress multi-path-ingress
 ```
 
-```text
-NAME                 CLASS   HOSTS               ADDRESS        PORTS     AGE
-multi-path-ingress   nginx   myapp.example.com   192.168.64.2   80, 443   10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe ingress multi-path-ingress | grep -A10 "Rules:"
 ```
 
-```text
-Rules:
-  Host               Path  Backends
-  ----               ----  --------
-  myapp.example.com
-                     /api   api-svc:8080 (10.244.1.10:8080)
-                     /      web-svc:80 (10.244.2.8:80,10.244.2.9:80)
-TLS:
-  myapp-tls terminates myapp.example.com
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1656,6 +1554,10 @@ TLS:
 **문제 1.** `ckad-build` 네임스페이스에 `web-sts`라는 이름의 StatefulSet을 생성하라. `nginx:1.25` 이미지를 사용하고, 레플리카는 3개, 서비스 이름은 `web-headless`로 설정하라. 각 Pod에 1Gi의 PVC를 할당하라.
 
 <details><summary>풀이 확인</summary>
+
+**등장 배경:**
+
+Deployment로 상태 저장 애플리케이션을 운용하면 세 가지 문제가 발생한다. 첫째, Pod 이름이 `<deployment>-<rs-hash>-<random>` 형태의 무작위 문자열이라 특정 인스턴스에 안정적으로 접근할 수 없다. 둘째, Deployment는 Pod별 전용 PVC를 자동 생성하지 않으므로, 여러 Pod가 하나의 PVC를 공유하거나 각 Pod에 수동으로 PVC를 연결해야 한다. Pod가 다른 노드로 재스케줄되면 기존 PVC와의 연결이 보장되지 않는다. 셋째, Pod 생성 순서가 무작위라 클러스터 멤버십 초기화 순서를 보장할 수 없다. StatefulSet은 `<name>-0`, `<name>-1` 형태의 고정 이름, `volumeClaimTemplates`를 통한 Pod별 전용 PVC 자동 생성, 순차적 생성/삭제를 제공하여 이 세 가지 문제를 해결한다.
 
 ```bash
 kubectl create namespace ckad-build
@@ -1720,20 +1622,7 @@ kubectl apply -f statefulset.yaml
 kubectl get sts,pods,pvc -n ckad-build
 ```
 
-```text
-NAME                       READY   AGE
-statefulset.apps/web-sts   3/3     2m
-
-NAME            READY   STATUS    RESTARTS   AGE
-pod/web-sts-0   1/1     Running   0          2m
-pod/web-sts-1   1/1     Running   0          90s
-pod/web-sts-2   1/1     Running   0          60s
-
-NAME                              STATUS   VOLUME   CAPACITY   ACCESS MODES   AGE
-persistentvolumeclaim/www-web-sts-0   Bound    pv-xx    1Gi        RWO            2m
-persistentvolumeclaim/www-web-sts-1   Bound    pv-yy    1Gi        RWO            90s
-persistentvolumeclaim/www-web-sts-2   Bound    pv-zz    1Gi        RWO            60s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # DNS 확인
@@ -1741,10 +1630,7 @@ kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -n ckad-build
   nslookup web-sts-0.web-headless.ckad-build.svc.cluster.local
 ```
 
-```text
-Name:      web-sts-0.web-headless.ckad-build.svc.cluster.local
-Address:   10.244.x.x
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1796,29 +1682,21 @@ kubectl apply -f job.yaml
 kubectl get jobs data-job
 ```
 
-```text
-NAME       COMPLETIONS   DURATION   AGE
-data-job   1/1           3s         10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Pod 로그로 명령 실행 결과 확인
 kubectl logs job/data-job
 ```
 
-```text
-processing complete
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Job 상세 정보에서 backoffLimit, activeDeadlineSeconds 확인
 kubectl describe job data-job | grep -E "Backoff|Deadline"
 ```
 
-```text
-Backoff Limit:   4
-Active Deadline Seconds: 30
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **내부 동작 — Job 실패 재시도:**
 
@@ -1842,7 +1720,7 @@ Pod가 0이 아닌 exit code로 종료되면 Job 컨트롤러는 새 Pod를 생�
 
 **등장 배경:**
 
-메인 컨테이너가 실행되기 전에 설정 파일 생성, DB 마이그레이션, 의존 서비스 대기 등 선행 작업이 필요한 경우가 있다. Init Container는 메인 컨테이너보다 먼저 실행되고, 성공적으로 완료되어야 메인 컨테이너가 시작된다. 여러 Init Container는 정의된 순서대로 순차 실행된다.
+메인 컨테이너 안에서 선행 작업을 수행하면 두 가지 문제가 발생한다. 첫째, 선행 작업이 실패하면 메인 컨테이너 자체가 실패 상태로 재시작을 반복한다. 둘째, 선행 작업에 필요한 도구(curl, git, DB 클라이언트 등)를 메인 이미지에 포함해야 하므로 이미지 크기가 커지고 공격 표면이 넓어진다. Init Container는 메인 컨테이너보다 먼저 순차적으로 실행되고, 성공(exit 0)해야 다음 단계로 진행한다. 선행 작업 실패는 Init Container 재시도로 처리되므로 메인 컨테이너의 restartPolicy에 영향을 주지 않는다. 여러 Init Container는 정의된 순서대로 순차 실행된다.
 
 **내부 동작 원리:**
 
@@ -1885,27 +1763,20 @@ kubectl apply -f init-demo.yaml
 kubectl get pod init-demo -n ckad-build
 ```
 
-```text
-NAME        READY   STATUS    RESTARTS   AGE
-init-demo   1/1     Running   0          15s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl exec init-demo -n ckad-build -- cat /usr/share/nginx/html/config.txt
 ```
 
-```text
-ready=true
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Init Container 완료 상태 확인
 kubectl get pod init-demo -n ckad-build -o jsonpath='{.status.initContainerStatuses[0].state}'
 ```
 
-```text
-{"terminated":{"containerID":"...","exitCode":0,"finishedAt":"...","reason":"Completed","startedAt":"..."}}
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -1958,10 +1829,7 @@ spec:
 kubectl get pod sidecar-log -n ckad-build
 ```
 
-```text
-NAME          READY   STATUS    RESTARTS   AGE
-sidecar-log   2/2     Running   0          15s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 접근 로그 생성
@@ -1970,9 +1838,7 @@ kubectl exec sidecar-log -c nginx -n ckad-build -- curl -s localhost > /dev/null
 kubectl logs sidecar-log -c log-collector -n ckad-build --tail=1
 ```
 
-```text
-127.0.0.1 - - [01/Jan/2024:00:00:00 +0000] "GET / HTTP/1.1" 200 615 "-" "curl/8.5.0"
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -2019,10 +1885,7 @@ spec:
 kubectl logs tmpfs-demo -n ckad-build
 ```
 
-```text
-Filesystem                Size      Used Available Use% Mounted on
-tmpfs                    64.0M         0     64.0M   0% /cache
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 `Filesystem`이 `tmpfs`로 표시되어 RAM 기반 파일시스템임을 확인할 수 있다.
 
@@ -2030,9 +1893,7 @@ tmpfs                    64.0M         0     64.0M   0% /cache
 kubectl exec tmpfs-demo -n ckad-build -- mount | grep cache
 ```
 
-```text
-tmpfs on /cache type tmpfs (rw,nosuid,nodev,noexec,relatime,size=65536k)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -2076,10 +1937,7 @@ spec:
 kubectl get pod ambassador-demo -n ckad-build
 ```
 
-```text
-NAME              READY   STATUS    RESTARTS   AGE
-ambassador-demo   2/2     Running   0          15s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -2115,15 +1973,7 @@ spec:
 kubectl exec shared-pid -c sidecar -n ckad-build -- ps aux
 ```
 
-```text
-PID   USER     TIME  COMMAND
-    1 65535     0:00 /pause
-    7 root      0:00 nginx: master process nginx -g daemon off;
-   37 101       0:00 nginx: worker process
-   38 root      0:00 sh -c sleep 3600
-   39 root      0:00 sleep 3600
-   45 root      0:00 ps aux
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 sidecar 컨테이너에서 nginx 프로세스(PID 7)를 확인할 수 있다. PID 1은 pause 컨테이너(인프라 컨테이너)이다.
 
@@ -2149,6 +1999,8 @@ CMD ["python3", "/app/main.py"]
 **등장 배경:**
 
 컨테이너 이미지 최적화는 보안, 빌드 속도, 런타임 성능에 직접 영향을 미친다. 불필요하게 큰 이미지는 pull 시간 증가, 스토리지 낭비, 공격 표면(attack surface) 확대를 초래한다.
+
+> **다단계 빌드(multi-stage build)**: Dockerfile에서 `FROM ... AS <stage명>` 구문으로 여러 빌드 단계를 정의하는 기법이다. 첫 번째 단계(builder)에서 컴파일·패키지 설치 등 빌드 작업을 수행하고, 두 번째 단계(최종 이미지)에서는 `COPY --from=<stage명>` 으로 빌드 산출물만 복사한다. 이렇게 하면 컴파일러, 빌드 도구, 캐시 파일 등 런타임에 불필요한 파일이 최종 이미지에 포함되지 않아 이미지 크기를 대폭 줄일 수 있다.
 
 **문제점과 해결:**
 
@@ -2240,51 +2092,35 @@ kubectl annotate deployment/webapp kubernetes.io/change-cause="updated image to 
 kubectl rollout status deployment/webapp
 ```
 
-```text
-deployment "webapp" successfully rolled out
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 현재 이미지 확인
 kubectl get deployment webapp -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
-```text
-nginx:1.25
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 롤아웃 이력 확인
 kubectl rollout history deployment/webapp
 ```
 
-```text
-REVISION  CHANGE-CAUSE
-1         <none>
-2         updated image to nginx:1.25
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 업데이트 전략 확인
 kubectl get deployment webapp -o jsonpath='{.spec.strategy.rollingUpdate}'
 ```
 
-```text
-{"maxSurge":1,"maxUnavailable":0}
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 모든 Pod가 Running인지 확인
 kubectl get pods -l app=webapp
 ```
 
-```text
-NAME                      READY   STATUS    RESTARTS   AGE
-webapp-xxxx-abc12         1/1     Running   0          30s
-webapp-xxxx-def34         1/1     Running   0          25s
-webapp-xxxx-ghi56         1/1     Running   0          20s
-webapp-xxxx-jkl78         1/1     Running   0          15s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅 — 롤아웃이 멈추는 경우:**
 
@@ -2321,12 +2157,7 @@ kubectl annotate deployment/webapp kubernetes.io/change-cause="upgrade to nginx:
 kubectl rollout history deployment/webapp
 ```
 
-```text
-REVISION  CHANGE-CAUSE
-1         <none>
-2         updated image to nginx:1.25
-3         upgrade to nginx:1.26
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # revision 1로 롤백
@@ -2334,18 +2165,14 @@ kubectl rollout undo deployment/webapp --to-revision=1
 kubectl rollout status deployment/webapp
 ```
 
-```text
-deployment "webapp" successfully rolled out
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl get deployment webapp -o jsonpath='{.spec.template.spec.containers[0].image}'
 echo ""
 ```
 
-```text
-nginx:1.24
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -2359,9 +2186,11 @@ nginx:1.24
 
 <details><summary>풀이 확인</summary>
 
-**등장 배경:**
+**등장 배경 및 Canary 배포와의 트레이드오프:**
 
-Blue-Green 배포는 두 환경(Blue=현재, Green=신규)을 동시에 유지하다가, Service selector를 변경하여 트래픽을 한 번에 전환하는 전략이다. Canary와 달리 부분 전환이 아닌 전체 전환이므로 구현이 간단하지만, 두 배의 리소스가 필요하다.
+Blue-Green 배포는 두 환경(Blue=현재, Green=신규)을 동시에 유지하다가, Service selector를 변경하여 트래픽을 한 번에 전환하는 전략이다. 전체 트래픽을 한 번에 전환하므로 구현이 단순하고 문제 발생 시 selector만 되돌리면 즉시 롤백된다. 단, 두 배의 리소스(클러스터 비용)가 필요하고 전환 시점에 인플라이트(in-flight) 요청이 끊길 수 있다.
+
+Canary 배포는 새 버전을 소수의 레플리카로만 먼저 배포하여 일부 트래픽(예: 5%)으로 점진적으로 검증한 뒤 전체로 확장하는 방식이다. 점진적 검증이 가능하므로 장애 영향 범위가 좁지만, 두 버전이 동시에 실행되는 기간 동안 API 호환성 유지, 데이터베이스 스키마 동시 지원 등의 운용 복잡도가 증가한다. CKAD 시험에서 Canary는 직접 구현 문제보다 Blue-Green과의 차이를 설명하는 형태로 출제된다.
 
 ```bash
 # Blue Deployment
@@ -2393,10 +2222,7 @@ EOF
 kubectl get endpoints app-svc
 ```
 
-```text
-NAME      ENDPOINTS                                      AGE
-app-svc   10.244.1.10:80,10.244.1.11:80,10.244.2.8:80   10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Green으로 전환
@@ -2406,10 +2232,7 @@ kubectl patch svc app-svc -p '{"spec":{"selector":{"app":"app-green"}}}'
 kubectl get endpoints app-svc
 ```
 
-```text
-NAME      ENDPOINTS                                        AGE
-app-svc   10.244.2.10:80,10.244.2.11:80,10.244.3.8:80   30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -2419,6 +2242,18 @@ app-svc   10.244.2.10:80,10.244.2.11:80,10.244.3.8:80   30s
 
 ---
 
+**Helm vs Kustomize 비교 (문제 12·13 학습 전 참고):**
+
+Helm과 Kustomize는 모두 CKAD 시험 범위이며, 사용 목적이 다르다.
+
+| 항목 | Helm | Kustomize |
+|------|------|-----------|
+| 접근 방식 | 템플릿 엔진 + 패키지 릴리스 관리 | 템플릿 없는 오버레이(패치) |
+| 주요 용도 | chart 배포, 버전 관리, 롤백 (`helm install/upgrade/rollback`) | 환경별(dev/staging/prod) 커스터마이즈 |
+| values 오버라이드 | `--set key=val` 또는 `-f values.yaml` | `kustomization.yaml`의 `patches`, `images`, `commonLabels` 등 |
+| 내장 도구 | `kubectl kustomize` 또는 `kubectl apply -k` | 별도 설치 필요 (`helm`) |
+| 트레이드오프 | 복잡한 템플릿 문법, chart 버전 관리 필요 | 기존 매니페스트를 그대로 재사용 가능, 릴리스 관리 기능 없음 |
+
 **문제 12.** Helm chart에서 `values.yaml`의 값을 오버라이드하여 배포하라. `bitnami/nginx` chart를 `replicaCount=3`, `service.type=NodePort`로 설치하라.
 
 <details><summary>풀이 확인</summary>
@@ -2427,7 +2262,20 @@ app-svc   10.244.2.10:80,10.244.2.11:80,10.244.3.8:80   30s
 
 Helm의 핵심은 동일한 chart를 다양한 values로 배포할 수 있다는 점이다. 명령줄 `--set` 또는 커스텀 values 파일(`-f`)로 오버라이드한다.
 
+**시험 환경 주의:** CKAD 시험은 오프라인 환경이다. 시험에서 Helm은 주로 이미 설치된 chart를 `upgrade`, `rollback`하거나 `helm get values`로 현재 설정을 확인하는 형태로 출제된다. 외부 저장소에서 chart를 새로 받는 문제는 거의 출제되지 않는다.
+
+로컬 tart 클러스터에서 `helm repo add`가 가능하면 아래 외부 저장소 방식을 쓰되, 네트워크 없이 `--set` 오버라이드를 연습하려면 `helm create mychart`로 로컬 chart를 만들어 동일한 `--set` 패턴을 연습한다.
+
 ```bash
+# 로컬 chart로 --set 연습 (오프라인 대안)
+helm create mychart
+helm install my-nginx ./mychart \
+  --set replicaCount=3 \
+  --set service.type=NodePort
+```
+
+```bash
+# bitnami 저장소가 접근 가능한 경우 (tart 클러스터에 외부 네트워크가 있을 때)
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 
@@ -2442,40 +2290,26 @@ helm install my-nginx bitnami/nginx \
 helm list
 ```
 
-```text
-NAME      NAMESPACE  REVISION  UPDATED       STATUS    CHART          APP VERSION
-my-nginx  default    1         2024-...      deployed  nginx-15.x.x   1.25.x
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl get deployment -l app.kubernetes.io/instance=my-nginx
 ```
 
-```text
-NAME             READY   UP-TO-DATE   AVAILABLE   AGE
-my-nginx-nginx   3/3     3            3           30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl get svc -l app.kubernetes.io/instance=my-nginx
 ```
 
-```text
-NAME             TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-my-nginx-nginx   NodePort   10.96.45.123   <none>        80:31234/TCP   30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 적용된 values 확인
 helm get values my-nginx
 ```
 
-```text
-USER-SUPPLIED VALUES:
-replicaCount: 3
-service:
-  type: NodePort
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -2488,6 +2322,47 @@ service:
 **등장 배경:**
 
 Kustomize의 `commonLabels`는 모든 리소스와 selector에 label을 자동 추가한다. `namespace` 필드는 모든 리소스에 네임스페이스를 설정한다.
+
+**base 디렉터리 구조 (overlay 적용 전 먼저 생성):**
+
+overlay는 `../../base` 경로를 참조하므로 base가 먼저 존재해야 한다. 아래 순서로 디렉터리와 파일을 생성한다.
+
+```bash
+mkdir -p base overlays/staging
+```
+
+```yaml
+# base/deployment.yaml — nginx:1.24 최소 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.24
+          ports:
+            - containerPort: 80
+```
+
+```yaml
+# base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+```
+
+위 두 파일을 생성한 뒤 overlay를 적용한다.
 
 ```yaml
 # overlays/staging/kustomization.yaml
@@ -2507,24 +2382,7 @@ commonLabels:
 kubectl kustomize overlays/staging/
 ```
 
-```text
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    app: web-app
-    env: staging
-    team: platform
-  name: web-app
-  namespace: staging
-spec:
-  selector:
-    matchLabels:
-      app: web-app
-      env: staging
-      team: platform
-...
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 `commonLabels`가 metadata.labels와 selector.matchLabels 모두에 추가되었다.
 
@@ -2572,18 +2430,7 @@ kubectl set image deployment/recreate-demo app=nginx:1.25
 kubectl get pods -l app=recreate-demo -w
 ```
 
-```text
-NAME                      READY   STATUS        RESTARTS   AGE
-recreate-demo-aaa-111     1/1     Terminating   0          2m
-recreate-demo-aaa-222     1/1     Terminating   0          2m
-recreate-demo-aaa-333     1/1     Terminating   0          2m
-recreate-demo-bbb-111     0/1     Pending       0          0s
-recreate-demo-bbb-222     0/1     Pending       0          0s
-recreate-demo-bbb-333     0/1     Pending       0          0s
-recreate-demo-bbb-111     1/1     Running       0          5s
-recreate-demo-bbb-222     1/1     Running       0          5s
-recreate-demo-bbb-333     1/1     Running       0          5s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 모든 기존 Pod가 Terminating된 후 새 Pod가 생성되는 것을 확인할 수 있다. 이 사이에 서비스 다운타임이 발생한다.
 
@@ -2645,11 +2492,7 @@ spec:
 kubectl describe pod probe-all | grep -E "Startup:|Liveness:|Readiness:"
 ```
 
-```text
-    Startup:    http-get http://:80/started delay=0s timeout=1s period=5s #success=1 #failure=30
-    Liveness:   http-get http://:80/healthz delay=0s timeout=1s period=10s #success=1 #failure=3
-    Readiness:  http-get http://:80/ready delay=0s timeout=1s period=5s #success=1 #failure=3
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **내부 동작 순서:**
 
@@ -2681,40 +2524,32 @@ kubectl run crash-demo --image=busybox:1.36 --restart=Always -- sh -c "exit 1"
 kubectl get pod crash-demo
 ```
 
-```text
-NAME         READY   STATUS             RESTARTS      AGE
-crash-demo   0/1     CrashLoopBackOff   3 (30s ago)   1m
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl logs crash-demo --previous
 ```
 
-```text
-(빈 출력 — exit 1만 실행했으므로)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe pod crash-demo | grep -A10 "Last State:"
 ```
 
-```text
-    Last State:     Terminated
-      Reason:       Error
-      Exit Code:    1
-      Started:      Mon, 01 Jan 2024 00:00:00 +0000
-      Finished:     Mon, 01 Jan 2024 00:00:00 +0000
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **진단 플로우:**
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  root{"CrashLoopBackOff\nExit Code?"}
+  root -->|1| e1["애플리케이션 에러\nkubectl logs --previous"]
+  root -->|137| e2["OOMKilled\nkubectl describe pod -> memory limits 증가"]
+  root -->|0| e3["정상 종료인데 restartPolicy=Always\n명령어 확인"]
+  root -->|126/127| e4["command/entrypoint 오류\n이미지의 바이너리 경로 확인"]
 ```
-CrashLoopBackOff
-├── Exit Code 1 → 애플리케이션 에러 → kubectl logs --previous
-├── Exit Code 137 → OOMKilled → kubectl describe pod → memory limits 증가
-├── Exit Code 0 → 정상 종료인데 restartPolicy=Always → 명령어 확인
-└── Exit Code 126/127 → command/entrypoint 오류 → 이미지의 바이너리 경로 확인
-```
+_그림 1. CrashLoopBackOff Exit Code별 진단 플로우._
 
 </details>
 
@@ -2755,9 +2590,7 @@ ps aux
 kubectl get pod debug-target -o jsonpath='{.spec.ephemeralContainers}' | jq length
 ```
 
-```text
-1
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -2781,21 +2614,14 @@ metrics-server가 kubelet의 cAdvisor에서 수집한 메트릭을 기반으로 
 kubectl top pod -n demo --sort-by=cpu
 ```
 
-```text
-NAME                      CPU(cores)   MEMORY(bytes)
-keycloak-xxx-aaa          120m         512Mi
-grafana-xxx-bbb           45m          256Mi
-nginx-xxx-ccc             3m           25Mi
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 가장 많은 CPU를 사용하는 Pod 이름만 추출
 kubectl top pod -n demo --sort-by=cpu --no-headers | head -1 | awk '{print $1}'
 ```
 
-```text
-keycloak-xxx-aaa
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -2820,42 +2646,28 @@ keycloak-xxx-aaa
 kubectl get pod <pod> -o wide
 ```
 
-```text
-NAME     READY   STATUS    RESTARTS      AGE   IP            NODE
-myapp    1/1     Running   5 (2m ago)    10m   10.244.1.10   worker1
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Step 2: 재시작 원인 확인
 kubectl describe pod <pod> | grep -A5 "Last State:"
 ```
 
-```text
-    Last State:     Terminated
-      Reason:       OOMKilled
-      Exit Code:    137
-      Started:      Mon, 01 Jan 2024 00:00:00 +0000
-      Finished:     Mon, 01 Jan 2024 00:00:30 +0000
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Step 3: 이전 컨테이너 로그 확인
 kubectl logs <pod> --previous | tail -20
 ```
 
-```text
-Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Step 4: 이벤트 확인
 kubectl get events --field-selector involvedObject.name=<pod> --sort-by=.metadata.creationTimestamp
 ```
 
-```text
-LAST SEEN   TYPE      REASON      OBJECT       MESSAGE
-2m          Warning   OOMKilling  pod/myapp    Memory cgroup out of memory: Killed process 1
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **원인별 해결 테이블:**
 
@@ -2917,9 +2729,7 @@ EOF
 kubectl exec cm-vol -- cat /usr/share/nginx/html/index.html
 ```
 
-```text
-<h1>Version 1</h1>
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # ConfigMap 업데이트
@@ -2929,23 +2739,14 @@ kubectl patch configmap web-config -p '{"data":{"index.html":"<h1>Version 2</h1>
 kubectl exec cm-vol -- cat /usr/share/nginx/html/index.html
 ```
 
-```text
-<h1>Version 2</h1>
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 심볼릭 링크 구조 확인
 kubectl exec cm-vol -- ls -la /usr/share/nginx/html/
 ```
 
-```text
-total 0
-drwxrwxrwx    3 root     root           80 Jan  1 00:00 .
-drwxr-xr-x    3 root     root         4096 Jan  1 00:00 ..
-drwxr-xr-x    2 root     root           60 Jan  1 00:01 ..2024_01_01_00_01_00.456789
-lrwxrwxrwx    1 root     root           31 Jan  1 00:01 ..data -> ..2024_01_01_00_01_00.456789
-lrwxrwxrwx    1 root     root           17 Jan  1 00:00 index.html -> ..data/index.html
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -2996,21 +2797,13 @@ EOF
 kubectl logs secret-both | head -2
 ```
 
-```text
-ENV=s3cret
-key123
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl exec secret-both -- ls -la /secrets/
 ```
 
-```text
-total 0
-drwxrwxrwt    3 root     root          120 Jan  1 00:00 .
-lr--------    1 root     root           14 Jan  1 00:00 API_KEY -> ..data/API_KEY
-lr--------    1 root     root           14 Jan  1 00:00 DB_PASS -> ..data/DB_PASS
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 파일 권한이 `0400`(읽기 전용)으로 설정되어 있다.
 
@@ -3067,41 +2860,28 @@ spec:
 kubectl logs hardened-pod
 ```
 
-```text
-uid=1000 gid=1000
-whoami: unknown uid 1000
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # root filesystem 쓰기 시도 (실패)
 kubectl exec hardened-pod -- touch /etc/test 2>&1
 ```
 
-```text
-touch: /etc/test: Read-only file system
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # /tmp (emptyDir)에는 쓰기 가능
 kubectl exec hardened-pod -- touch /tmp/test && echo "OK"
 ```
 
-```text
-OK
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # capabilities 확인
 kubectl exec hardened-pod -- cat /proc/1/status | grep Cap
 ```
 
-```text
-CapInh: 0000000000000000
-CapPrm: 0000000000000000
-CapEff: 0000000000000000
-CapBnd: 0000000000000000
-CapAmb: 0000000000000000
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 모든 capability가 0으로 제거되었다.
 
@@ -3159,31 +2939,14 @@ kubectl run test --image=busybox:1.36 -n quota-test --restart=Never -- sleep 360
 kubectl get pod test -n quota-test -o jsonpath='{.spec.containers[0].resources}' | jq .
 ```
 
-```text
-{
-  "limits": {
-    "cpu": "200m",
-    "memory": "256Mi"
-  },
-  "requests": {
-    "cpu": "100m",
-    "memory": "128Mi"
-  }
-}
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # ResourceQuota 사용량 확인
 kubectl describe resourcequota quota -n quota-test | grep -E "cpu|memory|pods"
 ```
 
-```text
-  limits.cpu       200m  4
-  limits.memory    256Mi  8Gi
-  pods             1     10
-  requests.cpu     100m  2
-  requests.memory  128Mi  4Gi
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -3226,22 +2989,14 @@ kubectl exec api-test -n demo -- curl -s \
   https://kubernetes.default.svc/api/v1/namespaces/demo/pods | head -5
 ```
 
-```text
-{
-  "kind": "PodList",
-  "apiVersion": "v1",
-  "metadata": {
-    "resourceVersion": "12345"
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # Pod 삭제 시도 (실패해야 함)
 kubectl auth can-i delete pods -n demo --as=system:serviceaccount:demo:pod-reader
 ```
 
-```text
-no
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -3262,6 +3017,8 @@ QoS 클래스는 노드 리소스 부족(memory pressure) 시 어떤 Pod를 먼�
 | Guaranteed | 모든 컨테이너에 CPU/Memory requests = limits | -997 (최후에 종료) |
 | Burstable | requests/limits가 설정되었지만 Guaranteed 조건 불충족 | 2~999 |
 | BestEffort | requests/limits가 전혀 미설정 | 1000 (최우선 종료) |
+
+> **OOM score 계산**: 리눅스 커널의 OOM killer는 각 프로세스의 oom_score(0~1000)를 기준으로 점수가 높은 프로세스부터 종료한다. 쿠버네티스는 컨테이너 시작 시 `oom_score_adj` 값을 설정하여 이를 제어한다. Guaranteed 클래스는 `requests == limits`이므로 메모리를 예약량 이상으로 사용하지 않아 `-997`로 설정되어 OOM killer의 최후 대상이 된다. BestEffort는 제약이 없어 메모리를 무제한 사용할 수 있으므로 `1000`으로 설정되어 가장 먼저 종료된다. Burstable은 실제 사용량 대비 limits 비율로 2~999 사이의 값이 동적으로 결정된다.
 
 ```bash
 # Guaranteed
@@ -3284,11 +3041,7 @@ for pod in qos-g qos-b qos-be; do
 done
 ```
 
-```text
-qos-g: Guaranteed
-qos-b: Burstable
-qos-be: BestEffort
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -3305,6 +3058,8 @@ qos-be: BestEffort
 **등장 배경:**
 
 데이터베이스는 인증된 애플리케이션에서만 접근해야 한다. 기본적으로 쿠버네티스의 모든 Pod는 서로 통신할 수 있으므로, NetworkPolicy 없이는 어떤 Pod든 DB에 직접 접근할 수 있다.
+
+> **주의: NetworkPolicy는 CNI 플러그인(이 저장소에서는 Cilium)이 NetworkPolicy를 지원해야 실제 트래픽 차단이 이루어진다.** Cilium 없이 적용하면 리소스는 생성되지만 트래픽이 차단되지 않는다. 실습 전 `kubectl get pods -n kube-system | grep cilium`으로 Cilium이 Running 상태인지 확인한다.
 
 **내부 동작 원리:**
 
@@ -3334,46 +3089,45 @@ spec:
 
 **검증**
 
+**테스트 리소스 준비 (검증 전 필수)**
+
+아래 명령으로 db Pod와 Service를 먼저 생성한다. 이 단계를 건너뛰면 이후 `nc` 검증 명령에서 "pod not found" 또는 "connection refused" 오류가 발생한다.
+
+```bash
+# db Pod 및 Service 생성 (postgresql 포트 5432를 시뮬레이션하기 위해 nc로 수신)
+kubectl run db-pod --image=busybox:1.36 --labels="app=db" --restart=Never -n demo -- nc -lk -p 5432
+kubectl expose pod db-pod --name=db-svc --port=5432 -n demo
+# 테스트 Pod 생성
+kubectl run api-pod --image=busybox:1.36 --labels="app=api" --restart=Never -n demo -- sleep 3600
+kubectl run other-pod --image=busybox:1.36 --labels="app=other" --restart=Never -n demo -- sleep 3600
+kubectl wait pod --for=condition=Ready -n demo db-pod api-pod other-pod --timeout=60s
+```
+
 ```bash
 kubectl get networkpolicy db-policy -n demo
 ```
 
-```text
-NAME        POD-SELECTOR   AGE
-db-policy   app=db         10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe networkpolicy db-policy -n demo | grep -A10 "Allowing ingress"
 ```
 
-```text
-  Allowing ingress traffic:
-    To Port: 5432/TCP
-    From:
-      PodSelector: app=api
-  Not affecting egress traffic
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 테스트: api Pod에서 db 접근 (허용)
-kubectl run api-pod --image=busybox:1.36 --labels="app=api" --restart=Never -n demo -- sleep 3600
 kubectl exec api-pod -n demo -- nc -zv db-svc 5432 -w 3 2>&1
 ```
 
-```text
-db-svc (10.96.xx.xx:5432) open
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 테스트: 무관한 Pod에서 db 접근 (차단)
-kubectl run other-pod --image=busybox:1.36 --labels="app=other" --restart=Never -n demo -- sleep 3600
 kubectl exec other-pod -n demo -- nc -zv db-svc 5432 -w 3 2>&1
 ```
 
-```text
-nc: db-svc (10.96.xx.xx:5432): Connection timed out
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -3422,22 +3176,13 @@ spec:
 kubectl get ingress path-routing
 ```
 
-```text
-NAME           CLASS   HOSTS             ADDRESS        PORTS   AGE
-path-routing   nginx   app.example.com   192.168.64.2   80      10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe ingress path-routing | grep -B1 -A3 "Path:"
 ```
 
-```text
-  Host             Path  Backends
-  ----             ----  --------
-  app.example.com
-                   /api   api-svc:8080 (...)
-                   /web   web-svc:80 (...)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -3479,19 +3224,13 @@ spec:
 kubectl get svc external-api -n demo
 ```
 
-```text
-NAME           TYPE           CLUSTER-IP   EXTERNAL-IP                  PORT(S)   AGE
-external-api   ExternalName   <none>       api.external-service.com     <none>    10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -n demo -- nslookup external-api.demo.svc.cluster.local
 ```
 
-```text
-Name:      external-api.demo.svc.cluster.local
-Address:   api.external-service.com
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 DNS 응답이 CNAME으로 `api.external-service.com`을 반환한다.
 
@@ -3554,31 +3293,20 @@ EOF
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -n demo -- nslookup web-headless.demo.svc.cluster.local
 ```
 
-```text
-Name:      web-headless.demo.svc.cluster.local
-Address:   10.244.1.10
-Address:   10.244.1.11
-Address:   10.244.2.8
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 개별 Pod DNS
 kubectl run dns-test2 --image=busybox:1.36 --rm -it --restart=Never -n demo -- nslookup web-sts-0.web-headless.demo.svc.cluster.local
 ```
 
-```text
-Name:      web-sts-0.web-headless.demo.svc.cluster.local
-Address:   10.244.1.10
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl run dns-test3 --image=busybox:1.36 --rm -it --restart=Never -n demo -- nslookup web-sts-2.web-headless.demo.svc.cluster.local
 ```
 
-```text
-Name:      web-sts-2.web-headless.demo.svc.cluster.local
-Address:   10.244.2.8
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 각 Pod에 고유한 DNS 레코드가 생성되었다. Pod가 재시작되어도 이름이 유지되므로, 다른 Pod에서 특정 인스턴스에 안정적으로 접근할 수 있다.
 
@@ -3635,23 +3363,10 @@ kubectl describe networkpolicy <name> -n <ns> | grep -A15 "Allowing ingress"
 ```
 
 OR 조건의 경우:
-```text
-  Allowing ingress traffic:
-    To Port: 80/TCP
-    From:
-      NamespaceSelector: purpose=frontend
-    From:
-      PodSelector: role=monitoring
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 AND 조건의 경우:
-```text
-  Allowing ingress traffic:
-    To Port: 80/TCP
-    From:
-      NamespaceSelector: purpose=frontend
-      PodSelector: role=web
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 `From:` 블록이 분리되면 OR, 같은 `From:` 블록이면 AND이다.
 
@@ -3671,6 +3386,8 @@ AND 조건의 경우:
 > 실제 CKAD 시험과 유사한 환경을 가정한다. 각 문제는 특정 context를 사용하며, 풀이는 step-by-step으로 제공한다. 모든 풀이에 검증 명령어와 기대 출력이 포함되어 있다.
 > 각 문제에 등장 배경, 내부 동작 원리, 트러블슈팅 시나리오를 추가하였다.
 
+**로컬 실습 시 context 매핑:** 이 문서의 Q1~Q20은 실제 시험의 멀티 context 환경을 시뮬레이션한다. 시험에서는 각 문제마다 `kubectl config use-context k8s-ckad-q1` 형태로 클러스터를 전환한다. 로컬 tart 클러스터에서는 이 context가 존재하지 않으므로, `kubectl config use-context dev` 또는 `kubectl config use-context staging`으로 대체하여 실습한다. 실습 전 `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`으로 kubeconfig를 설정한다. Part 3(확인 문제)에서 기본 동작을 이미 학습하였으므로, Part 4는 시험 직전 시간 제약을 의식한 속도 연습용으로 활용한다.
+
 ---
 
 ### Q1. Multi-Container Pod + Shared Volume
@@ -3686,7 +3403,7 @@ AND 조건의 경우:
 - 컨테이너 `reader`: `busybox:1.36` 이미지, `/data/output.log`를 `tail -F`로 출력한다
 - 두 컨테이너는 `data-vol`이라는 `emptyDir` 볼륨을 `/data`에 마운트하여 공유한다
 
-**등장 배경:**
+**등장 배경 / CKAD 비중:** Multi-Container Pod는 CKAD 시험 도메인 "Application Design and Build" (약 20%)에서 자주 출제된다. 예상 소요 시간은 약 5~7분이다.
 
 Multi-container Pod 패턴은 관심사 분리(Separation of Concerns)를 컨테이너 수준에서 구현한다. 메인 컨테이너는 비즈니스 로직에만 집중하고, 부가 기능(로깅, 프록시, 메트릭 수집)은 별도 컨테이너가 담당한다. emptyDir Volume은 Pod 내 컨테이너 간 데이터를 공유하는 가장 간단한 방법이다. Pod가 삭제되면 emptyDir의 데이터도 함께 사라진다.
 
@@ -3733,30 +3450,21 @@ kubectl apply -f shared-pod.yaml
 kubectl get pod shared-pod -n ckad-multi
 ```
 
-```text
-NAME         READY   STATUS    RESTARTS   AGE
-shared-pod   2/2     Running   0          15s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # reader 컨테이너에서 로그가 스트리밍되는지 확인
 kubectl logs shared-pod -c reader -n ckad-multi --tail=3
 ```
 
-```text
-Mon Jan 1 00:00:00 UTC 2024
-Mon Jan 1 00:00:03 UTC 2024
-Mon Jan 1 00:00:06 UTC 2024
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # writer가 파일에 기록하고 있는지 확인
 kubectl exec shared-pod -c writer -n ckad-multi -- wc -l /data/output.log
 ```
 
-```text
-5 /data/output.log
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -3825,28 +3533,19 @@ spec:
 kubectl get pod init-pod -n ckad-init
 ```
 
-```text
-NAME       READY   STATUS    RESTARTS   AGE
-init-pod   1/1     Running   0          15s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl logs init-pod -c setup -n ckad-init
 ```
 
-```text
-Config verified
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl exec init-pod -n ckad-init -- cat /etc/app/config.yaml
 ```
 
-```text
-server:
-  port: 8080
-  log_level: info
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -3869,7 +3568,7 @@ ConfigMap이 존재하지 않으면 Pod는 `Init:CreateContainerConfigError` 상
 - `busybox:1.36` 이미지, `echo "Cleanup at $(date)" && rm -rf /tmp/cache/*` 명령 실행
 - `concurrencyPolicy: Replace`, `successfulJobsHistoryLimit: 2`
 
-**등장 배경:**
+**등장 배경 / CKAD 비중:** CronJob은 "Application Design and Build" 도메인(약 20%)에 속한다. 예상 소요 시간은 약 4~5분이다.
 
 CronJob은 쿠버네티스 내에서 반복 작업을 스케줄링한다. `concurrencyPolicy: Replace`는 이전 Job이 아직 실행 중이면 삭제하고 새 Job을 시작하므로, 실행 시간이 예측 불가능한 정리 작업에 적합하다.
 
@@ -3908,10 +3607,7 @@ spec:
 kubectl get cronjob cleanup-job -n ckad-batch
 ```
 
-```text
-NAME          SCHEDULE       SUSPEND   ACTIVE   LAST SCHEDULE   AGE
-cleanup-job   30 * * * *     False     0        <none>          10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 수동 트리거 테스트
@@ -3919,9 +3615,7 @@ kubectl create job --from=cronjob/cleanup-job test-run -n ckad-batch
 kubectl logs job/test-run -n ckad-batch
 ```
 
-```text
-Cleanup at Mon Jan 1 00:00:00 UTC 2024
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -3954,9 +3648,7 @@ kubectl set image deployment/api-server nginx=nginx:1.25 -n ckad-deploy
 kubectl rollout status deployment api-server -n ckad-deploy
 ```
 
-```text
-deployment "api-server" successfully rolled out
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 현재 이미지 확인
@@ -3964,9 +3656,7 @@ kubectl get deployment api-server -n ckad-deploy -o jsonpath='{.spec.template.sp
 echo ""
 ```
 
-```text
-nginx:1.25
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 롤백
@@ -3977,9 +3667,7 @@ kubectl get deployment api-server -n ckad-deploy -o jsonpath='{.spec.template.sp
 echo ""
 ```
 
-```text
-nginx:1.24
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4036,18 +3724,13 @@ spec:
 kubectl logs db-client -n ckad-secret
 ```
 
-```text
-DB_USER=admin DB_PASS=P@ssw0rd!
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl exec db-client -n ckad-secret -- env | grep DB_
 ```
 
-```text
-DB_USER=admin
-DB_PASS=P@ssw0rd!
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4065,6 +3748,8 @@ DB_PASS=P@ssw0rd!
 - UID 1001로 실행, readOnlyRootFilesystem=true
 - 모든 capabilities 제거, allowPrivilegeEscalation=false
 - `/tmp`에 emptyDir 마운트 (쓰기 가능 디렉터리 확보)
+
+**등장 배경 / CKAD 비중:** SecurityContext는 "Application Environment, Configuration and Security" 도메인(약 25%)에 속한다. 예상 소요 시간은 약 4~6분이다. 컨테이너가 root로 실행되면 컨테이너 탈출 취약점 발생 시 호스트의 root 권한을 획득할 수 있다. 비root 실행과 readOnlyRootFilesystem은 이 위험을 최소화하는 기본 강화 설정이다.
 
 <details><summary>풀이 확인</summary>
 
@@ -4101,18 +3786,13 @@ spec:
 kubectl logs secure-app -n ckad-sec
 ```
 
-```text
-uid=1001 gid=0(root)
-OK
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl exec secure-app -n ckad-sec -- touch /etc/test 2>&1
 ```
 
-```text
-touch: /etc/test: Read-only file system
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4162,35 +3842,44 @@ spec:
           port: 8080
 ```
 
+**테스트 리소스 준비 (검증 전 필수)**
+
+아래 명령으로 테스트용 Pod와 Service를 먼저 생성한다. 이 단계를 건너뛰면 이후 `kubectl exec` 명령에서 "pod not found" 오류가 발생한다.
+
+```bash
+kubectl create namespace ckad-netpol
+# backend Pod 및 Service 생성
+kubectl run backend-pod --image=nginx:1.25 --labels="app=backend" -n ckad-netpol
+kubectl expose pod backend-pod --name=backend-svc --port=8080 --target-port=80 -n ckad-netpol
+# frontend Pod 생성 (허용 대상)
+kubectl run frontend-pod --image=busybox:1.36 --labels="app=frontend" -n ckad-netpol -- sleep 3600
+# other Pod 생성 (차단 대상)
+kubectl run other-pod --image=busybox:1.36 --labels="app=other" -n ckad-netpol -- sleep 3600
+# Pod가 Running 상태가 될 때까지 대기
+kubectl wait pod --for=condition=Ready -n ckad-netpol --all --timeout=60s
+```
+
 **검증**
 
 ```bash
 kubectl get networkpolicy -n ckad-netpol
 ```
 
-```text
-NAME              POD-SELECTOR   AGE
-default-deny      <none>         10s
-allow-frontend    app=backend    10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # frontend -> backend (허용)
 kubectl exec frontend-pod -n ckad-netpol -- wget -qO- --timeout=3 http://backend-svc:8080 | head -1
 ```
 
-```text
-<!DOCTYPE html>
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # other -> backend (차단)
 kubectl exec other-pod -n ckad-netpol -- wget -qO- --timeout=3 http://backend-svc:8080 2>&1
 ```
 
-```text
-wget: download timed out
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4245,18 +3934,13 @@ spec:
 kubectl get pvc data-pvc -n ckad-storage
 ```
 
-```text
-NAME       STATUS   VOLUME     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-data-pvc   Bound    pv-xxx     5Gi        RWO            standard       10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl logs data-pod -n ckad-storage
 ```
 
-```text
-data
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4286,25 +3970,19 @@ kubectl create rolebinding monitor-binding --role=monitor-role --serviceaccount=
 kubectl auth can-i list pods -n ckad-rbac --as=system:serviceaccount:ckad-rbac:monitor-sa
 ```
 
-```text
-yes
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl auth can-i delete pods -n ckad-rbac --as=system:serviceaccount:ckad-rbac:monitor-sa
 ```
 
-```text
-no
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl auth can-i list services -n ckad-rbac --as=system:serviceaccount:ckad-rbac:monitor-sa
 ```
 
-```text
-yes
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4376,22 +4054,14 @@ spec:
 kubectl get pods -n ckad-probe -l app=slow-app
 ```
 
-```text
-NAME                       READY   STATUS    RESTARTS   AGE
-slow-app-xxx-aaa           0/1     Running   0          10s
-slow-app-xxx-bbb           0/1     Running   0          10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 30초 후: startup probe 성공, Ready
 kubectl get pods -n ckad-probe -l app=slow-app
 ```
 
-```text
-NAME                       READY   STATUS    RESTARTS   AGE
-slow-app-xxx-aaa           1/1     Running   0          35s
-slow-app-xxx-bbb           1/1     Running   0          35s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4432,12 +4102,7 @@ spec:
 kubectl get job parallel-job -n ckad-job -w
 ```
 
-```text
-NAME           COMPLETIONS   DURATION   AGE
-parallel-job   0/6           2s         2s
-parallel-job   3/6           5s         5s
-parallel-job   6/6           8s         8s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 동시에 3개 Pod가 실행되어 2라운드(3+3)에 6개 완료된다.
 
@@ -4445,15 +4110,7 @@ parallel-job   6/6           8s         8s
 kubectl get pods -n ckad-job -l job-name=parallel-job
 ```
 
-```text
-NAME                  READY   STATUS      RESTARTS   AGE
-parallel-job-abc12    0/1     Completed   0          8s
-parallel-job-def34    0/1     Completed   0          8s
-parallel-job-ghi56    0/1     Completed   0          8s
-parallel-job-jkl78    0/1     Completed   0          5s
-parallel-job-mno90    0/1     Completed   0          5s
-parallel-job-pqr12    0/1     Completed   0          5s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4499,9 +4156,7 @@ spec:
 kubectl exec nginx-cm -n ckad-cm -- cat /etc/nginx/conf.d/default.conf
 ```
 
-```text
-server { listen 80; root /usr/share/nginx/html; }
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # ConfigMap 변경
@@ -4511,9 +4166,7 @@ kubectl patch configmap nginx-conf -n ckad-cm -p '{"data":{"default.conf":"serve
 kubectl exec nginx-cm -n ckad-cm -- cat /etc/nginx/conf.d/default.conf
 ```
 
-```text
-server { listen 8080; root /var/www; }
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4564,26 +4217,14 @@ EOF
 kubectl describe limitrange defaults -n ckad-quota
 ```
 
-```text
-Type        Resource  Min  Max  Default Request  Default Limit
-----        --------  ---  ---  ---------------  -------------
-Container   cpu       -    -    100m             200m
-Container   memory    -    -    128Mi            256Mi
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 6번째 Pod 생성 시도 (거부)
 for i in $(seq 1 6); do kubectl run test-$i --image=busybox:1.36 -n ckad-quota --restart=Never -- sleep 3600 2>&1 | tail -1; done
 ```
 
-```text
-pod/test-1 created
-pod/test-2 created
-pod/test-3 created
-pod/test-4 created
-pod/test-5 created
-Error from server (Forbidden): pods "test-6" is forbidden: exceeded quota: quota
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4635,23 +4276,13 @@ spec:
 kubectl get ingress web-ingress -n ckad-ingress
 ```
 
-```text
-NAME          CLASS   HOSTS              ADDRESS        PORTS   AGE
-web-ingress   nginx   ckad.example.com   192.168.64.2   80      10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe ingress web-ingress -n ckad-ingress | grep -A5 "Rules:"
 ```
 
-```text
-Rules:
-  Host              Path  Backends
-  ----              ----  --------
-  ckad.example.com
-                    /app   app-svc:80 (...)
-                    /api   api-svc:8080 (...)
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4721,30 +4352,19 @@ spec:
 kubectl get sts redis -n ckad-sts
 ```
 
-```text
-NAME    READY   AGE
-redis   3/3     60s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl get pvc -n ckad-sts
 ```
 
-```text
-NAME             STATUS   VOLUME    CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-data-redis-0     Bound    pv-aaa    1Gi        RWO            standard       60s
-data-redis-1     Bound    pv-bbb    1Gi        RWO            standard       45s
-data-redis-2     Bound    pv-ccc    1Gi        RWO            standard       30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -n ckad-sts -- nslookup redis-0.redis-headless.ckad-sts.svc.cluster.local
 ```
 
-```text
-Name:      redis-0.redis-headless.ckad-sts.svc.cluster.local
-Address:   10.244.1.10
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4760,24 +4380,33 @@ Address:   10.244.1.10
 
 <details><summary>풀이 확인</summary>
 
+**실습 환경 준비 (setup — 문제 재현용):**
+
+아래 명령으로 의도적으로 깨진 Deployment를 생성한다. `missing-config`라는 존재하지 않는 ConfigMap을 `envFrom`으로 참조하여 Pod가 `CreateContainerConfigError` 상태에 빠지도록 설정한다.
+
+```bash
+kubectl create namespace ckad-debug
+kubectl create configmap wrong-config -n ckad-debug --from-literal=APP_MODE=staging
+kubectl create deployment broken-app --image=nginx:1.25 -n ckad-debug --replicas=2
+kubectl patch deployment broken-app -n ckad-debug --type='json' \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/envFrom","value":[{"configMapRef":{"name":"missing-config"}}]}]'
+```
+
+위 patch 명령이 적용되면 `broken-app`의 Pod는 `missing-config` ConfigMap을 찾지 못해 기동에 실패한다.
+
 **진단 절차:**
 
 ```bash
 kubectl get pods -n ckad-debug -l app=broken-app
 ```
 
-```text
-NAME                          READY   STATUS                       RESTARTS   AGE
-broken-app-xxx-aaa            0/1     CreateContainerConfigError   0          30s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe pod -n ckad-debug -l app=broken-app | grep -A3 "Warning"
 ```
 
-```text
-Warning  Failed     5s    kubelet  Error: configmap "missing-config" not found
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 원인: 존재하지 않는 ConfigMap `missing-config`를 참조하고 있다.
 
@@ -4795,10 +4424,7 @@ kubectl delete pod -n ckad-debug -l app=broken-app
 kubectl get pods -n ckad-debug -l app=broken-app
 ```
 
-```text
-NAME                          READY   STATUS    RESTARTS   AGE
-broken-app-yyy-bbb            1/1     Running   0          10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4812,6 +4438,8 @@ broken-app-yyy-bbb            1/1     Running   0          10s
 
 `ckad-hpa` 네임스페이스의 Deployment `web-app`에 HPA를 설정하라. CPU 사용률 70% 기준, minReplicas=2, maxReplicas=8.
 
+**등장 배경:** HPA(Horizontal Pod Autoscaler)는 수동 `kubectl scale`의 한계(트래픽 변화에 즉각 대응 불가, 리소스 낭비)를 해결한다. HPA 컨트롤러는 15초 주기로 Metrics API에서 CPU 사용률을 읽어 `desiredReplicas = ceil(currentReplicas * currentMetric / targetMetric)` 공식으로 replicas를 자동 조정한다. HPA가 동작하려면 metrics-server가 클러스터에 설치되어 있어야 하고, 대상 Deployment의 컨테이너에 `resources.requests.cpu`가 설정되어 있어야 한다.
+
 <details><summary>풀이 확인</summary>
 
 ```bash
@@ -4824,22 +4452,17 @@ kubectl autoscale deployment web-app -n ckad-hpa --cpu-percent=70 --min=2 --max=
 kubectl get hpa -n ckad-hpa
 ```
 
-```text
-NAME      REFERENCE            TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-web-app   Deployment/web-app   25%/70%   2         8         2          10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl describe hpa web-app -n ckad-hpa | grep -A2 "ScalingActive"
 ```
 
-```text
-  ScalingActive   True    ValidMetricFound    the HPA was able to successfully calculate a replica count
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
-TARGETS가 `<unknown>/70%`이면 metrics-server가 설치되지 않았거나, Deployment의 컨테이너에 resource requests가 설정되지 않은 것이다.
+TARGETS가 `<unknown>/70%`이면 metrics-server가 설치되지 않았거나(kubelet cAdvisor 데이터를 Metrics API로 노출하는 컴포넌트가 없는 상태), Deployment의 컨테이너에 resource requests가 설정되지 않은 것이다.
 
 </details>
 
@@ -4874,10 +4497,7 @@ spec:
 kubectl get pdb critical-pdb -n ckad-pdb
 ```
 
-```text
-NAME           MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
-critical-pdb   3               N/A               2                     10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 replicas=5이고 minAvailable=3이므로 최대 2개 Pod를 동시에 중단할 수 있다.
 
@@ -4900,35 +4520,21 @@ replicas=5이고 minAvailable=3이므로 최대 2개 Pod를 동시에 중단할 
 kubectl logs multi-app -c sidecar -n ckad-log --tail=10
 ```
 
-```text
-2024-01-01 00:00:50 Processing event
-2024-01-01 00:00:51 Processing event
-2024-01-01 00:00:52 Processing event
-...
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 이전 컨테이너 로그 (재시작 전)
 kubectl logs multi-app -c sidecar -n ckad-log --previous --tail=5
 ```
 
-```text
-2024-01-01 00:00:45 Error: connection refused
-2024-01-01 00:00:46 Retrying...
-2024-01-01 00:00:47 Error: connection refused
-2024-01-01 00:00:48 Max retries exceeded
-2024-01-01 00:00:48 Exit with error
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 모든 컨테이너의 로그를 동시에 스트리밍
 kubectl logs multi-app -n ckad-log --all-containers --prefix --tail=5
 ```
 
-```text
-[app] 2024-01-01 00:00:52 Handling request
-[sidecar] 2024-01-01 00:00:52 Processing event
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 </details>
 
@@ -4977,30 +4583,20 @@ spec:
 kubectl get svc web-app -n ckad-expose
 ```
 
-```text
-NAME      TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-web-app   ClusterIP   10.96.78.90    <none>        80/TCP    10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 kubectl get ingress web-ingress -n ckad-expose
 ```
 
-```text
-NAME          CLASS   HOSTS          ADDRESS        PORTS   AGE
-web-ingress   nginx   web.ckad.com   192.168.64.2   80      10s
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 ```bash
 # 클러스터 내부에서 접근 테스트
 kubectl run curl-test --image=busybox:1.36 --rm -it --restart=Never -n ckad-expose -- wget -qO- http://web-app:80 | head -3
 ```
 
-```text
-<!DOCTYPE html>
-<html>
-<head>
-```
+> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
 **트러블슈팅:**
 
@@ -5021,13 +4617,14 @@ alias kgp='kubectl get pods'
 alias kgs='kubectl get svc'
 alias kgd='kubectl get deployments'
 alias kn='kubectl config set-context --current --namespace'
+export do='--dry-run=client -o yaml'   # 시험에서 가장 많이 쓰는 단축 변수. 예: k run nginx --image=nginx $do > pod.yaml
 
 # 자동 완성 활성화
 source <(kubectl completion bash)
 complete -o default -F __start_kubectl k
 
-# dry-run으로 YAML 빠르게 생성
-k run nginx --image=nginx:1.25 --dry-run=client -o yaml > pod.yaml
+# dry-run으로 YAML 빠르게 생성 ($do 활용 예시)
+k run nginx --image=nginx:1.25 $do > pod.yaml
 k create deployment web --image=nginx --replicas=3 --dry-run=client -o yaml > deploy.yaml
 k create service clusterip web-svc --tcp=80:8080 --dry-run=client -o yaml > svc.yaml
 k create job myjob --image=busybox --dry-run=client -o yaml -- sh -c "echo hello" > job.yaml

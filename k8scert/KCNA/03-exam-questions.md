@@ -1,10 +1,16 @@
 # KCNA 모의 시험 문제
 
-> 총 40문항 | 도메인별 비율: Kubernetes Fundamentals(18), Container Orchestration(9), Cloud Native Architecture(6), Observability(4), Application Delivery(3)
+> 총 40문항 (모의 연습용 — 실제 KCNA는 60문항 / 90분 / 75% 합격) | 도메인별 비율: Kubernetes Fundamentals(18), Container Orchestration(9), Cloud Native Architecture(6), Observability(4), Application Delivery(3)
+
+이 파일은 실제 시험(60문항)의 일부 범위를 다루는 **연습용 40문제 묶음**이다. 도메인 비율은 실제 KCNA 시험요강(아래 채점 기준 표)에 맞췄으나 문항 수는 실제보다 적으므로, 이 40문제만으로 시험 준비가 끝났다고 보면 안 된다. 각 문제의 정답·해설은 `<details>` 토글 안에 있으니 먼저 스스로 답을 고른 뒤 펼쳐 본다.
+
+> **공식 시험요강 출처:** KCNA 도메인·비중의 단일 근거(SSOT)는 CNCF 공식 페이지다 — https://www.cncf.io/certification/kcna/ . 본 문서의 모든 도메인 비율(섹션 헤더·아래 채점 기준 표)은 이 공식 비중(Kubernetes Fundamentals 46%, Container Orchestration 22%, Cloud Native Architecture 16%, Cloud Native Observability 8%, Cloud Native Application Delivery 8%)에 맞춘 값이다. 연습용 40문제의 도메인별 문항 수(18/9/6/4/3)는 이 비율을 근사한 것이며, 공식 시험의 60문항 분포와는 차이가 있을 수 있다.
 
 ---
 
 ## Kubernetes Fundamentals (문제 1~18)
+
+> 이 섹션: 18문항 | 실제 시험 비중 약 46% | 주요 출제 유형: 암기(컨트롤 플레인·워커 컴포넌트의 역할 구분 — apiserver/etcd/scheduler/controller-manager/kubelet/kube-proxy)와 개념 구분(Pod·ReplicaSet·Deployment·Service 관계). KCNA에서 배점이 가장 큰 도메인이다.
 
 ### 문제 1.
 Kubernetes 클러스터에서 모든 클러스터 상태 데이터를 영구적으로 저장하는 컴포넌트는 무엇인가?
@@ -20,6 +26,8 @@ D) kube-controller-manager
 **정답: C) etcd ✅**
 
 etcd는 분산 키-값 저장소로, Kubernetes 클러스터의 모든 상태 정보(desired state, current state)를 저장하는 단일 진실 소스(Single Source of Truth)이다. Raft 합의 알고리즘을 사용하여 데이터 일관성을 보장하며, kube-apiserver만이 etcd와 직접 통신한다.
+
+여기서 Raft는 분산 시스템에서 여러 복제 노드가 동일한 데이터 상태에 동의하기 위한 합의(consensus) 프로토콜이다. etcd는 보통 3개나 5개의 복제본으로 운영되는데, 쓰기 요청은 과반수(quorum, 예: 3개 중 2개)가 승인해야만 커밋된다. 이렇게 하면 일부 노드가 죽어도 과반수만 살아 있으면 데이터가 보존되고, 모든 노드가 같은 값을 보게 된다. 복제본을 홀수 개로 두는 이유도 과반수 판정을 명확히 하기 위함이다.
 
 **검증:**
 ```bash
@@ -39,20 +47,7 @@ kubectl -n kube-system exec etcd-<control-plane-node> -- etcdctl \
   --key=/etc/kubernetes/pki/etcd/server.key \
   get /registry --prefix --keys-only | head -20
 ```
-```text
-# endpoint status 기대 출력
-+------------------------+------------------+---------+---------+-----------+...
-|        ENDPOINT        |        ID        | VERSION | DB SIZE | IS LEADER |...
-+------------------------+------------------+---------+---------+-----------+...
-| https://127.0.0.1:2379 | 8e9e05c52164694d |  3.5.x  |  5.6 MB |   true    |...
-+------------------------+------------------+---------+---------+-----------+...
-
-# get /registry 기대 출력
-/registry/pods/default/nginx-xxxxx
-/registry/services/specs/default/kubernetes
-/registry/deployments/default/my-app
-...
-```
+> **예시(참조) — endpoint status 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) kube-apiserver: 클러스터의 API 진입점이다. 모든 컴포넌트(kubelet, scheduler, controller-manager)가 apiserver를 통해 통신하지만, 데이터를 직접 저장하지 않는다. etcd의 유일한 클라이언트로서 데이터 읽기/쓰기를 중개하는 역할이다.
@@ -60,7 +55,7 @@ kubectl -n kube-system exec etcd-<control-plane-node> -- etcdctl \
 - D) kube-controller-manager: 다양한 컨트롤러(ReplicaSet, Deployment, Node 등)를 실행하여 현재 상태를 원하는 상태로 수렴시키는 제어 루프를 담당한다. 데이터 저장 역할이 아니다.
 
 **내부 동작 원리:**
-etcd는 Raft 합의 알고리즘으로 동작한다. 리더 노드가 쓰기 요청을 받으면 Write-Ahead Log(WAL)에 기록한 뒤 팔로워에게 복제하고, 과반수 이상 응답을 받으면 커밋한다. Kubernetes의 모든 리소스는 `/registry/<resource-type>/<namespace>/<name>` 형태의 키로 etcd에 protobuf 직렬화되어 저장된다. kube-apiserver의 watch 기능은 etcd의 watch API를 기반으로 구현되어, 리소스 변경을 실시간으로 감지할 수 있다.
+etcd는 Raft 합의 알고리즘으로 동작한다. Raft는 먼저 복제본 중 하나를 리더(leader)로 선출한다(리더 선출). 리더 노드가 쓰기 요청을 받으면 Write-Ahead Log(WAL, 변경을 적용하기 전에 먼저 디스크에 순서대로 기록하는 로그로, 도중에 죽어도 재시작 시 재현 가능)에 기록한 뒤 팔로워에게 복제하고, 과반수 이상 응답을 받으면 커밋한다. Kubernetes의 모든 리소스는 `/registry/<resource-type>/<namespace>/<name>` 형태의 키로 etcd에 protobuf(Google이 만든 이진 직렬화 형식으로, JSON보다 작고 빠름)로 직렬화되어 저장된다. kube-apiserver의 watch 기능은 etcd의 watch API(특정 키의 변경이 생기면 즉시 통지받는 구독 메커니즘)를 기반으로 구현되어, 리소스 변경을 폴링 없이 실시간으로 감지할 수 있다. 컨트롤러들이 "원하는 상태"에 빠르게 수렴하는 것이 이 watch 덕분이다.
 
 **CNCF 생태계 맥락:**
 etcd는 CNCF 졸업 프로젝트이다. CoreOS(현 Red Hat)가 개발하였으며, Kubernetes 외에도 Rook, Vitess 등 다른 CNCF 프로젝트에서 분산 합의 저장소로 활용된다. etcd의 watch 메커니즘이 Kubernetes의 선언적 모델(desired state → current state reconciliation)을 가능하게 하는 핵심 인프라이다.
@@ -97,20 +92,7 @@ kubectl describe pod <pod-name> | grep -A5 "Events:"
 # scheduler 로그에서 스케줄링 결정 과정 확인
 kubectl -n kube-system logs kube-scheduler-<control-plane-node> | tail -10
 ```
-```text
-# kubectl get pods -o wide 기대 출력
-NAME         READY   STATUS    RESTARTS   AGE   IP           NODE
-nginx-abc    1/1     Running   0          5m    10.244.1.3   worker-1
-
-# kubectl describe pod 이벤트 기대 출력
-Events:
-  Type    Reason     Age   From               Message
-  ----    ------     ----  ----               -------
-  Normal  Scheduled  5m    default-scheduler  Successfully assigned default/nginx-abc to worker-1
-  Normal  Pulled     5m    kubelet            Container image "nginx" already present on machine
-  Normal  Created    5m    kubelet            Created container nginx
-  Normal  Started    5m    kubelet            Started container nginx
-```
+> **예시(참조) — kubectl get pods -o wide 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) kubelet: 각 워커 노드에서 실행되는 에이전트이다. 스케줄러가 결정한 노드에서 실제로 컨테이너를 시작하고 관리하는 역할이며, 노드 선택 자체에는 관여하지 않는다.
@@ -158,22 +140,7 @@ kubectl get pod nginx -o jsonpath='{.status.podIP}'
 # Pod 상세 정보에서 컨테이너 목록 확인
 kubectl describe pod nginx | grep -A3 "Containers:"
 ```
-```text
-# kubectl run nginx --image=nginx 기대 출력
-pod/nginx created
-
-# jsonpath containers 기대 출력
-nginx
-
-# jsonpath podIP 기대 출력
-10.244.1.5
-
-# describe 기대 출력
-Containers:
-  nginx:
-    Container ID:   containerd://abc123...
-    Image:          nginx
-```
+> **예시(참조) — kubectl run nginx --image=nginx 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Container: Kubernetes API에서 독립적으로 관리되는 오브젝트가 아니다. Container는 반드시 Pod 안에 정의되어야 하며, 단독으로 생성/삭제/스케줄링할 수 없다. Docker 등 런타임 수준의 단위이다.
@@ -187,7 +154,11 @@ Pod가 생성되면 kubelet은 먼저 pause 컨테이너(infrastructure containe
 Pod는 Kubernetes의 핵심 추상화 단위이다. 서비스 메시(Istio, Linkerd)는 Pod에 사이드카 프록시 컨테이너를 주입하여 동작한다. 관측성 도구(OpenTelemetry)도 사이드카 또는 init 컨테이너로 Pod에 추가되는 구조이다. Pod라는 멀티 컨테이너 단위가 있기 때문에 사이드카 패턴이 가능하다.
 
 **등장 배경:**
-Docker는 단일 컨테이너 단위로 관리하지만, 실제 워크로드에서는 밀접하게 결합된 여러 프로세스(예: 앱 + 로그 수집기, 앱 + 프록시)가 동일한 네트워크/스토리지 컨텍스트를 공유해야 하는 경우가 빈번하다. Pod는 이러한 "함께 스케줄링되고 함께 실행되어야 하는 컨테이너 그룹"이라는 개념을 추상화하여, 단일 컨테이너 모델의 한계를 해결한다.
+Docker는 단일 컨테이너 단위로 관리한다. 그런데 실제 워크로드에서는 밀접하게 결합된 여러 프로세스(예: 앱 + 로그 수집기, 앱 + 프록시)가 동일한 네트워크/스토리지 컨텍스트를 공유해야 하는 경우가 빈번하다. Docker만으로 이를 구현하려면 두 컨테이너를 `--network container:<other>`로 묶고 볼륨을 수동으로 같은 경로에 마운트해야 했다. 이렇게 하면 둘 중 하나만 죽었을 때 어느 한쪽만 재시작되거나, 서로 다른 호스트에 흩어져 배치되어 localhost 통신이 깨지는 문제가 생긴다.
+
+이 직전 방식(개별 컨테이너를 사람이 손으로 묶는 방식)의 한계는 "함께여야 하는 것을 묶어주는 단위가 없다"는 점이다. Pod는 이를 메커니즘 수준에서 해결한다. Pod 내 컨테이너는 항상 같은 노드에 함께 스케줄링되고, pause 컨테이너가 만든 하나의 네트워크 네임스페이스를 공유하므로 `localhost`로 서로를 부를 수 있으며, 생명주기(생성·삭제·재시작)도 함께 관리된다.
+
+트레이드오프도 있다. Pod는 가장 작은 단위이므로 컨테이너 하나만 따로 스케일 아웃할 수 없다. 로그 수집기 사이드카가 무거워도 앱과 1:1로 복제되며, Pod 단위로만 노드 배치가 결정되므로 컨테이너별 세밀한 자원 배치 제어는 어렵다.
 </details>
 
 ---
@@ -237,16 +208,7 @@ kubectl get pods -l app=nginx
 # StatefulSet의 업데이트 전략 확인
 kubectl get sts web -o jsonpath='{.spec.updateStrategy}'
 ```
-```text
-# kubectl get pods 기대 출력
-NAME    READY   STATUS    RESTARTS   AGE
-web-0   1/1     Running   0          30s
-web-1   1/1     Running   0          25s
-web-2   1/1     Running   0          20s
-
-# updateStrategy 기대 출력
-{"rollingUpdate":{"partition":0},"type":"RollingUpdate"}
-```
+> **예시(참조) — kubectl get pods 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Pod 이름이 순서대로 고정된다: 맞는 설명이다. StatefulSet은 `<statefulset-name>-<ordinal>` 형태로 0부터 시작하는 고정된 이름을 부여한다. Pod가 삭제되고 재생성되어도 동일한 이름을 유지한다.
@@ -294,23 +256,7 @@ kubectl run curl-test --rm -it --image=curlimages/curl -- curl http://nginx.defa
 # 서비스 상세 정보 확인
 kubectl describe svc nginx
 ```
-```text
-# kubectl get svc 기대 출력
-NAME    TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-nginx   ClusterIP   10.96.45.123   <none>        80/TCP    5s
-
-# curl 기대 출력
-<!DOCTYPE html>
-<html>
-<head><title>Welcome to nginx!</title></head>
-...
-
-# describe svc 기대 출력 (일부)
-Type:              ClusterIP
-IP:                10.96.45.123
-Port:              <unset>  80/TCP
-Endpoints:         10.244.1.5:80,10.244.2.3:80
-```
+> **예시(참조) — kubectl get svc 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) NodePort: ClusterIP의 기능을 포함하면서, 추가로 모든 노드의 특정 포트(30000-32767)를 통해 외부 접근을 허용한다. `<NodeIP>:<NodePort>`로 외부에서 접근 가능하다.
@@ -324,7 +270,11 @@ ClusterIP 서비스가 생성되면 kube-apiserver가 서비스 CIDR 범위에�
 Service는 Kubernetes의 서비스 디스커버리 메커니즘의 핵심이다. CoreDNS(CNCF 졸업)가 서비스 이름을 ClusterIP로 해석하여 DNS 기반 서비스 디스커버리를 제공한다. Cilium(CNCF 졸업)은 eBPF를 사용하여 kube-proxy를 대체하고 ClusterIP의 로드밸런싱을 커널 수준에서 처리한다.
 
 **등장 배경:**
-Pod는 일시적(ephemeral)이며 IP가 변경될 수 있다. 여러 Pod 복제본에 안정적으로 접근하려면 고정된 엔드포인트와 로드밸런싱이 필요하다. Service는 Pod 집합에 대한 안정적인 네트워크 추상화를 제공하여, 클라이언트가 개별 Pod의 IP를 알 필요 없이 서비스 이름이나 ClusterIP로 접근할 수 있게 한다.
+Pod는 일시적(ephemeral)이다. Pod가 죽고 재생성되면(노드 장애, 롤링 업데이트, 스케일 조정 등) 새 Pod는 거의 항상 다른 IP를 받는다. 만약 클라이언트가 Pod IP(예: 10.244.1.5)를 직접 보고 통신한다면, 그 Pod가 재생성되는 순간 클라이언트의 요청은 더 이상 존재하지 않는 IP로 향해 연결 실패가 난다. 복제본이 3개라면 어느 IP로 보낼지 클라이언트가 직접 골라야 하고, 로드밸런싱도 클라이언트가 떠안아야 한다.
+
+직전 시대의 회피책으로 `/etc/hosts`에 Pod IP를 수동 기입하거나 DNS에 등록하는 방식이 있었지만, Pod IP가 수시로 바뀌는 환경에서는 수동 관리가 불가능하고 DNS 캐싱 때문에 변경이 즉시 반영되지 않아 한동안 죽은 IP로 트래픽이 가는 문제가 있었다. Service는 이 한계를 메커니즘 수준에서 해결한다. ClusterIP는 Pod가 바뀌어도 변하지 않는 고정 가상 IP이고, 뒤에 어떤 Pod들이 붙어 있는지는 kube-proxy와 EndpointSlice가 자동으로 추적·갱신한다. 클라이언트는 개별 Pod IP를 알 필요 없이 서비스 이름이나 ClusterIP 하나만 알면 된다.
+
+트레이드오프는, ClusterIP가 실제 네트워크 인터페이스에 없는 가상 IP라서 ping이 되지 않고(아래 내부 동작 원리 참고), kube-proxy의 iptables/IPVS 규칙 수가 서비스·엔드포인트 수에 비례해 늘어나 대규모 클러스터에서는 규칙 처리 비용이 생긴다는 점이다.
 </details>
 
 ---
@@ -358,17 +308,7 @@ kubectl get svc nginx
 # kube-apiserver의 NodePort 범위 설정 확인 (kubeadm 클러스터 기준)
 kubectl -n kube-system get pod kube-apiserver-<control-plane> -o yaml | grep service-node-port-range
 ```
-```text
-# kubectl get svc 기대 출력
-NAME    TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
-nginx   NodePort   10.96.78.200   <none>        80:31245/TCP   5s
-
-# nodePort 기대 출력
-31245
-
-# apiserver 설정 기대 출력
-    - --service-node-port-range=30000-32767
-```
+> **예시(참조) — kubectl get svc 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 1-65535: 전체 TCP/UDP 포트 범위이다. 이 범위를 모두 NodePort에 할당하면 시스템 서비스(SSH 22, HTTP 80 등)와 충돌이 발생한다.
@@ -419,19 +359,7 @@ kubectl exec <pod-name> -- cat /etc/config/APP_MODE
 # ConfigMap 크기 확인 (1MiB 제한)
 kubectl get configmap app-config -o json | wc -c
 ```
-```text
-# kubectl get configmap 기대 출력
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: default
-data:
-  APP_MODE: production
-
-# env 기대 출력
-APP_MODE=production
-```
+> **예시(참조) — kubectl get configmap 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 비기밀 설정 데이터를 키-값 쌍으로 저장한다: 맞는 설명이다. ConfigMap은 비밀이 아닌 설정 데이터를 저장하는 용도이다. 민감한 데이터는 Secret을 사용해야 한다.
@@ -446,6 +374,18 @@ ConfigMap은 Kubernetes 코어 리소스이다. Helm은 Chart의 values.yaml을 
 
 **등장 배경:**
 컨테이너 이미지에 설정 값을 하드코딩하면 환경별(개발/스테이징/프로덕션)로 이미지를 따로 빌드해야 한다. 12-Factor App 원칙에서는 설정을 코드에서 분리할 것을 권장한다. ConfigMap은 설정 데이터를 이미지 외부에서 관리하여, 동일한 이미지를 여러 환경에서 재사용할 수 있게 한다.
+
+**ConfigMap과 Secret 선택 기준:** ConfigMap과 Secret(문제 13)은 사용 방법(환경 변수·볼륨 주입)이 거의 동일하지만, "기밀성"이라는 한 가지 기준으로 구분한다. 비밀번호·토큰·인증서처럼 노출되면 안 되는 값은 Secret을, 그 외 일반 설정은 ConfigMap을 쓴다.
+
+| 구분 | ConfigMap | Secret |
+|:--|:--|:--|
+| 용도 | 비기밀 설정(URL, 로그 레벨, 기능 플래그) | 기밀 데이터(비밀번호, API 키, TLS 인증서) |
+| etcd 저장 형태 | 평문 | 기본 Base64 인코딩(암호화 아님, 문제 13 참고) |
+| 볼륨 마운트 시 | 일반 파일 | tmpfs(메모리, 디스크 미기록) |
+| RBAC 분리 | 함께 보거나 따로 제한 가능 | Secret만 별도로 접근 제어해 노출 최소화 |
+| 최대 크기 | 1MiB | 1MiB |
+
+선택 기준은 단순하다. "이 값이 로그나 `kubectl get -o yaml`에 그대로 찍혀도 괜찮은가?"가 기준이다. 괜찮으면 ConfigMap, 곤란하면 Secret이다.
 </details>
 
 ---
@@ -476,16 +416,7 @@ kubectl get pvc -o custom-columns=NAME:.metadata.name,ACCESS_MODES:.status.acces
 # 특정 StorageClass가 지원하는 정보 확인
 kubectl describe storageclass <sc-name>
 ```
-```text
-# kubectl get pv 기대 출력
-NAME      ACCESS_MODES       CAPACITY
-pv-nfs    ["ReadWriteMany"]  10Gi
-pv-local  ["ReadWriteOnce"]  5Gi
-
-# kubectl get pvc 기대 출력
-NAME       ACCESS_MODES       VOLUME
-data-pvc   ["ReadWriteMany"]  pv-nfs
-```
+> **예시(참조) — kubectl get pv 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) ReadWriteOnce (RWO): 단일 노드에서만 읽기/쓰기가 가능하다. 해당 노드에 있는 여러 Pod는 동시에 접근할 수 있지만, 다른 노드의 Pod에서는 접근 불가하다. AWS EBS, GCE PD 등 블록 스토리지가 이 모드를 지원한다.
@@ -499,7 +430,9 @@ data-pvc   ["ReadWriteMany"]  pv-nfs
 Rook(CNCF 졸업)은 Ceph를 Kubernetes 위에서 운영하여 RWX를 지원하는 CephFS 스토리지를 제공한다. Longhorn(CNCF 인큐베이팅)은 분산 블록 스토리지로 RWX를 NFS 기반으로 지원한다. CSI(Container Storage Interface)는 스토리지 벤더가 Kubernetes와 통합하기 위한 표준 인터페이스이다.
 
 **등장 배경:**
-다양한 워크로드가 서로 다른 스토리지 접근 패턴을 필요로 한다. 데이터베이스는 단일 노드 쓰기(RWO)를, 웹 서버의 정적 파일 공유는 다중 노드 읽기(ROX)를, 공유 파일 시스템은 다중 노드 읽기/쓰기(RWX)를 요구한다. 접근 모드를 명시적으로 선언함으로써 스토리지의 올바른 사용을 보장하고, 동시 접근으로 인한 데이터 손상을 방지한다.
+접근 모드가 왜 필요한지는 "물리적 제약"과 "데이터 안전" 두 가지로 나뉜다. 첫째, 스토리지 종류마다 물리적으로 가능한 동시 마운트 범위가 다르다. AWS EBS 같은 블록 디스크는 한 번에 하나의 노드에만 attach되는 하드웨어 제약이 있어, 여러 노드가 동시에 쓰는 것이 애초에 불가능하다. 반면 NFS·CephFS 같은 네트워크 파일 시스템은 여러 노드가 동시에 마운트할 수 있다. 둘째, 동시 쓰기를 허용하면 두 Pod가 같은 파일을 동시에 갱신해 데이터가 깨질 수 있다.
+
+접근 모드를 명시하지 않거나 잘못 선언하면 어떤 고통이 생기는지 보면 이해가 쉽다. 접근 모드라는 개념이 없다면, 사용자가 EBS 볼륨을 두 노드의 Pod에 붙이려 시도하다가 두 번째 Pod가 영원히 ContainerCreating 상태로 멈추는 식의 실패를 런타임에서야 발견하게 된다. 접근 모드는 이 제약을 PV/PVC 선언 시점에 명시하게 하여, PVC가 PV에 바인딩되는 단계에서 미리 호환성을 검증한다. 즉 데이터베이스는 단일 노드 쓰기(RWO)를, 웹 서버의 정적 파일 공유는 다중 노드 읽기(ROX)를, 공유 파일 시스템은 다중 노드 읽기/쓰기(RWX)를 선언함으로써, 스토리지의 올바른 사용을 강제하고 동시 접근으로 인한 데이터 손상을 사전에 방지한다.
 </details>
 
 ---
@@ -532,22 +465,7 @@ kubectl get all -n kube-system
 kubectl get all -n kube-public
 kubectl get lease -n kube-node-lease
 ```
-```text
-# kubectl get namespaces 기대 출력
-NAME              STATUS   AGE
-default           Active   5d
-kube-node-lease   Active   5d
-kube-public       Active   5d
-kube-system       Active   5d
-
-# kubectl get namespace kube-apps 기대 출력
-Error from server (NotFound): namespaces "kube-apps" not found
-
-# kube-node-lease 기대 출력
-NAME       HOLDER     AGE
-worker-1   worker-1   5d
-worker-2   worker-2   5d
-```
+![네임스페이스 목록](images/kcna-ns.png)
 
 **오답 분석:**
 - A) default: 기본 네임스페이스이다. 네임스페이스를 지정하지 않고 리소스를 생성하면 여기에 배치된다.
@@ -595,20 +513,7 @@ kubectl get pods -l app=my-app -w
 # 롤아웃 히스토리 확인
 kubectl rollout history deployment my-app
 ```
-```text
-# strategy 기대 출력
-{"rollingUpdate":{"maxSurge":1,"maxUnavailable":0},"type":"RollingUpdate"}
-
-# rollout status 기대 출력
-Waiting for deployment "my-app" rollout to finish: 1 out of 3 new replicas have been updated...
-Waiting for deployment "my-app" rollout to finish: 2 out of 3 new replicas have been updated...
-deployment "my-app" successfully rolled out
-
-# kubectl get pods -w 기대 출력 (replicas=3 기준, 순서 관찰)
-my-app-v2-xxxxx   0/1   ContainerCreating   0   0s    # 새 Pod 1개 추가 생성 (총 4개)
-my-app-v2-xxxxx   1/1   Running             0   5s    # 새 Pod Ready
-my-app-v1-yyyyy   1/1   Terminating         0   10m   # 이전 Pod 1개 삭제 (총 3개)
-```
+> **예시(참조) — strategy 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 기존 Pod를 모두 삭제한 후 새 Pod를 생성한다: Recreate 전략의 설명이다. `strategy.type: Recreate`로 설정하면 모든 기존 Pod를 먼저 삭제하고 새 Pod를 생성하므로 다운타임이 발생한다.
@@ -653,18 +558,7 @@ kubectl get pods -n kube-system -l k8s-app=kube-proxy -o wide
 # DaemonSet 상세 정보 (DESIRED=노드 수와 동일해야 함)
 kubectl get ds -n kube-system
 ```
-```text
-# kubectl get daemonsets -A 기대 출력
-NAMESPACE     NAME          DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE
-kube-system   kube-proxy    3         3         3       3            3
-kube-system   calico-node   3         3         3       3            3
-
-# kubectl get pods -o wide 기대 출력
-NAME                READY   STATUS    NODE
-kube-proxy-abc12    1/1     Running   control-plane
-kube-proxy-def34    1/1     Running   worker-1
-kube-proxy-ghi56    1/1     Running   worker-2
-```
+> **예시(참조) — kubectl get daemonsets -A 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 각 노드에서 로그 수집 에이전트 실행: DaemonSet의 대표적 사용 사례이다. Fluentd, Fluent Bit, Filebeat 등 로그 수집기를 모든 노드에 배포하여 해당 노드의 로그를 수집한다.
@@ -709,30 +603,7 @@ kubectl explain pod.spec.containers --recursive
 # 특정 하위 필드 문서 확인
 kubectl explain pod.spec.containers.resources
 ```
-```text
-# kubectl explain pod.spec.containers 기대 출력
-KIND:     Pod
-VERSION:  v1
-
-RESOURCE: containers <[]Container>
-
-DESCRIPTION:
-     List of containers belonging to the pod. Containers cannot currently be
-     added or removed. There must be at least one container in a Pod. Cannot be
-     updated.
-
-FIELDS:
-   args         <[]string>
-   command      <[]string>
-   env          <[]EnvVar>
-   image        <string>
-   imagePullPolicy  <string>
-   name         <string> -required-
-   ports        <[]ContainerPort>
-   resources    <ResourceRequirements>
-   volumeMounts <[]VolumeMount>
-   ...
-```
+> **예시(참조) — kubectl explain pod.spec.containers 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Pod의 상태 정보를 조회한다: `kubectl describe pod <name>` 또는 `kubectl get pod <name> -o yaml`의 설명이다. explain은 실제 리소스 인스턴스가 아닌 API 스키마 문서를 보여준다.
@@ -780,17 +651,7 @@ kubectl get secret db-creds -o jsonpath='{.data.password}' | base64 -d
 # etcd 암호화 설정 여부 확인 (kubeadm 클러스터 기준)
 kubectl -n kube-system get pod kube-apiserver-<control-plane> -o yaml | grep encryption-provider-config
 ```
-```text
-# Base64 인코딩된 값 기대 출력
-bXlTM2NyZXRQQHNz
-
-# Base64 디코딩 기대 출력
-myS3cretP@ss
-
-# 암호화 미설정 시 기대 출력 (출력 없음)
-# 암호화 설정 시 기대 출력
-    - --encryption-provider-config=/etc/kubernetes/enc/enc.yaml
-```
+> **예시(참조) — Base64 인코딩된 값 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Secret의 데이터는 기본적으로 AES-256으로 암호화되어 etcd에 저장된다: 기본 설정에서는 암호화되지 않는다. EncryptionConfiguration을 명시적으로 설정해야 AES-CBC, AES-GCM, secretbox 등의 암호화가 적용된다.
@@ -848,14 +709,7 @@ kubectl describe networkpolicy deny-all-ingress
 # 통신 차단 테스트
 kubectl exec curl-pod -- curl --connect-timeout 3 http://nginx-svc
 ```
-```text
-# kubectl get networkpolicy 기대 출력
-NAME                POD-SELECTOR   AGE
-deny-all-ingress    <none>         5s
-
-# curl 테스트 기대 출력 (차단된 경우)
-curl: (28) Connection timed out after 3000 milliseconds
-```
+> **예시(참조) — kubectl get networkpolicy 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Ingress: 클러스터 외부에서 내부 서비스로의 HTTP/HTTPS 라우팅 규칙을 정의한다. Pod 간 네트워크 트래픽 제어가 아니라 외부 트래픽의 L7 라우팅을 담당한다.
@@ -903,17 +757,7 @@ kubectl get pods --field-selector spec.nodeName=<node-name>
 # kubelet 로그 확인 (API 서버와의 통신 확인)
 journalctl -u kubelet --no-pager | tail -10
 ```
-```text
-# systemctl status kubelet 기대 출력
-● kubelet.service - kubelet: The Kubernetes Node Agent
-   Loaded: loaded (/usr/lib/systemd/system/kubelet.service; enabled)
-   Active: active (running) since ...
-   Main PID: 1234 (kubelet)
-
-# journalctl 기대 출력 (API 서버와 통신하는 로그)
-kubelet: Successfully registered node worker-1
-kubelet: Starting to sync pod status with apiserver
-```
+![kubelet 서비스 상태](images/kcna-kubelet.png)
 
 **오답 분석:**
 - A) 각 워커 노드에서 실행되는 에이전트이다: 맞는 설명이다. kubelet은 모든 노드(컨트롤 플레인 포함)에서 systemd 서비스로 실행된다. Kubernetes 컴포넌트 중 유일하게 컨테이너가 아닌 호스트 프로세스로 실행된다.
@@ -962,24 +806,7 @@ kubectl create rolebinding read-pods --role=pod-reader --user=jane -n default
 kubectl auth can-i list pods -n default --as=jane
 kubectl auth can-i list pods -n kube-system --as=jane
 ```
-```text
-# kubectl get role 기대 출력
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: pod-reader
-  namespace: default
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "watch"]
-
-# can-i list pods default 기대 출력
-yes
-
-# can-i list pods kube-system 기대 출력 (다른 네임스페이스이므로)
-no
-```
+> **예시(참조) — kubectl get role 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) ClusterRole: 클러스터 전체 범위에서 권한을 정의한다. 네임스페이스에 속하지 않는 리소스(nodes, namespaces, persistentvolumes)에 대한 권한이나 모든 네임스페이스에 걸친 권한을 정의할 때 사용한다.
@@ -1011,7 +838,7 @@ D) TLS 종료를 처리할 수 있다
 
 **정답: B) Ingress 리소스만 생성하면 자동으로 동작한다 ✅**
 
-Ingress 리소스만으로는 동작하지 않으며, 반드시 Ingress Controller(NGINX Ingress Controller, Traefik 등)가 클러스터에 설치되어 있어야 한다. Ingress Controller가 Ingress 리소스를 감시하고 실제 라우팅 규칙을 구성한다.
+Ingress 리소스만으로는 동작하지 않으며, 반드시 Ingress Controller(NGINX Ingress Controller, Traefik 등)가 클러스터에 설치되어 있어야 한다. Ingress Controller가 Ingress 리소스를 감시하고 실제 라우팅 규칙을 구성한다. 주의할 점은 대부분의 관리형 Kubernetes(EKS, GKE, AKS)도 Ingress Controller를 기본 제공하지 않는다는 것이다. 클러스터를 만들면 Ingress API는 쓸 수 있지만 컨트롤러는 사용자가 직접 설치(예: NGINX Ingress Controller를 Helm으로 배포)해야 Ingress 규칙이 실제 트래픽에 반영된다. Ingress 리소스를 만들었는데 `ADDRESS`가 비어 있고 접속이 안 되는 흔한 증상의 원인이 바로 컨트롤러 미설치이다.
 
 **검증:**
 ```bash
@@ -1025,23 +852,7 @@ kubectl get ingress
 # Ingress 상세 정보 (라우팅 규칙 확인)
 kubectl describe ingress <ingress-name>
 ```
-```text
-# kubectl get ingressclass 기대 출력
-NAME    CONTROLLER                     PARAMETERS   AGE
-nginx   k8s.io/ingress-nginx           <none>       5d
-
-# kubectl get ingress 기대 출력
-NAME       CLASS   HOSTS           ADDRESS        PORTS     AGE
-my-app     nginx   app.example.com 192.168.1.100  80, 443   1d
-
-# describe ingress 기대 출력
-Rules:
-  Host              Path  Backends
-  ----              ----  --------
-  app.example.com
-                    /api    api-svc:8080 (10.244.1.5:8080,10.244.2.3:8080)
-                    /       web-svc:80 (10.244.1.6:80)
-```
+> **예시(참조) — kubectl get ingressclass 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 클러스터 외부에서 내부 서비스로의 HTTP/HTTPS 라우팅을 정의한다: 맞는 설명이다. Ingress는 호스트명과 URL 경로 기반으로 L7 라우팅 규칙을 정의한다.
@@ -1101,17 +912,7 @@ spec:
       restartPolicy: Always
 EOF
 ```
-```text
-# kubectl get jobs 기대 출력
-NAME       COMPLETIONS   DURATION   AGE
-test-job   1/1           5s         10s
-
-# restartPolicy 기대 출력
-Never
-
-# Always 설정 시 에러 기대 출력
-The Job "bad-job" is invalid: spec.template.spec.restartPolicy: Invalid value: "Always": must be "Never" or "OnFailure"
-```
+> **예시(참조) — kubectl get jobs 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Always, Never: Always는 Job에서 허용되지 않는다. Always를 사용하면 Job이 완료되더라도 Pod가 계속 재시작되어 Job의 "완료 후 종료" 시맨틱과 모순된다.
@@ -1132,6 +933,8 @@ Deployment는 "항상 실행 중"인 워크로드에 적합하지만, 데이터 
 
 ## Container Orchestration (문제 19~27)
 
+> 이 섹션: 9문항 | 실제 시험 비중 약 22% | 주요 출제 유형: 암기(컨테이너 런타임 계층 — containerd/CRI-O/runc, CRI·OCI 표준)와 개념 구분(namespace vs cgroups, 네트워킹·스토리지·보안 기본 원리). 커널 격리 메커니즘을 한 줄로 설명할 수 있어야 한다.
+
 ### 문제 19.
 컨테이너 기술에서 프로세스 격리를 제공하는 Linux 커널 기능은?
 
@@ -1145,12 +948,22 @@ D) iptables
 
 **정답: B) namespace ✅**
 
-Linux namespace는 프로세스, 네트워크, 파일시스템, 사용자 등의 격리를 제공하는 커널 기능이다. 주요 namespace로는 PID(프로세스), NET(네트워크), MNT(파일시스템), UTS(호스트명), IPC(프로세스 간 통신), USER(사용자) 등이 있다. cgroups는 리소스 사용량(CPU, 메모리 등)을 제한하고 모니터링하는 기능이다.
+Linux namespace는 프로세스, 네트워크, 파일시스템, 사용자 등의 격리를 제공하는 커널 기능이다. 각 namespace가 구체적으로 무엇을 격리하는지는 다음과 같다.
 
-**검증:**
+- **PID**: 프로세스 ID 공간을 격리한다. 컨테이너의 첫 프로세스가 PID 1로 시작하고, 호스트나 다른 컨테이너의 프로세스를 볼 수 없다(`ps aux` 시 자기 컨테이너 프로세스만 보임).
+- **NET**: 독립된 네트워크 스택(인터페이스, IP, 라우팅 테이블, iptables)을 준다. 그래서 각 Pod가 자기만의 eth0와 IP를 가진다.
+- **MNT**: 마운트 포인트를 격리해 컨테이너가 자기 루트 파일시스템만 보고 호스트의 디렉터리를 보지 못한다.
+- **UTS**: 호스트명/도메인명을 격리한다. `hostname` 실행 시 Pod 이름이 나오는 이유다.
+- **IPC**: System V IPC, POSIX 메시지 큐 등 프로세스 간 통신 자원을 격리해 다른 컨테이너의 공유 메모리에 접근하지 못하게 한다.
+- **USER**: UID/GID를 격리해 컨테이너 안의 root(UID 0)를 호스트의 비특권 사용자로 매핑할 수 있다(권한 상승 완화).
+
+cgroups는 격리가 아니라 리소스 사용량(CPU, 메모리 등)을 제한하고 모니터링하는 별개의 기능이다.
+
+**검증:** 검증은 두 가지 경로로 나뉜다. (1) `kubectl exec`로 Pod 내부에 들어가 격리 효과를 관찰하는 방법(아래 3번, 노드 SSH 불필요)과 (2) 노드에 SSH로 접속(`ssh dev-master` — dev 클러스터 마스터 노드의 `~/.ssh/config` 등록 별칭, 비밀번호 없이 접속)해 호스트의 `/proc`에서 네임스페이스 파일을 직접 확인하는 방법(아래 2번)이다. 학부 실습에서는 권한이 단순한 (1)을 먼저 해보고, 커널 수준을 확인하고 싶을 때 (2)로 넘어가면 된다. 2번의 `<container-pid>`는 노드에서 본 호스트 PID이며, `kubectl exec <pod-name> -- cat /proc/1/status | grep NSpid`(아래 1번)의 NSpid 두 번째 값이 그 호스트 PID에 해당한다.
+
 ```bash
-# 컨테이너의 네임스페이스 확인 (노드에서 실행)
-# 1. Pod 내 컨테이너의 PID 확인
+# 컨테이너의 네임스페이스 확인
+# 1. Pod 내 컨테이너의 호스트 PID 확인 (NSpid: 첫 값=컨테이너 내 PID 1, 둘째 값=노드에서 본 PID)
 kubectl exec <pod-name> -- cat /proc/1/status | grep NSpid
 
 # 2. 노드에서 컨테이너 프로세스의 네임스페이스 확인
@@ -1161,30 +974,7 @@ kubectl exec <pod-name> -- ps aux      # PID 네임스페이스: PID 1부터 시
 kubectl exec <pod-name> -- hostname     # UTS 네임스페이스: Pod 이름 출력
 kubectl exec <pod-name> -- ip addr      # NET 네임스페이스: Pod IP 출력
 ```
-```text
-# ps aux 기대 출력 (PID 네임스페이스 격리)
-PID   USER     TIME  COMMAND
-    1 root      0:00 nginx: master process nginx -g daemon off;
-   29 nginx     0:00 nginx: worker process
-
-# hostname 기대 출력
-nginx-deployment-abc123
-
-# ip addr 기대 출력
-1: lo: <LOOPBACK,UP,LOWER_UP> ...
-    inet 127.0.0.1/8 ...
-3: eth0@if8: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
-    inet 10.244.1.5/24 ...
-
-# ls /proc/<pid>/ns/ 기대 출력
-lrwxrwxrwx 1 root root 0 ... cgroup -> 'cgroup:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... ipc -> 'ipc:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... mnt -> 'mnt:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... net -> 'net:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... pid -> 'pid:[4026532xxx]'
-lrwxrwxrwx 1 root root 0 ... user -> 'user:[4026531xxx]'
-lrwxrwxrwx 1 root root 0 ... uts -> 'uts:[4026532xxx]'
-```
+> **예시(참조) — ps aux 기대 출력 (PID 네임스페이스 격리):** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) cgroups: 프로세스 격리가 아닌 리소스 제한을 담당한다. CPU, 메모리, I/O, 네트워크 대역폭 등의 사용량을 제한하고 모니터링한다. Kubernetes의 resources.limits/requests가 cgroups로 구현된다.
@@ -1230,13 +1020,7 @@ ctr -n k8s.io images list | grep nginx
 # 이미지의 OCI 매니페스트 확인
 crane manifest nginx:latest | jq '.mediaType'
 ```
-```text
-# imageID 기대 출력
-docker.io/library/nginx@sha256:abc123...
-
-# crane manifest 기대 출력
-"application/vnd.oci.image.manifest.v1+json"
-```
+> **예시(참조) — imageID 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Runtime Specification: OCI 런타임 사양은 컨테이너의 설정, 실행 환경, 생명주기를 정의한다. runc가 이 사양의 참조 구현체이다. 파일시스템 번들, config.json(프로세스, 마운트, 네임스페이스 등) 형식을 규정한다.
@@ -1268,7 +1052,7 @@ D) Docker만 유일하게 지원되는 런타임이다
 
 **정답: B) dockershim이 제거되어 Docker를 직접 런타임으로 사용할 수 없지만, Docker로 빌드한 이미지는 사용 가능하다 ✅**
 
-Kubernetes v1.24부터 dockershim이 제거되어 Docker를 직접 컨테이너 런타임으로 사용할 수 없다. 대신 containerd나 CRI-O를 사용해야 한다. 단, Docker로 빌드한 컨테이너 이미지는 OCI 표준을 따르므로 어떤 CRI 호환 런타임에서든 정상적으로 실행할 수 있다.
+Kubernetes v1.24부터 공식 코드에서 dockershim이 제거되어, 별도 어댑터 없이 Docker Engine을 컨테이너 런타임으로 직접 사용할 수 없다. 대신 containerd나 CRI-O를 사용해야 한다. 정확히 말하면 "Docker를 절대 못 쓴다"가 아니라, Mirantis가 별도 프로젝트로 분리해 유지하는 cri-dockerd(과거 kubelet에 내장돼 있던 dockershim을 외부 어댑터로 떼어낸 것)를 설치하면 Docker Engine을 CRI 호환으로 계속 쓸 수는 있다. 다만 이는 공식 Kubernetes 코어가 아닌 제3자 어댑터이므로 KCNA에서는 "기본적으로는 사용 불가, 별도 어댑터로만 가능"으로 이해하면 된다. 한편 Docker로 빌드한 컨테이너 이미지는 OCI 표준을 따르므로 어떤 CRI 호환 런타임(containerd, CRI-O)에서든 그대로 실행할 수 있다. 런타임 제거와 이미지 호환성은 별개의 문제다.
 
 **검증:**
 ```bash
@@ -1284,15 +1068,7 @@ ls -la /run/containerd/containerd.sock
 # crictl로 런타임 정보 확인 (노드에서)
 crictl info | head -5
 ```
-```text
-# kubectl get nodes -o wide 기대 출력
-NAME           STATUS   ROLES           VERSION   CONTAINER-RUNTIME
-control-plane  Ready    control-plane   v1.28.0   containerd://1.7.x
-worker-1       Ready    <none>          v1.28.0   containerd://1.7.x
-
-# describe node 기대 출력
-Container Runtime Version:  containerd://1.7.x
-```
+> **예시(참조) — kubectl get nodes -o wide 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Docker를 직접 컨테이너 런타임으로 사용할 수 있다: v1.24부터 dockershim이 제거되어 불가하다. Mirantis가 외부 프로젝트 cri-dockerd를 제공하여 Docker를 CRI 호환으로 사용할 수 있지만, 이는 공식 Kubernetes가 아닌 별도 어댑터이다.
@@ -1343,19 +1119,7 @@ crictl ps
 # CRI를 통한 이미지 목록 조회
 crictl images
 ```
-```text
-# containerRuntimeVersion 기대 출력
-containerd://1.7.x
-
-# crictl pods 기대 출력
-POD ID          CREATED       STATE   NAME                    NAMESPACE
-abc123def456    2 hours ago   Ready   nginx-xxx               default
-fed987cba654    2 hours ago   Ready   coredns-xxx             kube-system
-
-# crictl ps 기대 출력
-CONTAINER       IMAGE          CREATED       STATE     NAME      POD ID
-1234567890ab    nginx:latest   2 hours ago   Running   nginx     abc123def456
-```
+> **예시(참조) — containerRuntimeVersion 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 컨테이너 이미지를 빌드하기 위한 인터페이스이다: CRI는 이미지 빌드와 무관하다. 이미지 빌드는 Docker, Buildah, kaniko 등의 빌드 도구가 담당한다. CRI의 ImageService는 이미지 pull/list/remove만 지원한다.
@@ -1403,21 +1167,7 @@ ctr -n k8s.io images list | head -5
 # containerd 상태 확인
 systemctl status containerd
 ```
-```text
-# containerd --version 기대 출력
-containerd containerd.io 1.7.x abc123
-
-# ctr namespaces list 기대 출력
-NAME      LABELS
-default
-k8s.io              # Kubernetes가 사용하는 네임스페이스
-moby                 # Docker가 사용하는 네임스페이스 (Docker 설치 시)
-
-# systemctl status 기대 출력
-● containerd.service - containerd container runtime
-   Loaded: loaded (/usr/lib/systemd/system/containerd.service; enabled)
-   Active: active (running) since ...
-```
+> **주의 — containerd 네임스페이스 vs Kubernetes 네임스페이스:** 위 `ctr namespaces list`가 출력하는 containerd 네임스페이스(`k8s.io`, `moby` 등)는 컨테이너 런타임이 이미지·컨테이너를 격리하는 단위로, 문제 9의 Kubernetes 네임스페이스(`default`, `kube-system` 등 — 클러스터 리소스를 논리 분할하는 API 오브젝트)와는 완전히 다른 개념이다. 같은 "namespace"라는 단어를 쓰지만 계층이 다르다. containerd의 `ctr namespaces list` 실행 화면은 노드에 SSH로 들어가 확인한다(`ssh dev-master` 등 ~/.ssh/config 등록 별칭). (미캡처 — containerd 네임스페이스 캡처 별도 필요)
 
 **오답 분석:**
 - A) Docker에서 분리된 고수준 컨테이너 런타임이다: 맞는 설명이다. Docker Inc.가 2017년에 containerd를 CNCF에 기증하였다. 이미지 관리, 컨테이너 생명주기 관리, 스냅샷, 네트워킹 등의 고수준 기능을 제공한다.
@@ -1463,16 +1213,16 @@ docker run my-image ls             # "ls" 출력 (echo ls가 실행됨, ls 명�
 kubectl get pod <pod-name> -o jsonpath='{.spec.containers[0].command}'  # ENTRYPOINT에 해당
 kubectl get pod <pod-name> -o jsonpath='{.spec.containers[0].args}'     # CMD에 해당
 ```
-```text
-# docker run my-image 기대 출력
-hello
-
-# docker run my-image world 기대 출력
-world
-
-# docker run my-image ls 기대 출력
-ls
+> **실습 환경 주의 — 이 저장소는 로컬 Docker Engine이 없다:** 위 `docker run my-image ...` 줄은 Docker가 설치된 워크스테이션에서의 기대 동작을 보여주는 예시이며, 이 저장소의 tart K8s 클러스터에는 로컬 Docker Engine이 없어 그대로 재현할 수 없다. 동일한 ENTRYPOINT/CMD 오버라이드 동작은 Kubernetes에서 직접 실증할 수 있다 — 아래 명령은 `command`(=ENTRYPOINT)와 `args`(=CMD)를 모두 지정해 Pod를 띄운다(`--kubeconfig`는 ~/sideproejct/IaC_apple_sillicon/kubeconfig/ 기준).
+```bash
+# command(ENTRYPOINT)+args(CMD) 오버라이드를 실제 K8s에서 실증
+kubectl --kubeconfig kubeconfig/dev.yaml run cmdtest \
+  --image=busybox --restart=Never \
+  --command -- echo hello world
+kubectl --kubeconfig kubeconfig/dev.yaml logs cmdtest   # "hello world" 출력
+kubectl --kubeconfig kubeconfig/dev.yaml delete pod cmdtest
 ```
+> **예시(참조) — kubectl run cmdtest 기대 출력:** `kubectl logs`에 `hello world`가 찍히면 command/args 오버라이드가 OCI 이미지의 Entrypoint/Cmd를 대체했음을 확인할 수 있다. KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) CMD: 기본 실행 명령어를 지정하지만, `docker run <image> <new-command>` 형태로 쉽게 덮어쓸 수 있다. ENTRYPOINT와 함께 사용하면 CMD는 ENTRYPOINT의 기본 인자 역할을 한다.
@@ -1523,18 +1273,7 @@ kubectl get endpoints my-service
 # 자동 스케일링: HPA 상태 확인
 kubectl get hpa
 ```
-```text
-# 자동 복구 기대 출력
-NAME         READY   STATUS        AGE
-my-app-abc   1/1     Terminating   10m
-my-app-xyz   1/1     Running       5s    # 자동 재생성됨
-
-# nslookup 기대 출력
-Server:    10.96.0.10
-Address:   10.96.0.10#53
-Name:      my-service.default.svc.cluster.local
-Address:   10.96.45.123
-```
+> **예시(참조) — 자동 복구 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 자동 복구 (Self-healing): 오케스트레이션의 핵심 기능이다. Pod가 비정상 종료되면 컨트롤러가 자동으로 재생성한다. Liveness Probe 실패 시에도 컨테이너를 재시작한다.
@@ -1580,19 +1319,7 @@ crictl images | grep nginx
 # Pod의 리소스 사용량 확인 (경량성 확인)
 kubectl top pod nginx
 ```
-```text
-# kubectl run 기대 출력
-pod/nginx created
-real    0m0.150s
-
-# crictl images 기대 출력
-IMAGE                   TAG       SIZE
-docker.io/library/nginx latest    67.3MB
-
-# kubectl top pod 기대 출력
-NAME    CPU(cores)   MEMORY(bytes)
-nginx   1m           3Mi
-```
+> **예시(참조) — kubectl run 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 컨테이너는 VM보다 보안 격리가 더 강하다: 반대이다. VM은 하이퍼바이저가 하드웨어 수준에서 격리하여 게스트 OS 간 완전한 분리를 제공한다. 컨테이너는 커널을 공유하므로 커널 취약점이 컨테이너 탈출(escape)로 이어질 수 있다.
@@ -1639,15 +1366,8 @@ kubectl run nginx --image=harbor.example.com/library/nginx:latest
 # Harbor API로 프로젝트 목록 조회
 curl -s https://harbor.example.com/api/v2.0/projects | jq '.[].name'
 ```
-```text
-# docker push 기대 출력
-The push refers to repository [harbor.example.com/library/nginx]
-latest: digest: sha256:abc123... size: 1234
-
-# Harbor API 기대 출력
-"library"
-"my-project"
-```
+> **실습 환경 주의 — Harbor 미설치:** 위 명령의 `harbor.example.com`은 가상 호스트명이며, 이 저장소의 tart 클러스터에는 Harbor가 설치되어 있지 않다. 따라서 위 push/pull/API 호출은 그대로 재현할 수 없다. KCNA에서 Harbor는 "CNCF 졸업 프로젝트인 오픈소스 프라이빗 레지스트리"라는 개념 식별만 요구하므로 실습 없이 정답을 고를 수 있다. (미캡처, Harbor 미설치 환경)
+> **예시(참조) — docker push 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Docker Hub: Docker Inc.가 운영하는 퍼블릭 레지스트리이다. CNCF 프로젝트가 아니며, 오픈소스도 아니다. 무료 티어에서는 pull rate limit이 있다.
@@ -1667,6 +1387,8 @@ Harbor는 2020년에 CNCF 졸업 프로젝트가 되었다. VMware(현 Broadcom)
 ---
 
 ## Cloud Native Architecture (문제 28~33)
+
+> 이 섹션: 6문항 | 실제 시험 비중 약 16% | 주요 출제 유형: 개념 구분(자율확장·서버리스·마이크로서비스 패턴)과 CNCF 생태계 암기(프로젝트 성숙도 등급 Sandbox/Incubating/Graduated, 대표 프로젝트의 역할). 시나리오에서 어떤 패턴/프로젝트가 적합한지 고르는 문제가 섞인다.
 
 ### 문제 28.
 CNCF 프로젝트의 성숙도 단계를 올바른 순서대로 나열한 것은?
@@ -1693,13 +1415,8 @@ CNCF 프로젝트의 성숙도는 Sandbox(초기 실험 단계) -> Incubating(�
 # Kubernetes 클러스터에서 사용 중인 CNCF 졸업 프로젝트 확인
 kubectl get pods -A -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' | sort -u
 ```
-```text
-# 대표적 CNCF 프로젝트 성숙도 예시
-Graduated: Kubernetes, Prometheus, Envoy, Fluentd, etcd, containerd, CoreDNS,
-           Helm, Harbor, Argo, Flux, Cilium, Rook, Falco ...
-Incubating: CRI-O, OpenTelemetry, Knative, Longhorn, Kyverno, Backstage ...
-Sandbox: KubeVirt, Keycloak, OpenKruise, Radius ...
-```
+> **검증 의도 — 성숙도 단계 자체는 클러스터로 검증할 수 없는 개념이다:** Sandbox/Incubating/Graduated 구분은 CNCF TOC가 부여하는 거버넌스 등급이므로 `kubectl`로 확인할 수 없고, 공식 출처(https://www.cncf.io/projects/ , https://landscape.cncf.io/)에서만 확인한다. 위 `kubectl get pods -A`는 그 대신 "지금 실제로 돌고 있는 이미지 중 어느 것이 어느 성숙도 단계의 CNCF 프로젝트인지" 식별하는 연습이다. 예를 들어 platform 클러스터에서 관찰되는 이미지 중 `etcd`·`coredns`·`prometheus`·`cilium`·`fluentd`는 Graduated, `argocd`는 Graduated, `dragonfly`·`buildpacks`는 Incubating에 해당한다. CNI인 cilium 등은 모든 클러스터에서 Running으로 보인다(`--kubeconfig kubeconfig/platform.yaml`).
+> **참조 — Prometheus/Grafana 모니터링(platform 상주, daily day07 참조):** 대표적 CNCF 프로젝트 성숙도 예시 ...
 
 **오답 분석:**
 - A) Incubating -> Sandbox -> Graduated: Sandbox가 가장 초기 단계이므로 순서가 틀렸다. Incubating은 Sandbox 다음 단계이다.
@@ -1731,7 +1448,7 @@ D) 분산 트랜잭션 관리가 어렵다
 
 **정답: B) 서비스별로 독립적인 스케일링이 가능하다 ✅**
 
-서비스별 독립적인 스케일링은 마이크로서비스의 장점이다. 마이크로서비스의 단점으로는 분산 시스템의 복잡성 증가, 네트워크 통신에 의한 지연(latency), 분산 트랜잭션 관리의 어려움, 서비스 간 의존성 관리, 운영 및 모니터링의 복잡화 등이 있다.
+서비스별 독립적인 스케일링은 마이크로서비스의 장점이다. 이 장점의 본질은 Kubernetes의 HPA 같은 특정 도구가 아니라, "각 서비스가 독립된 프로세스로 분리되어 있다"는 구조적 특성에서 나온다. 모놀리식은 전체가 하나의 배포 단위이므로 주문 처리만 바빠도 애플리케이션 전체를 복제해야 한다. 반면 마이크로서비스는 주문 서비스만 5개로 늘리고 사용자 서비스는 2개로 둘 수 있다. HPA는 이 구조 위에서 자동화를 얹어 주는 메커니즘일 뿐, 독립 스케일링을 "가능하게 만든" 원인은 서비스 분리 자체다. 아래 검증의 `kubectl scale`처럼 수동으로도 서비스별 스케일링이 되는 것이 그 증거다. 마이크로서비스의 단점으로는 분산 시스템의 복잡성 증가, 네트워크 통신에 의한 지연(latency), 분산 트랜잭션 관리의 어려움, 서비스 간 의존성 관리, 운영 및 모니터링의 복잡화 등이 있다.
 
 **검증:**
 ```bash
@@ -1745,13 +1462,7 @@ kubectl get deployments
 # HPA를 통한 서비스별 자동 스케일링
 kubectl autoscale deployment order-service --min=2 --max=10 --cpu-percent=50
 ```
-```text
-# kubectl get deployments 기대 출력
-NAME             READY   UP-TO-DATE   AVAILABLE   AGE
-order-service    5/5     5            5           1d
-user-service     2/2     2            2           1d
-payment-service  3/3     3            3           1d
-```
+> **예시(참조) — kubectl get deployments 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 분산 시스템의 복잡성이 증가한다: 맞는 단점이다. 서비스 간 통신, 데이터 일관성, 장애 전파, 버전 호환성 등 모놀리식에서는 존재하지 않는 문제가 발생한다.
@@ -1799,16 +1510,7 @@ kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET /config_dump |
 # 사이드카 프록시의 리스너/클러스터 확인
 kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET /listeners
 ```
-```text
-# Pod 컨테이너 목록 기대 출력
-my-app-abc: my-app istio-proxy    # 앱 컨테이너 + 사이드카 프록시
-
-# describe 기대 출력
-  istio-proxy:
-    Container ID:  containerd://abc123...
-    Image:         docker.io/istio/proxyv2:1.20.x
-    Port:          15090/TCP
-```
+> **예시(참조) — Pod 컨테이너 목록 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Control Plane Controller: 서비스 메시의 Control Plane은 프록시들의 설정을 배포하고 정책을 관리한다. 트래픽을 직접 처리하지 않는다. Istio의 경우 istiod가 Control Plane 역할을 한다.
@@ -1816,7 +1518,11 @@ my-app-abc: my-app istio-proxy    # 앱 컨테이너 + 사이드카 프록시
 - D) Load Balancer: 트래픽을 여러 백엔드에 분산하는 역할이다. 서비스 메시에서 사이드카 프록시가 로드밸런싱 기능을 포함하지만, Load Balancer 자체가 사이드카로 배치되는 것은 아니다.
 
 **내부 동작 원리:**
-사이드카 프록시는 Pod 내에서 애플리케이션 컨테이너와 동일한 네트워크 네임스페이스를 공유한다. iptables 규칙(또는 eBPF)으로 Pod의 모든 인바운드/아웃바운드 트래픽이 사이드카 프록시를 통과하도록 리다이렉트된다. 프록시는 mTLS(상호 TLS) 암호화, 로드밸런싱, 재시도, 서킷 브레이킹, 메트릭 수집 등을 투명하게(애플리케이션 코드 변경 없이) 처리한다. Control Plane(istiod)은 xDS(Discovery Service) API로 프록시에 설정을 배포한다.
+사이드카 프록시는 Pod 내에서 애플리케이션 컨테이너와 동일한 네트워크 네임스페이스를 공유한다. iptables 규칙(또는 eBPF)으로 Pod의 모든 인바운드/아웃바운드 트래픽이 사이드카 프록시를 통과하도록 리다이렉트된다.
+
+이 리다이렉트가 어떻게 일어나는지 구체적으로 보면 다음과 같다. Pod 생성 시 istio-init이라는 init 컨테이너가 Pod의 네트워크 네임스페이스 안에서 iptables 규칙을 설치한다. 핵심은 nat 테이블의 `REDIRECT` 규칙이다. (1) 아웃바운드: 앱이 외부로 보내는 패킷을 OUTPUT 체인에서 가로채 Envoy가 듣고 있는 로컬 포트 15001로 방향을 바꾼다. 단, Envoy 자신이 보내는 패킷(특정 UID로 식별)은 무한 루프를 막기 위해 제외한다. (2) 인바운드: 외부에서 Pod로 들어오는 패킷을 PREROUTING 체인에서 가로채 Envoy의 15006 포트로 보낸다. 결과적으로 앱 컨테이너는 자기가 직접 통신한다고 믿지만, 모든 패킷은 실제로 Envoy를 한 번 거쳐 나가고 들어온다. 그래서 앱 코드를 한 줄도 고치지 않고도 암호화·라우팅이 끼어들 수 있다.
+
+이렇게 트래픽을 잡은 프록시는 mTLS(상호 TLS, 클라이언트와 서버가 서로의 인증서를 검증하는 양방향 TLS) 암호화, 로드밸런싱, 재시도, 서킷 브레이킹, 메트릭 수집 등을 투명하게(애플리케이션 코드 변경 없이) 처리한다. Control Plane(istiod)은 xDS(Discovery Service) API로 프록시에 설정을 배포한다.
 
 **CNCF 생태계 맥락:**
 Istio(CNCF 졸업)는 Envoy(CNCF 졸업)를 사이드카 프록시로 사용하는 가장 널리 채택된 서비스 메시이다. Linkerd(CNCF 졸업)는 Rust 기반의 자체 프록시(linkerd2-proxy)를 사용한다. Cilium은 eBPF 기반으로 사이드카 없이 커널 수준에서 서비스 메시 기능을 제공한다. Istio도 v1.22부터 Ambient Mesh 모드를 도입하여 사이드카 없는 아키텍처를 지원한다.
@@ -1860,19 +1566,7 @@ kubectl get hpa my-app
 # Pod의 resources.requests 확인
 kubectl get pod <pod-name> -o jsonpath='{.spec.containers[0].resources}'
 ```
-```text
-# kubectl top pods 기대 출력
-NAME         CPU(cores)   MEMORY(bytes)
-my-app-abc   45m          128Mi
-my-app-def   52m          135Mi
-
-# kubectl get hpa 기대 출력
-NAME     REFERENCE           TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-my-app   Deployment/my-app   48%/50%   2         10        2          5m
-
-# resources 기대 출력
-{"requests":{"cpu":"100m","memory":"256Mi"}}
-```
+> **예시(참조) — kubectl top pods 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Ingress Controller와 NetworkPolicy: HPA 동작과 무관하다. Ingress Controller는 외부 트래픽 라우팅, NetworkPolicy는 네트워크 트래픽 제어를 담당한다.
@@ -1933,16 +1627,7 @@ kubectl get ksvc hello
 # 트래픽이 없을 때 Pod가 0으로 축소되는지 확인
 kubectl get pods -l serving.knative.dev/service=hello -w
 ```
-```text
-# kubectl get ksvc 기대 출력
-NAME    URL                                LATESTREADY    LATESTCREATED  READY
-hello   http://hello.default.example.com   hello-00001    hello-00001    True
-
-# Pod 축소 관찰 기대 출력 (약 60초 후 트래픽 없으면)
-hello-00001-xxx   1/2   Running     0   30s
-hello-00001-xxx   0/2   Terminating 0   90s
-hello-00001-xxx   0/2   Terminating 0   95s   # Scale-to-Zero
-```
+> **예시(참조) — kubectl get ksvc 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Istio: 서비스 메시 프로젝트(CNCF 졸업)이다. 서비스 간 트래픽 관리, mTLS, 관측성을 제공하지만, 서버리스 플랫폼이 아니며 Scale-to-Zero 기능이 없다.
@@ -1990,19 +1675,7 @@ kubectl describe nodes | grep -A5 "Allocated resources"
 # Cluster Autoscaler 로그 확인
 kubectl logs -n kube-system deployment/cluster-autoscaler | tail -20
 ```
-```text
-# Pending Pod 기대 출력
-NAME           READY   STATUS    RESTARTS   AGE
-my-app-xyz     0/1     Pending   0          30s
-
-# Cluster Autoscaler 로그 기대 출력 (스케일 업 시)
-Scale-up: setting group ... size to 4
-Successfully added node: ...
-
-# Cluster Autoscaler 로그 기대 출력 (스케일 다운 시)
-Node ... is unneeded since ...
-Scale-down: removing node ...
-```
+> **예시(참조) — Pending Pod 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) Pod의 CPU/메모리 요청값을 자동으로 조정한다: VPA(Vertical Pod Autoscaler)의 설명이다. VPA는 Pod의 resources.requests/limits를 워크로드 패턴에 따라 자동으로 조정한다.
@@ -2023,6 +1696,8 @@ HPA가 Pod 수를 늘려도 노드에 충분한 리소스가 없으면 새 Pod�
 
 ## Cloud Native Observability (문제 34~37)
 
+> 이 섹션: 4문항 | 실제 시험 비중 약 8% | 주요 출제 유형: 개념 구분(관측성 세 기둥 메트릭·로그·트레이스의 차이)과 도구 암기(Prometheus Pull 방식, OpenTelemetry·Jaeger·Fluentd의 역할과 CNCF 성숙도). 도구와 개념을 혼동시키는 오답 선택지가 자주 나온다.
+
 ### 문제 34.
 관측성(Observability)의 세 기둥(Three Pillars)을 올바르게 나열한 것은?
 
@@ -2036,7 +1711,7 @@ D) Prometheus, Grafana, Jaeger
 
 **정답: A) 메트릭, 로그, 트레이스 ✅**
 
-관측성의 세 기둥은 메트릭(Metrics), 로그(Logs), 트레이스(Traces/Distributed Tracing)이다. 메트릭은 시간에 따른 수치 데이터, 로그는 개별 이벤트의 시간순 기록, 트레이스는 분산 시스템에서 요청이 여러 서비스를 거치는 경로를 추적한 것이다. Prometheus, Grafana, Jaeger는 이를 구현하는 도구이다.
+먼저 관측성(Observability)이란 "시스템이 밖으로 내보내는 신호(로그·메트릭·트레이스)만으로 그 내부 상태를 추론할 수 있는 능력"을 뜻한다. 이 정의에서 등장하는 세 가지 신호가 곧 관측성의 세 기둥이다. 관측성의 세 기둥은 메트릭(Metrics), 로그(Logs), 트레이스(Traces/Distributed Tracing)이다. 메트릭은 시간에 따른 수치 데이터, 로그는 개별 이벤트의 시간순 기록, 트레이스는 분산 시스템에서 요청이 여러 서비스를 거치는 경로를 추적한 것이다. Prometheus, Grafana, Jaeger는 이를 구현하는 도구이지 기둥 자체가 아니다(보기 D 참고).
 
 **검증:**
 ```bash
@@ -2051,22 +1726,7 @@ kubectl logs <pod-name> --tail=10
 kubectl port-forward svc/jaeger-query 16686:16686
 # http://localhost:16686에서 트레이스 조회
 ```
-```text
-# kubectl top pods 기대 출력
-NAME         CPU(cores)   MEMORY(bytes)
-my-app-abc   45m          128Mi
-
-# kubectl logs 기대 출력
-2024-01-15T10:30:45Z INFO  Request received: GET /api/users
-2024-01-15T10:30:45Z INFO  Database query executed in 15ms
-2024-01-15T10:30:46Z INFO  Response sent: 200 OK
-
-# Jaeger 트레이스 기대 출력 (JSON API)
-{"traceID":"abc123","spans":[
-  {"operationName":"GET /api/users","duration":45000,"serviceName":"api-gateway"},
-  {"operationName":"SELECT users","duration":15000,"serviceName":"user-service"}
-]}
-```
+> **예시(참조) — kubectl top pods 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - B) 모니터링, 경고, 대시보드: 관측성을 구현하는 활동/도구이지 관측성의 기둥이 아니다. 모니터링은 메트릭 기반, 경고는 조건 기반 알림, 대시보드는 시각화이다.
@@ -2077,7 +1737,7 @@ my-app-abc   45m          128Mi
 세 기둥은 서로 보완적이다. 메트릭(Metrics)은 시계열 데이터로 시스템의 전반적 상태를 파악한다(예: CPU 사용률 90%). 메트릭이 이상을 감지하면 로그(Logs)로 개별 이벤트를 확인한다(예: OOM 에러 발생). 특정 요청의 전체 흐름을 추적하려면 트레이스(Traces)를 사용한다(예: 요청이 API → 인증 → DB → 응답으로 진행되며 DB 쿼리에서 병목 발생). 트레이스는 span으로 구성되며, 각 span은 하나의 작업 단위를 나타낸다.
 
 **CNCF 생태계 맥락:**
-각 기둥별 대표적 CNCF 프로젝트: 메트릭은 Prometheus(졸업), 로그는 Fluentd(졸업), 트레이스는 Jaeger(졸업)이다. OpenTelemetry(CNCF 인큐베이팅)는 세 기둥 모두의 데이터를 통합적으로 수집하는 프레임워크이다. Grafana(오픈소스)는 Loki(로그), Tempo(트레이스), Mimir(메트릭)로 세 기둥을 하나의 플랫폼에서 제공한다. Thanos(CNCF 인큐베이팅)는 Prometheus의 장기 스토리지를 제공한다.
+각 기둥별 대표적 CNCF 프로젝트: 메트릭은 Prometheus(졸업), 로그는 Fluentd(졸업), 트레이스는 Jaeger(졸업)이다. OpenTelemetry(CNCF 졸업, 2023년 11월)는 세 기둥 모두의 데이터를 통합적으로 수집하는 프레임워크이다. Grafana(오픈소스)는 Loki(로그), Tempo(트레이스), Mimir(메트릭)로 세 기둥을 하나의 플랫폼에서 제공한다. Thanos(CNCF 인큐베이팅)는 Prometheus의 장기 스토리지를 제공한다.
 
 **등장 배경:**
 모놀리식 아키텍처에서는 하나의 서버 로그만 확인하면 문제를 파악할 수 있었다. 마이크로서비스와 분산 시스템에서는 수십~수백 개의 서비스가 상호작용하므로, 단일 데이터 소스만으로는 시스템 상태를 이해할 수 없다. 관측성(Observability)은 "시스템의 외부 출력만으로 내부 상태를 이해할 수 있는 능력"으로, 메트릭/로그/트레이스 세 기둥을 종합적으로 활용하여 복잡한 분산 시스템의 문제를 진단한다.
@@ -2114,24 +1774,7 @@ kubectl get endpoints prometheus-kube-state-metrics
 # Prometheus scrape 설정 확인
 kubectl get configmap prometheus-config -o yaml | grep scrape_interval
 ```
-```text
-# /metrics 엔드포인트 기대 출력
-# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
-# TYPE process_cpu_seconds_total counter
-process_cpu_seconds_total 15.23
-# HELP go_goroutines Number of goroutines that currently exist.
-# TYPE go_goroutines gauge
-go_goroutines 42
-
-# targets API 기대 출력
-{
-  "discoveredLabels": {"__address__":"10.244.1.5:9090"},
-  "labels": {"instance":"10.244.1.5:9090","job":"kubernetes-pods"},
-  "scrapeUrl": "http://10.244.1.5:9090/metrics",
-  "lastScrape": "2024-01-15T10:30:45Z",
-  "health": "up"
-}
-```
+> **예시(참조) — /metrics 엔드포인트 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 에이전트가 메트릭을 Prometheus 서버로 Push한다: Push 모델은 Datadog, InfluxDB/Telegraf 등이 사용하는 방식이다. Prometheus는 Pull 모델이 기본이다. Pushgateway를 통한 Push는 배치 작업 등 Pull이 어려운 특수한 경우에만 사용한다.
@@ -2156,14 +1799,14 @@ OpenTelemetry에 대한 설명으로 올바르지 않은 것은?
 A) OpenTracing과 OpenCensus가 합병하여 탄생하였다
 B) 메트릭, 로그, 트레이스를 위한 통합 프레임워크이다
 C) 특정 벤더에 종속된 모니터링 솔루션이다
-D) CNCF 인큐베이팅 프로젝트이다
+D) CNCF 졸업(Graduated) 프로젝트이다
 
 <details>
 <summary>정답 확인</summary>
 
 **정답: C) 특정 벤더에 종속된 모니터링 솔루션이다 ✅**
 
-OpenTelemetry(OTel)는 벤더 중립적(vendor-neutral)인 관측성 프레임워크이다. 특정 벤더에 종속되지 않으며, 수집한 텔레메트리 데이터를 Jaeger, Prometheus, Datadog, New Relic 등 다양한 백엔드로 전송할 수 있다. OpenTracing과 OpenCensus의 합병으로 탄생하였으며, CNCF 인큐베이팅 프로젝트이다.
+OpenTelemetry(OTel)는 벤더 중립적(vendor-neutral)인 관측성 프레임워크이다. 특정 벤더에 종속되지 않으며, 수집한 텔레메트리 데이터를 Jaeger, Prometheus, Datadog, New Relic 등 다양한 백엔드로 전송할 수 있다. OpenTracing과 OpenCensus의 합병으로 탄생하였으며, 2023년 11월 CNCF 졸업(Graduated) 프로젝트가 되었다(졸업은 CNCF 성숙도 등급 중 최고 단계로, 프로덕션 검증·거버넌스·다수 채택 기준을 충족했음을 뜻한다).
 
 **검증:**
 ```bash
@@ -2176,28 +1819,12 @@ kubectl get configmap otel-collector-config -n observability -o yaml
 # 자동 계측(auto-instrumentation) 확인
 kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.metadata.annotations}{"\n"}{end}' | grep instrumentation
 ```
-```text
-# OTel Collector 설정 기대 출력 (일부)
-exporters:
-  jaeger:
-    endpoint: "jaeger-collector:14250"
-  prometheus:
-    endpoint: "0.0.0.0:8889"
-  otlp:
-    endpoint: "tempo:4317"
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: "0.0.0.0:4317"
-      http:
-        endpoint: "0.0.0.0:4318"
-```
+> **예시(참조) — OTel Collector 설정 기대 출력 (일부):** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) OpenTracing과 OpenCensus가 합병하여 탄생하였다: 맞는 설명이다. 2019년에 두 프로젝트가 합병되었다. OpenTracing(CNCF)은 분산 트레이싱 API 표준, OpenCensus(Google)는 메트릭+트레이스 라이브러리였다.
 - B) 메트릭, 로그, 트레이스를 위한 통합 프레임워크이다: 맞는 설명이다. OTel은 관측성의 세 기둥(메트릭, 로그, 트레이스) 모두에 대한 API, SDK, 수집기를 통합적으로 제공한다.
-- D) CNCF 인큐베이팅 프로젝트이다: 맞는 설명이다. CNCF에서 Kubernetes 다음으로 활발한 프로젝트 중 하나이다.
+- D) CNCF 졸업(Graduated) 프로젝트이다: 맞는 설명이다. 오랫동안 인큐베이팅 단계에 있다가 2023년 11월 졸업했으며, CNCF에서 Kubernetes 다음으로 활발한(커밋·기여자 수 기준) 프로젝트 중 하나이다.
 
 **내부 동작 원리:**
 OpenTelemetry는 세 가지 핵심 컴포넌트로 구성된다. (1) API: 텔레메트리 데이터를 생성하는 인터페이스(언어별 SDK 제공: Java, Go, Python, JS 등). (2) SDK: API의 구현체로, 데이터를 처리하고 export한다. (3) Collector: 텔레메트리 데이터를 수신(Receiver), 처리(Processor), 전송(Exporter)하는 에이전트/게이트웨이. OTLP(OpenTelemetry Protocol)는 텔레메트리 데이터 전송을 위한 표준 프로토콜로, gRPC와 HTTP를 지원한다.
@@ -2240,31 +1867,7 @@ kubectl get configmap fluentd-config -n logging -o yaml
 # Fluentd 로그에서 수집 상태 확인
 kubectl logs -n logging <fluentd-pod> --tail=10
 ```
-```text
-# DaemonSet 기대 출력
-NAME      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE
-fluentd   3         3         3       3            3
-
-# Fluentd 설정 기대 출력 (일부)
-<source>
-  @type tail
-  path /var/log/containers/*.log
-  pos_file /var/log/fluentd-containers.log.pos
-  tag kubernetes.*
-  <parse>
-    @type json
-  </parse>
-</source>
-<match kubernetes.**>
-  @type elasticsearch
-  host elasticsearch
-  port 9200
-</match>
-
-# Fluentd 로그 기대 출력
-2024-01-15 10:30:45 +0000 [info]: #0 fluentd worker is now running worker=0
-2024-01-15 10:30:45 +0000 [info]: #0 following tail of /var/log/containers/nginx-xxx.log
-```
+> **예시(참조) — DaemonSet 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) CNCF 샌드박스 프로젝트이며, 메트릭 수집에 특화되어 있다: 두 가지 모두 틀렸다. Fluentd는 졸업 프로젝트(샌드박스가 아님)이며, 메트릭이 아닌 로그 수집에 특화되어 있다.
@@ -2273,6 +1876,8 @@ fluentd   3         3         3       3            3
 
 **내부 동작 원리:**
 Fluentd는 Input → Filter → Output의 파이프라인 구조로 동작한다. Input 플러그인이 다양한 소스(파일 tail, syslog, HTTP, TCP 등)에서 로그를 수집하고, Filter 플러그인이 로그를 변환/가공(파싱, 필드 추가/제거, 정규화)하며, Output 플러그인이 다양한 목적지(Elasticsearch, S3, Kafka, Loki 등)로 전송한다. 내부적으로 메시지 버퍼링과 재시도 메커니즘을 제공하여 데이터 유실을 방지한다. Ruby로 작성되었으며, C 기반 경량 버전인 Fluent Bit도 있다.
+
+Kubernetes 환경에서 이 파이프라인이 실제로 어떻게 흐르는지 보면 다음과 같다. (1) Fluentd를 DaemonSet으로 배포하면 모든 노드에 Fluentd Pod가 하나씩 뜬다(노드별 로그를 그 노드에서 직접 읽기 위함). (2) 각 노드에서 컨테이너 표준출력(stdout/stderr)은 kubelet/런타임에 의해 `/var/log/containers/*.log` 파일로 기록되는데, Fluentd Pod가 이 디렉터리를 hostPath로 마운트해 Input(tail) 플러그인으로 따라 읽는다. (3) Filter 단계에서 파일 경로에 담긴 Pod 이름·네임스페이스·컨테이너 이름 같은 Kubernetes 메타데이터를 붙여 로그를 풍부하게 만든다. (4) Output 플러그인이 Elasticsearch(또는 Loki 등) 중앙 저장소로 전송한다. 이렇게 하면 수십 개 노드에 흩어진 컨테이너 로그가 한 곳에서 검색 가능해진다.
 
 **CNCF 생태계 맥락:**
 Fluentd는 CNCF의 여섯 번째 졸업 프로젝트이다. Kubernetes에서의 로깅 아키텍처 패턴으로는 EFK 스택(Elasticsearch + Fluentd + Kibana)이 대표적이다. 최근에는 경량 버전인 Fluent Bit(CNCF 졸업)가 노드 에이전트로, Fluentd가 집계기(aggregator)로 사용되는 2-tier 아키텍처가 일반적이다. Grafana Loki + Fluent Bit 조합도 널리 사용된다.
@@ -2284,6 +1889,8 @@ Fluentd는 CNCF의 여섯 번째 졸업 프로젝트이다. Kubernetes에서의 
 ---
 
 ## Cloud Native Application Delivery (문제 38~40)
+
+> 이 섹션: 3문항 | 실제 시험 비중 약 8% | 주요 출제 유형: 개념 구분(전통 CI/CD vs GitOps, Push형 배포 vs Pull형 GitOps)과 도구 암기(ArgoCD·Flux·Helm의 역할). GitOps의 "Git이 단일 진실 소스"라는 핵심을 묻는 문제가 대표적이다.
 
 ### 문제 38.
 GitOps의 핵심 원칙이 아닌 것은?
@@ -2315,23 +1922,7 @@ kubectl get kustomizations -A
 # Git 커밋 후 자동 동기화 확인
 kubectl get events -n argocd --sort-by='.lastTimestamp' | tail -5
 ```
-```text
-# ArgoCD applications 기대 출력
-NAME     SYNC STATUS   HEALTH STATUS   PROJECT
-my-app   Synced        Healthy         default
-
-# ArgoCD describe 기대 출력
-  Sync Status:    Synced
-  Health Status:  Healthy
-  Source:
-    Repo URL:  https://github.com/org/k8s-manifests.git
-    Path:      apps/my-app
-    Target Revision:  main
-
-# Flux gitrepositories 기대 출력
-NAMESPACE     NAME        URL                                          READY
-flux-system   my-repo     https://github.com/org/k8s-manifests.git     True
-```
+> **예시(참조) — ArgoCD applications 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 모든 시스템 상태를 선언적으로 기술한다: GitOps의 핵심 원칙이다. 명령형(imperative) 방식이 아닌 선언형(declarative) 방식으로 시스템 상태를 Git에 기술한다.
@@ -2365,6 +1956,8 @@ D) helm install, helm upgrade, helm rollback 명령어를 지원한다
 
 Helm v3에서는 Tiller가 제거되었다. Helm v2에서는 클러스터 내에 Tiller 서버 컴포넌트가 필요했으나, 보안 문제 등의 이유로 v3에서 완전히 제거되었다. Helm v3는 클라이언트만으로 동작하며, kubeconfig를 사용하여 직접 K8s API 서버와 통신한다.
 
+주의할 점은 v2와 v3가 완전히 호환되지는 않는다는 것이다. Chart의 API 버전(`apiVersion`)이 v2는 `v1`, v3는 `v2`로 다르고, 릴리스 정보 저장 위치도 v2는 Tiller가 관리하던 ConfigMap, v3는 릴리스가 배포된 네임스페이스의 Secret으로 바뀌었다. 그래서 v2에서 v3로 넘어갈 때는 `helm-2to3` 플러그인으로 기존 릴리스 상태를 마이그레이션해야 하며, 일부 오래된 v2 차트는 v3에서 그대로 동작하지 않아 수정이 필요하다.
+
 **검증:**
 ```bash
 # Helm 버전 확인 (v3에서는 Tiller 없음)
@@ -2382,21 +1975,7 @@ helm show chart prometheus-community/prometheus
 # 릴리스 히스토리 확인
 helm history my-release
 ```
-```text
-# helm version 기대 출력
-version.BuildInfo{Version:"v3.14.x", GitCommit:"abc123", GoVersion:"go1.21.x"}
-
-# helm list 기대 출력
-NAME          NAMESPACE   REVISION   STATUS     CHART               APP VERSION
-prometheus    monitoring  3          deployed   prometheus-25.x.x   2.50.x
-argocd        argocd      1          deployed   argo-cd-6.x.x       2.10.x
-
-# helm history 기대 출력
-REVISION   STATUS       CHART               DESCRIPTION
-1          superseded   my-app-1.0.0        Install complete
-2          superseded   my-app-1.1.0        Upgrade complete
-3          deployed     my-app-1.2.0        Upgrade complete
-```
+![helm version](images/kcna-helm.png)
 
 **오답 분석:**
 - A) Kubernetes의 패키지 매니저이다: 맞는 설명이다. Helm은 apt(Debian), brew(macOS)와 같은 역할을 Kubernetes 환경에서 수행한다.
@@ -2447,26 +2026,7 @@ kubectl get app my-app -n argocd -o jsonpath='{.status.sync.status}'
 # Flux 동기화 상태 확인
 kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.conditions[0].reason}'
 ```
-```text
-# ArgoCD pods 기대 출력
-NAME                                  READY   STATUS    AGE
-argocd-server-xxx                     1/1     Running   5d
-argocd-repo-server-xxx                1/1     Running   5d
-argocd-application-controller-xxx     1/1     Running   5d
-
-# Flux pods 기대 출력
-NAME                                    READY   STATUS    AGE
-source-controller-xxx                   1/1     Running   5d
-kustomize-controller-xxx                1/1     Running   5d
-helm-controller-xxx                     1/1     Running   5d
-notification-controller-xxx             1/1     Running   5d
-
-# ArgoCD sync status 기대 출력
-Synced
-
-# Flux kustomization status 기대 출력
-ReconciliationSucceeded
-```
+> **예시(참조) — ArgoCD pods 기대 출력:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **오답 분석:**
 - A) 둘 다 CI(Continuous Integration) 도구이다: CI(빌드, 테스트)가 아닌 CD(배포) 도구이다. CI는 Jenkins, GitHub Actions, GitLab CI 등이 담당한다. ArgoCD와 Flux는 빌드된 결과물을 클러스터에 배포하는 역할이다.
@@ -2487,13 +2047,15 @@ ArgoCD(CNCF 졸업, Intuit 기원)와 Flux(CNCF 졸업, Weaveworks 기원)는 Gi
 
 ## 채점 기준
 
-| 도메인 | 문항 수 | 문항 번호 | 비율 |
+아래 "공식 비중"은 CNCF 공식 시험요강(https://www.cncf.io/certification/kcna/)의 도메인 비율로, 본 문서 전체 비율의 단일 근거(SSOT)다. "연습 문항 수"는 이 40문제 묶음에서 각 도메인에 배정한 문항 수이며 공식 비중을 근사한 값이라 정확히 일치하지는 않는다.
+
+| 도메인 | 연습 문항 수 | 문항 번호 | 공식 비중 |
 |--------|---------|----------|------|
-| Kubernetes Fundamentals | 18 | 1~18 | 45% |
-| Container Orchestration | 9 | 19~27 | 22.5% |
-| Cloud Native Architecture | 6 | 28~33 | 15% |
-| Cloud Native Observability | 4 | 34~37 | 10% |
-| Cloud Native Application Delivery | 3 | 38~40 | 7.5% |
+| Kubernetes Fundamentals | 18 | 1~18 | 46% |
+| Container Orchestration | 9 | 19~27 | 22% |
+| Cloud Native Architecture | 6 | 28~33 | 16% |
+| Cloud Native Observability | 4 | 34~37 | 8% |
+| Cloud Native Application Delivery | 3 | 38~40 | 8% |
 | **합계** | **40** | | **100%** |
 
 > 실제 KCNA 시험은 60문항에 90분이 주어지며, 75% 이상 득점 시 합격이다.

@@ -8,6 +8,22 @@ tart-infra는 macOS 위에서 Tart 가상 머신을 통해 Kubernetes 클러스�
 
 ## 사전 준비
 
+### 환경 선택 배경
+
+이 실습은 tart(macOS Native Virtualization.framework 기반 VM) 위에서 kubeadm으로 구축한 클러스터를 사용한다. 이 환경을 선택한 이유는 다음 세 가지이다.
+
+1. **CKA·CKS 시험과 동일한 환경**: CKA·CKS 실기 시험은 실제 Linux 노드에서 etcd 백업, kubeadm 클러스터 조작, systemd 서비스 재시작을 SSH로 직접 수행해야 한다. Docker Desktop이나 Minikube 같은 경량 런타임은 control plane 노드에 SSH 접속이 불가능하거나 `/etc/kubernetes/manifests/` 경로가 존재하지 않아 이 요구사항을 충족하지 못한다.
+2. **애플 실리콘에서 Native 성능**: tart는 macOS Virtualization.framework를 직접 사용하므로 Rosetta 에뮬레이션 없이 aarch64 Linux VM을 실행한다. VM 시작 시간이 10초 이내이며, 실습 후 파괴된 클러스터를 `./scripts/reset-cluster.sh`로 수 분 내에 재생성할 수 있다.
+3. **multi-cluster 병렬 학습**: `dev`(파괴 실습)와 `staging`(보안 강화 실습)이 동시에 동작하므로, Lab 간 전환 비용 없이 KCSA 범위 전체를 한 환경에서 실습한다.
+
+**kubeconfig 경로**: `~/sideproejct/IaC_apple_sillicon/kubeconfig/` 아래에 클러스터별 파일이 있다(`dev.yaml`, `staging.yaml` 등). KUBECONFIG 환경 변수를 설정하지 않고 실습할 경우 아래처럼 명시적으로 지정한다.
+
+```bash
+export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+```
+
+**SSH 접속 별칭**: 전용 SSH 키가 배포되어 있어 `ssh dev-master`, `ssh staging-master`처럼 VM 이름 별칭으로 비밀번호 없이 접속할 수 있다(ProxyCommand가 `tart ip`로 실시간 IP를 조회). 이후 모든 `ssh dev-master` 예제는 `ssh dev-master`로 대체해도 동일하게 동작한다.
+
 ### 환경 설정
 
 tart-infra 실습을 시작하기 전에 다음 환경이 준비되어 있어야 한다.
@@ -22,11 +38,8 @@ export KUBECONFIG=kubeconfig/dev-kubeconfig
 kubectl cluster-info
 ```
 
-예상 출력:
-```
-Kubernetes control plane is running at https://<dev-master-ip>:6443
-CoreDNS is running at https://<dev-master-ip>:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
-```
+**검증 - 기대 출력:** control plane 과 CoreDNS 엔드포인트가 표시되면 클러스터 접속이 정상이다. 주소의 IP 는 환경별로 다르다(dev 실측).
+![kubectl cluster-info — control plane·CoreDNS 엔드포인트](images/kcsa04-55-cluster-info.png)
 
 **2단계: 노드 상태 확인**
 
@@ -34,12 +47,8 @@ CoreDNS is running at https://<dev-master-ip>:6443/api/v1/namespaces/kube-system
 kubectl get nodes -o wide
 ```
 
-예상 출력:
-```
-NAME          STATUS   ROLES           AGE   VERSION   INTERNAL-IP     OS-IMAGE
-dev-master    Ready    control-plane   XXd   v1.XX.X   192.168.64.X    Ubuntu XX.XX
-dev-worker1   Ready    <none>          XXd   v1.XX.X   192.168.64.X    Ubuntu XX.XX
-```
+**검증 - 기대 출력:** dev-master(control-plane)·dev-worker1 두 노드가 Ready 이고 INTERNAL-IP·OS-IMAGE 가 보인다. AGE·IP 는 환경에 따라 다르다(dev 실측).
+![dev 노드 상태 -o wide](images/kcsa04-01-nodes.png)
 
 **3단계: demo 네임스페이스 리소스 확인**
 
@@ -47,38 +56,20 @@ dev-worker1   Ready    <none>          XXd   v1.XX.X   192.168.64.X    Ubuntu XX
 kubectl get all -n demo
 ```
 
-예상 출력:
-```
-NAME                              READY   STATUS    RESTARTS   AGE
-pod/httpbin-xxxx-xxxxx            2/2     Running   0          XXd
-pod/keycloak-xxxx-xxxxx           2/2     Running   0          XXd
-pod/nginx-web-xxxx-xxxxx          2/2     Running   0          XXd
-pod/postgres-xxxx-xxxxx           2/2     Running   0          XXd
-pod/rabbitmq-xxxx-xxxxx           2/2     Running   0          XXd
-pod/redis-xxxx-xxxxx              2/2     Running   0          XXd
+**검증 - 기대 출력:** demo 네임스페이스에 6개 앱(httpbin·keycloak·nginx-web·postgres·rabbitmq·redis)의 Deployment·Pod·Service 가 모두 보인다(dev 실측). 아래 캡처는 istio 사이드카가 없는 dev 환경이라 컨테이너 수가 `1/1`(또는 nginx-web 3 레플리카)로 나온다.
+![demo 네임스페이스 전체 리소스(6개 앱)](images/kcsa04-02-demo-all.png)
 
-NAME                TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)
-service/httpbin     ClusterIP   10.96.x.x        <none>        80/TCP
-service/keycloak    NodePort    10.96.x.x        <none>        8080:30880/TCP
-service/nginx-web   NodePort    10.96.x.x        <none>        80:30080/TCP
-service/postgres    ClusterIP   10.96.x.x        <none>        5432/TCP
-service/rabbitmq    ClusterIP   10.96.x.x        <none>        5672/TCP,15672/TCP
-service/redis       ClusterIP   10.96.x.x        <none>        6379/TCP
-```
-
-> **참고**: Pod의 READY 열이 `2/2`인 이유는 Istio 사이드카 프록시(envoy)가 각 Pod에 자동 주입되어 있기 때문이다.
+> **예시(참조) — Istio mTLS/sidecar:** Istio 서비스메시 환경에서는 istio-proxy 사이드카가 주입되어 각 Pod 가 `2/2` 로 보이고 PeerAuthentication(STRICT mTLS)을 확인할 수 있다(설치 환경 의존).
 
 **4단계: SSH 접속 테스트**
 
 ```bash
-# 모든 VM에 SSH 접속 가능 여부를 확인한다 (계정: admin / 비밀번호: admin)
-ssh admin@<dev-master-ip> 'hostname'
+# 모든 VM에 SSH 접속 가능 여부를 확인한다 (전용 키 배포됨 — VM 이름 별칭으로 접속)
+ssh dev-master 'hostname'
 ```
 
-예상 출력:
-```
-dev-master
-```
+**검증 - 기대 출력:** 접속한 VM 의 호스트명(`dev-master`)이 출력되면 SSH 별칭이 정상 동작한다(dev-master 실측).
+![ssh dev-master hostname — SSH 별칭 접속 확인](images/kcsa04-07-ssh-hostname.png)
 
 **5단계: 필수 도구 설치 확인**
 
@@ -99,23 +90,10 @@ trivy --version 2>/dev/null || echo "trivy 미설치 — brew install trivy 로 
 kubectl get ciliumnetworkpolicy -n demo
 ```
 
-예상 출력:
-```
-NAME                           AGE
-default-deny-all               XXd
-allow-external-to-nginx        XXd
-allow-nginx-to-httpbin         XXd
-allow-nginx-to-redis           XXd
-allow-nginx-egress             XXd
-allow-httpbin-to-postgres      XXd
-allow-httpbin-to-rabbitmq      XXd
-allow-httpbin-to-keycloak      XXd
-allow-keycloak-to-postgres     XXd
-allow-external-to-keycloak     XXd
-allow-istio-control-plane      XXd
-```
+**검증 - 기대 출력:** `default-deny-all` 1개 + `allow-*` 다수로 구성된 CiliumNetworkPolicy 목록이 보인다. VALID 열이 모두 True 면 정책이 정상 적용된 것이다(dev 실측, 본 환경은 istio-sidecars 포함 12개).
+![demo 네임스페이스 CiliumNetworkPolicy 목록](images/kcsa04-03-cnp.png)
 
-11개 정책이 모두 표시되면 실습 준비가 완료된 것이다.
+default-deny-all 과 allow-* 정책이 모두 표시되면 실습 준비가 완료된 것이다(zero-trust: 기본 차단 후 필요한 통신만 허용).
 
 ---
 
@@ -123,29 +101,43 @@ allow-istio-control-plane      XXd
 
 Cloud Native Security의 기본 프레임워크인 4C 모델(Cloud, Cluster, Container, Code)을 tart-infra 환경에 매핑하여 각 레이어의 보안 요소를 분석한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph Code["Code (앱 코드)"]
+    subgraph Container["Container (컨테이너)"]
+      subgraph Cluster["Cluster (클러스터)"]
+        Cloud["Cloud (인프라)"]
+      end
+    end
+  end
 ```
-┌─────────────────────────────────────────┐
-│              Code (앱 코드)              │
-│  ┌───────────────────────────────────┐  │
-│  │        Container (컨테이너)        │  │
-│  │  ┌─────────────────────────────┐  │  │
-│  │  │      Cluster (클러스터)      │  │  │
-│  │  │  ┌───────────────────────┐  │  │  │
-│  │  │  │    Cloud (인프라)      │  │  │  │
-│  │  │  └───────────────────────┘  │  │  │
-│  │  └─────────────────────────────┘  │  │
-│  └───────────────────────────────────┘  │
-└─────────────────────────────────────────┘
-```
+_그림 1. 4C 보안 모델의 계층 포함 관계._
 
 ---
 
 ### Lab 1.1: Cloud 레이어 — VM 격리 확인 (Tart)
 
+> **학습 경로**: 4C 모델은 바깥 계층(Cloud)부터 안쪽(Code)으로 진행한다. Lab 1.1에서는 가장 바깥 계층인 Cloud 레이어를 다룬다. 여기서 "Cloud"는 퍼블릭 클라우드가 아니라 컴퓨팅 인프라 자체를 의미하며, tart-infra 환경에서는 macOS 위에서 동작하는 Tart VM이 Cloud 역할을 한다. VM이 독립된 커널을 가진다는 사실을 실측으로 확인한 뒤, Lab 1.2로 넘어가 VM 내부 클러스터 수준의 보안 경계를 살펴본다.
+
+**이 실습에서는**: Tart VM이 macOS Virtualization.framework를 이용해 독립 커널을 갖고 프로세스·네트워크·파일시스템을 격리하는 방식을 확인한다. 배경: 물리 서버 1대당 1개 워크로드만 실행하던 시절에는 자원 낭비가 심각했고, 컨테이너는 커널을 공유하므로 커널 취약점이 호스트 탈출로 이어진다. 핵심: VM은 독립 커널을 갖기 때문에 컨테이너 탈출(container escape)이 VM 경계에서 차단된다.
+
 #### 학습 목표
 - Cloud 레이어에서 인프라 격리가 어떻게 이루어지는지 이해한다.
 - Tart VM이 macOS 호스트와 어떻게 분리되어 동작하는지 확인한다.
 - VM 수준의 격리가 컨테이너 격리보다 강력한 이유를 설명할 수 있다.
+
+#### 실습 전 환경 변수 설정
+
+이 Lab의 모든 명령에서 `<dev-master-ip>`는 실제 VM IP로 치환해야 한다. 매번 수동으로 치환하는 대신 아래 명령으로 환경 변수를 설정하면 편리하다.
+
+```bash
+export MASTER_IP=$(tart ip dev-master)
+export WORKER1_IP=$(tart ip dev-worker1)
+echo "dev-master: $MASTER_IP, dev-worker1: $WORKER1_IP"
+```
+
+이후 명령은 `ssh admin@$MASTER_IP ...` 또는 SSH 별칭 `ssh dev-master ...` 형식으로 실행한다. SSH 별칭이 설정되어 있으면 별칭 방식이 더 간결하다.
 
 #### 실습 단계
 
@@ -157,12 +149,8 @@ macOS 호스트에서 실행한다.
 tart list
 ```
 
-예상 출력:
-```
-Source  Name          Disk (GB)  Size (GB)  State    OS
-local   dev-master    50         12.3       running  linux
-local   dev-worker1   50         11.8       running  linux
-```
+**검증 - 기대 출력:** tart 가 관리하는 VM 목록과 각 VM 의 디스크·상태(running)·OS 가 보인다(macOS 호스트 실측).
+![tart list — VM 목록과 상태](images/kcsa04-04-tart-list.png)
 
 **2단계: VM 격리 수준 확인 — 프로세스 격리**
 
@@ -171,11 +159,8 @@ local   dev-worker1   50         11.8       running  linux
 ps aux | grep -i tart | grep -v grep
 ```
 
-예상 출력:
-```
-ywlee   12345  2.3  4.5  ... /Applications/Tart.app/.../tart run dev-master
-ywlee   12346  1.8  3.2  ... /Applications/Tart.app/.../tart run dev-worker1
-```
+**검증 - 기대 출력:** 각 VM 이 macOS 호스트에서 독립된 `tart run` 프로세스로 실행된다(Virtualization.framework 기반 하드웨어 격리, 호스트 실측).
+![ps — Tart VM 프로세스 목록](images/kcsa04-06-tart-ps.png)
 
 각 VM은 독립된 프로세스로 실행되며, macOS의 Virtualization.framework를 사용하여 하드웨어 수준 격리를 제공한다.
 
@@ -183,23 +168,19 @@ ywlee   12346  1.8  3.2  ... /Applications/Tart.app/.../tart run dev-worker1
 
 ```bash
 # VM에 SSH 접속하여 커널 정보 확인
-ssh admin@<dev-master-ip> 'uname -a'
+ssh dev-master 'uname -a'
 ```
 
-예상 출력:
-```
-Linux dev-master 5.15.0-XX-generic #XX-Ubuntu SMP ... aarch64 GNU/Linux
-```
+**검증 - 기대 출력:** VM 내부는 Linux 커널(aarch64)이 동작한다(dev-master 실측).
+![ssh dev-master uname -a — VM 내부 Linux 커널](images/kcsa04-08-vm-uname.png)
 
 ```bash
 # macOS 호스트의 커널 정보와 비교
 uname -a
 ```
 
-예상 출력:
-```
-Darwin <hostname> 24.6.0 Darwin Kernel Version 24.6.0 ... arm64
-```
+**검증 - 기대 출력:** 호스트는 Darwin(macOS) 커널(arm64)이 동작한다. VM(Linux)과 호스트(Darwin)의 커널이 서로 다름을 대조해 VM 격리를 확인한다(macOS 호스트 실측).
+![uname -a — macOS 호스트 Darwin 커널](images/kcsa04-05-host-uname.png)
 
 VM 내부는 Linux 커널, 호스트는 Darwin(macOS) 커널이 동작하는 것을 확인할 수 있다. 이는 VM이 완전히 독립된 커널 공간을 가지고 있음을 의미한다.
 
@@ -207,16 +188,11 @@ VM 내부는 Linux 커널, 호스트는 Darwin(macOS) 커널이 동작하는 것
 
 ```bash
 # VM 내부에서 네트워크 인터페이스 확인
-ssh admin@<dev-master-ip> 'ip addr show'
+ssh dev-master 'ip addr show'
 ```
 
-예상 출력:
-```
-1: lo: <LOOPBACK,UP,LOWER_UP> ...
-    inet 127.0.0.1/8 scope host lo
-2: enp0s1: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
-    inet 192.168.64.X/24 brd 192.168.64.255 scope global enp0s1
-```
+**검증 - 기대 출력:** VM 은 자체 loopback(`lo`)과 NAT 네트워크 인터페이스(`enp0s1`, 192.168.64.x 대역)를 갖는다(dev-master 실측).
+![ssh dev-master ip addr show — VM 네트워크 인터페이스](images/kcsa04-09-vm-ipaddr.png)
 
 ```bash
 # macOS 호스트에서 VM 전용 네트워크 브리지 확인
@@ -229,15 +205,11 @@ Tart VM은 macOS의 NAT 네트워크를 통해 격리된 네트워크 세그먼�
 
 ```bash
 # VM에 할당된 CPU/메모리 확인
-ssh admin@<dev-master-ip> 'nproc && free -h | head -2'
+ssh dev-master 'nproc && free -h | head -2'
 ```
 
-예상 출력:
-```
-4
-              total        used        free      shared  buff/cache   available
-Mem:          7.8Gi       3.2Gi       1.1Gi       12Mi       3.5Gi       4.3Gi
-```
+**검증 - 기대 출력:** VM 에 할당된 CPU 코어 수(`nproc`)와 메모리(`free -h`)가 보인다. 호스트 물리 자원의 일부만 할당받는다(dev-master 실측).
+![ssh dev-master nproc + free -h — VM 리소스 할당](images/kcsa04-10-vm-resources.png)
 
 VM은 호스트의 물리 리소스 중 일부만 할당받아 사용하며, 다른 VM이나 호스트에 영향을 줄 수 없다.
 
@@ -245,7 +217,7 @@ VM은 호스트의 물리 리소스 중 일부만 할당받아 사용하며, 다
 
 ```bash
 # VM 내부에서 컨테이너 런타임 확인
-ssh admin@<dev-master-ip> 'sudo crictl info | head -20'
+ssh dev-master 'sudo crictl info | head -20'
 ```
 
 컨테이너는 호스트 커널을 공유하지만, VM은 독립된 커널을 사용한다. 이것이 VM 격리가 컨테이너 격리보다 더 강력한 근본적인 이유이다.
@@ -290,10 +262,7 @@ VM 격리 기술은 물리 서버 1대에 1개의 워크로드만 실행하던 �
 tart list
 ```
 
-```text
-Source  Name          Disk (GB)  Size (GB)  State    OS
-local   dev-master    50         12.3       stopped  linux
-```
+> **예시(참조) — Source  Name          Disk (GB)  Size (GB)  St:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 대응 방법:
 ```bash
@@ -304,10 +273,7 @@ tart run dev-master &
 tart run dev-master 2>&1 | head -20
 ```
 
-```text
-Starting VM dev-master...
-VM started successfully
-```
+> **예시(참조) — Starting VM dev-master...:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **문제 2: VM SSH 접속 실패**
 
@@ -316,18 +282,14 @@ VM started successfully
 tart ip dev-master
 ```
 
-```text
-192.168.64.4
-```
+> **예시(참조) — 192.168.64.4:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # SSH 접속 테스트
 ssh -o ConnectTimeout=5 admin@192.168.64.4 'echo ok'
 ```
 
-```text
-ok
-```
+> **예시(참조) — ok:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 접속 실패 시 원인 분석:
 1. VM이 아직 부팅 중인 경우: `tart list`로 State가 `running`인지 확인한다.
@@ -338,29 +300,32 @@ ok
 
 ```bash
 # VM 내부에서 호스트 파일시스템 접근 시도 (실패해야 한다)
-ssh admin@<dev-master-ip> 'ls /Volumes 2>&1'
+ssh dev-master 'ls /Volumes 2>&1'
 ```
 
-```text
-ls: cannot access '/Volumes': No such file or directory
-```
+> **예시(참조) — ls: cannot access '/Volumes': No such file or :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 VM 내부에서 호스트 파일시스템에 접근할 수 없다. 이는 Virtualization.framework가 파일시스템 수준의 격리를 제공하기 때문이다.
 
 ```bash
 # VM 간 프로세스 격리 확인 — dev-master에서 dev-worker1의 프로세스를 볼 수 없어야 한다
-ssh admin@<dev-master-ip> 'ps aux | grep worker1'
+ssh dev-master 'ps aux | grep worker1'
 ```
 
-```text
-admin     12345  0.0  0.0   6400   720 pts/0    S+   10:30   0:00 grep worker1
-```
+> **예시(참조) — admin     12345  0.0  0.0   6400   720 pts/0  :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 grep 자신만 보이고 worker1의 프로세스는 보이지 않는다. VM 간 프로세스 격리가 정상 동작하는 것이다.
 
 ---
 
 ### Lab 1.2: Cluster 레이어 — RBAC, NetworkPolicy, Admission Control
+
+> **학습 경로**: Lab 1.1에서 VM이 독립 커널을 가져 프로세스 격리를 제공함을 확인했다. 하지만 VM 내부의 여러 컨테이너 간 격리는 어떻게 이루어지는가? Lab 1.2·1.3이 이를 답한다. 먼저 클러스터 수준(RBAC, NetworkPolicy)의 정책 경계를 확인하고, Lab 1.3에서 컨테이너 수준(securityContext, Linux namespace)의 격리를 살펴본다.
+
+**이 실습에서는**: 기본 Kubernetes NetworkPolicy(L3/L4 수준)의 한계를 Cilium CNI의 eBPF 기반 L7 정책으로 극복하는 방식을 학습한다.
+- **CNI(Container Network Interface)**: Kubernetes Pod 간 네트워킹을 담당하는 플러그인 인터페이스이다. 어떤 CNI를 사용하느냐에 따라 NetworkPolicy 지원 범위가 달라진다.
+- **L3/L4 정책**: IP 주소(레이어 3)와 포트(레이어 4) 기반의 트래픽 제어이다. 표준 Kubernetes NetworkPolicy는 L3/L4만 지원한다.
+- **eBPF(extended Berkeley Packet Filter)**: Linux 커널 내에서 안전하게 실행되는 샌드박스 프로그램으로, 커널 소스 수정 없이 네트워킹·보안·관측 기능을 주입할 수 있다. Cilium은 eBPF를 이용해 L7(HTTP 메서드, DNS 쿼리 등)까지 제어한다.
 
 #### 학습 목표
 - Cluster 레이어에서 적용되는 보안 메커니즘(RBAC, NetworkPolicy, Admission Controller)을 파악한다.
@@ -373,26 +338,22 @@ grep 자신만 보이고 worker1의 프로세스는 보이지 않는다. VM 간 
 
 ```bash
 # API Server의 authorization-mode 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep authorization-mode
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep authorization-mode
 ```
 
-예상 출력:
-```
-    - --authorization-mode=Node,RBAC
-```
+**검증 - 기대 출력:** `--authorization-mode=Node,RBAC` — Node 인가(kubelet 요청 제어)와 RBAC(사용자·SA 접근 제어)가 함께 활성화돼 있다(dev-master 실측).
+![apiserver authorization-mode=Node,RBAC](images/kcsa04-56-authz-mode.png)
 
 Node와 RBAC 두 가지 인가 모드가 활성화되어 있다. Node 인가는 kubelet의 API 요청을 제어하고, RBAC는 사용자와 서비스 계정의 접근을 제어한다.
 
 **2단계: Admission Controller 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep enable-admission
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep enable-admission
 ```
 
-예상 출력:
-```
-    - --enable-admission-plugins=NodeRestriction
-```
+**검증 - 기대 출력:** kube-apiserver 의 `--enable-admission-plugins` 에 `NodeRestriction` 이 포함돼 있다(dev-master 실측).
+![apiserver enable-admission-plugins — NodeRestriction](images/kcsa04-11-admission.png)
 
 NodeRestriction Admission Controller는 kubelet이 자신의 Node 객체와 해당 Node에서 실행되는 Pod만 수정할 수 있도록 제한한다.
 
@@ -403,27 +364,16 @@ NodeRestriction Admission Controller는 kubelet이 자신의 Node 객체와 해�
 kubectl get pods -n kube-system -l k8s-app=cilium
 ```
 
-예상 출력:
-```
-NAME           READY   STATUS    RESTARTS   AGE
-cilium-xxxxx   1/1     Running   0          XXd
-cilium-yyyyy   1/1     Running   0          XXd
-```
+**검증 - 기대 출력:** 노드마다 cilium agent Pod 가 Running(각 노드 1개씩, DaemonSet)이다(dev 실측).
+![Cilium agent Pod 상태](images/kcsa04-12-cilium-pods.png)
 
 ```bash
 # Cilium 상태 상세 확인
 kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- cilium status --brief
 ```
 
-예상 출력:
-```
-KVStore:                 Ok   Disabled
-Kubernetes:              Ok   1.XX (vX.XX.X)
-Kubernetes APIs:         ["cilium/v2::CiliumNetworkPolicy", ...]
-KubeProxyReplacement:    ...
-Cilium:                  Ok   ...
-NodeMonitor:             Listening for events on ...
-```
+**검증 - 기대 출력:** Cilium·Kubernetes·KubeProxyReplacement 등 핵심 구성요소가 `Ok` 상태다. CiliumNetworkPolicy API 가 등록돼 있어 L7 정책을 지원한다(dev 실측).
+![cilium status --brief — Cilium 핵심 구성요소 상태](images/kcsa04-13-cilium-status.png)
 
 **4단계: CiliumNetworkPolicy 개수 확인**
 
@@ -431,12 +381,10 @@ NodeMonitor:             Listening for events on ...
 kubectl get cnp -n demo --no-headers | wc -l
 ```
 
-예상 출력:
-```
-11
-```
+**검증 - 기대 출력:** demo 네임스페이스에 적용된 CiliumNetworkPolicy 개수가 출력된다(dev 실측, 본 환경은 istio-sidecars 포함 12개).
+![demo 네임스페이스 CiliumNetworkPolicy 개수](images/kcsa04-14-cnp-count.png)
 
-11개의 CiliumNetworkPolicy가 demo 네임스페이스에 적용되어 있다.
+`default-deny-all` 과 다수의 `allow-*` CiliumNetworkPolicy 가 demo 네임스페이스에 적용되어 있다(zero-trust 구성).
 
 **5단계: 클러스터 수준 보안 요소 종합 확인**
 
@@ -460,12 +408,8 @@ kubectl get clusterrolebinding --no-headers | wc -l
 kubectl get namespace demo -o yaml | grep -A 5 labels
 ```
 
-예상 출력:
-```yaml
-  labels:
-    kubernetes.io/metadata.name: demo
-    istio-injection: enabled
-```
+**검증 - 기대 출력:** demo 네임스페이스의 라벨이 보인다. `pod-security.kubernetes.io/*` 라벨이 없으므로 Pod Security Admission 이 적용되지 않은 상태다(dev 실측, istio 사용 환경에서는 `istio-injection: enabled` 가 추가로 보인다).
+![demo 네임스페이스 라벨 — PSA 미적용 확인](images/kcsa04-15-psa-labels.png)
 
 현재 demo 네임스페이스에는 Pod Security Admission 레이블이 적용되어 있지 않다. 이는 실습 3.8에서 직접 설정해 볼 것이다.
 
@@ -504,22 +448,14 @@ NetworkPolicy의 경우, Kubernetes 초기에는 모든 Pod가 다른 모든 Pod
 kubectl auth can-i --list -n demo 2>/dev/null | head -10
 ```
 
-```text
-Resources                                       Non-Resource URLs   Resource Names   Verbs
-*.*                                             []                  []               [*]
-                                                [*]                 []               [*]
-```
+> **예시(참조) — Resources                                     :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 특정 ServiceAccount의 권한 확인
 kubectl auth can-i --list --as=system:serviceaccount:demo:default -n demo 2>/dev/null | head -10
 ```
 
-```text
-Resources                                       Non-Resource URLs   Resource Names   Verbs
-selfsubjectaccessreviews.authorization.k8s.io   []                  []               [create]
-selfsubjectrulesreviews.authorization.k8s.io    []                  []               [create]
-```
+> **예시(참조) — Resources                                     :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **문제: CiliumNetworkPolicy가 적용되지 않는 경우**
 
@@ -528,22 +464,14 @@ selfsubjectrulesreviews.authorization.k8s.io    []                  []          
 kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- cilium status --brief 2>/dev/null
 ```
 
-```text
-KVStore:                 Ok   Disabled
-Kubernetes:              Ok   1.30 (v1.30.2)
-Kubernetes APIs:         ["cilium/v2::CiliumNetworkPolicy", ...]
-Cilium:                  Ok   1.16.0
-```
+> **예시(참조) — KVStore:                 Ok   Disabled:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 엔드포인트별 정책 적용 상태 확인
 kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- cilium endpoint list 2>/dev/null | head -10
 ```
 
-```text
-ENDPOINT   POLICY (ingress)   POLICY (egress)   IDENTITY   LABELS (source:key[=value])
-1234       Enabled            Enabled           12345      k8s:app=nginx-web
-```
+> **예시(참조) — ENDPOINT   POLICY (ingress)   POLICY (egress) :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 Policy가 `Enabled`가 아닌 `Disabled`로 표시되면 정책이 적용되지 않은 것이다. `cilium policy get` 명령으로 로드된 정책을 확인한다.
 
@@ -618,9 +546,7 @@ volumes:
 kubectl exec -n demo <pod-name> -- touch /test-file 2>&1
 ```
 
-```text
-touch: /test-file: Read-only file system
-```
+> **예시(참조) — touch: /test-file: Read-only file system:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # tmp 디렉토리 쓰기 테스트 (성공해야 한다)
@@ -628,24 +554,16 @@ kubectl exec -n demo <pod-name> -- touch /tmp/test-file 2>&1
 echo $?
 ```
 
-```text
-0
-```
+> **예시(참조) — 0:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **문제: capabilities 설정 확인**
 
 ```bash
 # 컨테이너의 실제 capabilities 확인
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- cat /proc/1/status | grep Cap
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- cat /proc/1/status | grep Cap
 ```
 
-```text
-CapInh: 00000000a80425fb
-CapPrm: 00000000a80425fb
-CapEff: 00000000a80425fb
-CapBnd: 00000000a80425fb
-CapAmb: 0000000000000000
-```
+> **예시(참조) — CapInh: 00000000a80425fb:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 이 16진수 값을 디코딩하여 어떤 capabilities가 활성화되어 있는지 확인할 수 있다.
 
@@ -654,9 +572,7 @@ CapAmb: 0000000000000000
 capsh --decode=00000000a80425fb 2>/dev/null
 ```
 
-```text
-0x00000000a80425fb=cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_net_bind_service,cap_net_raw,cap_sys_chroot,cap_mknod,cap_audit_write,cap_setfcap
-```
+> **참조 — audit 로깅(설정 의존):** 0x00000000a80425fb=cap_chown,cap_dac_override, ...
 
 `cap_net_raw`가 활성화되어 있으면 ARP 스푸핑이 가능하다. `capabilities.drop: ["ALL"]`로 모든 capabilities를 제거하고, 필요한 것만 `capabilities.add`로 추가하는 것이 권장된다.
 
@@ -670,21 +586,16 @@ capsh --decode=00000000a80425fb 2>/dev/null
 **1단계: 컨테이너 런타임 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo crictl version'
+ssh dev-master 'sudo crictl version'
 ```
 
-예상 출력:
-```
-Version:  0.1.0
-RuntimeName:  containerd
-RuntimeVersion:  v1.7.x
-RuntimeApiVersion:  v1
-```
+**검증 - 기대 출력:** 컨테이너 런타임이 `containerd` 이고 RuntimeVersion 이 표시된다 — Kubernetes 는 CRI 를 통해 containerd 와 통신한다(dev-master 실측).
+![crictl version — containerd 런타임 확인](images/kcsa04-42-crictl.png)
 
 **2단계: containerd 설정 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/containerd/config.toml | head -30'
+ssh dev-master 'sudo cat /etc/containerd/config.toml | head -30'
 ```
 
 containerd의 기본 런타임과 보안 관련 설정을 확인한다.
@@ -736,16 +647,11 @@ done
 
 ```bash
 # nginx Pod에 진입하여 프로세스 격리 확인
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- cat /proc/1/status | grep -E "^(Name|Pid|NSpid|NStgid)"
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- cat /proc/1/status | grep -E "^(Name|Pid|NSpid|NStgid)"
 ```
 
-예상 출력:
-```
-Name:   nginx
-Pid:    1
-NSpid:  1       12345
-NStgid: 1       12345
-```
+**검증 - 기대 출력:** 컨테이너 안에서 nginx 는 `Pid: 1` 로 보이지만 `NSpid` 두 번째 값(호스트 PID)은 다르다 — 이것이 PID namespace 격리다(dev 실측).
+![nginx 컨테이너 PID namespace 격리(/proc/1/status)](images/kcsa04-57-nginx-pidns.png)
 
 컨테이너 내부에서는 PID 1로 보이지만, 호스트에서는 다른 PID를 가진다. 이것이 PID namespace 격리이다.
 
@@ -996,23 +902,17 @@ kube-apiserver는 Kubernetes 클러스터의 유일한 진입점(single entry po
 
 ```bash
 # Static Pod 매니페스트 문법 확인
-ssh admin@<dev-master-ip> 'sudo python3 -c "import yaml; yaml.safe_load(open(\"/etc/kubernetes/manifests/kube-apiserver.yaml\"))" 2>&1'
+ssh dev-master 'sudo python3 -c "import yaml; yaml.safe_load(open(\"/etc/kubernetes/manifests/kube-apiserver.yaml\"))" 2>&1'
 ```
 
-```text
-# 정상 시: 출력 없음
-# 오류 시: yaml.scanner.ScannerError: ... 에러 메시지 출력
-```
+> **예시(참조) — 정상 시: 출력 없음:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # API Server 컨테이너 로그 확인
-ssh admin@<dev-master-ip> 'sudo crictl logs $(sudo crictl ps --name kube-apiserver -q 2>/dev/null) 2>&1 | tail -10'
+ssh dev-master 'sudo crictl logs $(sudo crictl ps --name kube-apiserver -q 2>/dev/null) 2>&1 | tail -10'
 ```
 
-```text
-I0115 10:30:00.000000       1 server.go:155] Version: v1.30.2
-I0115 10:30:00.100000       1 secure_serving.go:210] Serving securely on [::]:6443
-```
+> **예시(참조) — I0115 10:30:00.000000       1 server.go:155] V:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **문제: `--anonymous-auth=true` 상태에서의 보안 확인**
 
@@ -1021,17 +921,7 @@ I0115 10:30:00.100000       1 secure_serving.go:210] Serving securely on [::]:64
 curl -k https://<dev-master-ip>:6443/api/v1/namespaces --max-time 5 2>/dev/null | python3 -m json.tool 2>/dev/null | head -10
 ```
 
-```text
-{
-    "kind": "Status",
-    "apiVersion": "v1",
-    "metadata": {},
-    "status": "Failure",
-    "message": "namespaces is forbidden: User \"system:anonymous\" cannot list resource \"namespaces\"...",
-    "reason": "Forbidden",
-    "code": 403
-}
-```
+> **예시(참조) — {:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 RBAC가 활성화되어 있으면 `system:anonymous` 사용자의 접근이 403으로 거부된다. 그러나 `anonymous-auth=false`로 설정하면 인증 자체가 실패하여 401이 반환되므로 보안이 더 강화된다.
 
@@ -1045,7 +935,7 @@ RBAC가 활성화되어 있으면 `system:anonymous` 사용자의 접근이 403�
 **1단계: kube-apiserver Static Pod 매니페스트 전체 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'
 ```
 
 이 파일은 Static Pod으로 관리되는 API Server의 전체 설정을 포함하고 있다.
@@ -1053,61 +943,56 @@ ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yam
 **2단계: 인가(Authorization) 모드 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep authorization-mode
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep authorization-mode
 ```
 
-예상 출력:
-```
-    - --authorization-mode=Node,RBAC
-```
+**검증 - 기대 출력:** `--authorization-mode=Node,RBAC` — Node 인가(kubelet 요청 제어)와 RBAC(사용자·SA 접근 제어)가 함께 활성화돼 있다(dev-master 실측).
+![apiserver authorization-mode=Node,RBAC](images/kcsa04-56-authz-mode.png)
 
-- **Node**: kubelet이 자신의 Node에 할당된 Pod 정보만 읽을 수 있도록 제한한다.
-- **RBAC**: Role-Based Access Control로, 역할 기반의 세밀한 접근 제어를 제공한다.
+- **Node**: kubelet이 자신이 실행되는 Node에 할당된 Pod 정보와 해당 Node 객체만 접근할 수 있도록 제한한다. kubelet도 클라이언트 인증서로 API Server에 인증하기 때문에, Node 인가 모드가 없으면 모든 kubelet이 다른 노드의 Secret·Pod 정보까지 읽을 수 있다.
+- **RBAC(Role-Based Access Control)**: 역할(Role) 기반의 접근 제어로, "누가(Subject) 어떤 리소스(Resource)에 어떤 작업(Verb)을 할 수 있는가"를 정의한다.
 
-> **보안 참고**: `AlwaysAllow`가 설정되어 있다면 모든 요청이 허가되므로 매우 위험하다. 프로덕션에서는 반드시 RBAC를 사용해야 한다.
+> **인가 모드 순차 평가**: `authorization-mode=Node,RBAC`처럼 복수 모드를 지정하면 API Server는 순서대로 각 모드를 평가한다. 첫 번째 모드가 허용(ALLOW)을 반환하면 즉시 허용된다. 첫 번째 모드가 거부(DENY)를 반환하거나 해당 없음(NO OPINION)을 반환하면 다음 모드로 넘어간다. 모든 모드가 거부하거나 해당 없음을 반환하면 최종 거부된다. Webhook 모드는 외부 시스템에 인가 판단을 위임할 수 있다.
+
+> **보안 참고**: `AlwaysAllow`가 설정되어 있다면 모든 인증된 요청이 허가되므로 매우 위험하다. 프로덕션에서는 반드시 RBAC를 사용해야 한다.
 
 **3단계: Admission Controller 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep enable-admission
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep enable-admission
 ```
 
-예상 출력:
-```
-    - --enable-admission-plugins=NodeRestriction
-```
+**검증 - 기대 출력:** `--enable-admission-plugins` 에 `NodeRestriction` 이 포함돼 있다(dev-master 실측).
+![apiserver enable-admission-plugins — NodeRestriction](images/kcsa04-11-admission.png)
 
-NodeRestriction Admission Controller의 역할:
-- kubelet이 자신의 Node 레이블 중 `node-restriction.kubernetes.io/` 접두사가 있는 레이블만 수정할 수 있도록 제한한다.
-- kubelet이 다른 Node의 객체를 수정하는 것을 방지한다.
+NodeRestriction Admission Controller는 두 가지 제약을 시행한다.
+
+1. **노드 간 격리**: kubelet은 자신이 실행되는 Node 객체만 수정·삭제할 수 있다. 다른 노드 객체는 인증이 되더라도 접근 자체가 거부된다.
+2. **레이블 제약**: kubelet이 자신의 Node 레이블을 수정할 때, `node-restriction.kubernetes.io/` 접두사가 없는 레이블(예: `disktype=ssd`)의 변경은 거부된다. `node-restriction.kubernetes.io/my-label=value`는 설정할 수 있지만, 이 접두사 없이 임의 레이블을 달면 kubelet을 침해한 공격자가 레이블 기반 스케줄링 정책(nodeSelector, affinity)을 조작할 수 있기 때문이다.
+
+> **인가 vs Admission Controller 계층 구분**: `--authorization-mode=Node,RBAC`는 "요청이 허용되는가"를 결정하는 인가(Authorization) 단계이다. `--enable-admission-plugins=NodeRestriction`은 인가 이후 "요청의 내용이 규칙을 만족하는가"를 검증하는 Admission Control 단계이다. 두 단계는 독립적으로 동작하며, 인가를 통과했어도 Admission Controller가 거부하면 요청은 최종 거부된다.
 
 **4단계: 익명 인증(Anonymous Auth) 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep anonymous-auth
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep anonymous-auth
 ```
 
-예상 출력:
-```
-    - --anonymous-auth=true
-```
+**검증 - 기대 출력:** `--anonymous-auth` 플래그를 확인한다. 플래그가 없으면 기본값 `true` 다(dev-master 실측).
+![apiserver anonymous-auth 설정](images/kcsa04-16-anon-auth.png)
 
-또는 해당 플래그가 없을 수 있다 (기본값은 true이다).
+플래그가 출력되지 않을 수도 있다(기본값은 true이다).
 
 > **보안 참고**: `anonymous-auth=true`는 인증되지 않은 요청을 `system:anonymous` 사용자로 처리한다. 단, RBAC에 의해 접근 권한이 제한되므로 즉각적인 위험은 아니지만, 프로덕션에서는 `false`로 설정하는 것이 권장된다.
 
 **5단계: API Server 인증 설정 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "client-ca-file|service-account-key|service-account-issuer|token-auth"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "client-ca-file|service-account-key|service-account-issuer|token-auth"
 ```
 
-예상 출력:
-```
-    - --client-ca-file=/etc/kubernetes/pki/ca.crt
-    - --service-account-key-file=/etc/kubernetes/pki/sa.pub
-    - --service-account-issuer=https://kubernetes.default.svc.cluster.local
-```
+**검증 - 기대 출력:** 클라이언트 인증서 검증용 CA(`client-ca-file`), SA 토큰 검증 공개키(`service-account-key-file`), 토큰 발급자(`service-account-issuer`)를 확인한다(dev-master 실측).
+![apiserver 인증 관련 플래그(client-ca·service-account)](images/kcsa04-17-apiserver-auth.png)
 
 - `client-ca-file`: 클라이언트 인증서를 검증하는 CA 인증서이다.
 - `service-account-key-file`: ServiceAccount 토큰 서명을 검증하는 공개키이다.
@@ -1115,19 +1000,16 @@ ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yam
 **6단계: API Server TLS 설정 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "tls-cert-file|tls-private-key"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "tls-cert-file|tls-private-key"
 ```
 
-예상 출력:
-```
-    - --tls-cert-file=/etc/kubernetes/pki/apiserver.crt
-    - --tls-private-key-file=/etc/kubernetes/pki/apiserver-key.pem
-```
+**검증 - 기대 출력:** API Server 의 TLS 서버 인증서(`tls-cert-file`)와 개인키(`tls-private-key-file`) 경로를 확인한다(dev-master 실측).
+![apiserver TLS 인증서·개인키 경로](images/kcsa04-18-apiserver-tls.png)
 
 **7단계: Audit 로깅 설정 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "audit-policy|audit-log"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -E "audit-policy|audit-log"
 ```
 
 audit 관련 설정이 없다면, API Server의 감사 로깅이 비활성화되어 있는 것이다. 이는 실습 6.2에서 직접 설정해 볼 것이다.
@@ -1135,21 +1017,12 @@ audit 관련 설정이 없다면, API Server의 감사 로깅이 비활성화되
 **8단계: API Server 접근 테스트**
 
 ```bash
-# 인증 없이 API Server에 접근 시도
-curl -k https://<dev-master-ip>:6443/api/v1/namespaces --max-time 5
+# 인증 없이 API Server에 접근 시도 (tart ip로 IP 자동 치환)
+curl -k https://$(tart ip dev-master):6443/api/v1/namespaces --max-time 5
 ```
 
-예상 출력:
-```json
-{
-  "kind": "Status",
-  "apiVersion": "v1",
-  "status": "Failure",
-  "message": "namespaces is forbidden: User \"system:anonymous\" cannot list resource \"namespaces\" ...",
-  "reason": "Forbidden",
-  "code": 403
-}
-```
+**검증 - 기대 출력:** 인증 없이 접근하면 `system:anonymous` 사용자로 처리되어 RBAC 가 차단한다 — `Forbidden`(code 403) JSON 이 반환된다(dev 실측).
+![익명 API 접근 — system:anonymous Forbidden 403](images/kcsa04-19-anon-403.png)
 
 anonymous-auth가 true여도, RBAC가 접근을 차단하는 것을 확인할 수 있다.
 
@@ -1166,53 +1039,6 @@ anonymous-auth가 true여도, RBAC가 접근을 차단하는 것을 확인할 �
 - Admission Controllers
 - Audit Logging
 
-#### 등장 배경과 기존 한계점
-
-kube-apiserver는 Kubernetes 클러스터의 유일한 진입점(single entry point)이다. 모든 컴포넌트(kubectl, kubelet, controller-manager, scheduler, 외부 시스템)가 API Server를 통해 클러스터와 상호작용한다. 이 중앙 집중형 설계는 보안 관점에서 장단점이 명확하다.
-
-장점: 단일 지점에서 인증, 인가, 감사를 통합 관리할 수 있다. 방화벽 규칙을 API Server 포트(6443)에만 집중할 수 있다.
-단점: API Server가 침해되면 전체 클러스터가 침해된다. 이를 "Single Point of Failure"라 한다. 따라서 API Server의 보안 설정은 클러스터 보안에서 가장 중요한 요소이다.
-
-초기 Kubernetes에서는 `--insecure-port=8080` 플래그로 인증 없는 HTTP 포트를 열어 개발 편의를 제공하였다. 이 포트는 인증과 인가를 모두 우회하므로 극도로 위험했다. Kubernetes 1.20에서 deprecated, 1.24에서 완전히 제거되었다.
-
-#### 공격-방어 매핑
-
-| 공격 벡터 | API Server 플래그 | 방어 효과 |
-|----------|-----------------|----------|
-| 미인증 API 접근 | `--anonymous-auth=false` | 인증되지 않은 요청 차단 |
-| 권한 없는 리소스 접근 | `--authorization-mode=Node,RBAC` | 역할 기반 접근 제어 |
-| kubelet의 다른 노드 데이터 접근 | `--enable-admission-plugins=NodeRestriction` | 노드 간 접근 격리 |
-| TLS 미적용 통신 도청 | `--tls-cert-file`, `--tls-private-key-file` | 전송 중 데이터 암호화 |
-| Secret 접근 추적 불가 | `--audit-policy-file`, `--audit-log-path` | 감사 로그 기록 |
-| etcd 평문 저장 | `--encryption-provider-config` | 저장 시 데이터 암호화 |
-
-#### 트러블슈팅 가이드
-
-**문제: API Server 인증서 만료로 접근 불가**
-
-```bash
-# 인증서 만료일 확인
-ssh admin@<dev-master-ip> 'sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -dates'
-```
-
-```text
-notBefore=Jan 15 10:00:00 2024 GMT
-notAfter=Jan 15 10:00:00 2025 GMT
-```
-
-만료된 경우:
-```bash
-ssh admin@<dev-master-ip> 'sudo kubeadm certs renew apiserver'
-```
-
-```text
-[renew] Reading configuration from the cluster...
-[renew] Creating new CSR for the apiserver serving cert and key
-certificate for serving the Kubernetes API renewed
-```
-
-갱신 후 API Server가 새 인증서를 로드하도록 Static Pod가 자동 재시작된다.
-
 ---
 
 ### Lab 2.2: etcd 보안 확인 (인증서 경로, 접근 제한)
@@ -1224,9 +1050,9 @@ etcd는 CoreOS(현 Red Hat)가 개발한 분산 키-값 저장소이다. Kuberne
 etcd 보안이 중요해진 배경은 다음과 같다. 초기 Kubernetes 배포에서는 etcd를 TLS 없이 운영하거나, API Server와 동일한 노드에서 localhost로만 접근하는 방식이 일반적이었다. 그러나 etcd에 직접 접근할 수 있는 공격자는 API Server의 인증/인가를 완전히 우회하여 모든 데이터를 읽고 수정할 수 있다. 특히 Secret은 etcd에 base64 인코딩(암호화 아님)으로 저장되므로, etcd 접근은 곧 모든 Secret 탈취를 의미한다.
 
 이 위험에 대응하기 위해 다음 보안 메커니즘이 도입되었다:
-1. etcd TLS(서버/클라이언트/피어): 통신 암호화 및 상호 인증
-2. Encryption at Rest(EncryptionConfiguration): etcd 저장 데이터 암호화
-3. KMS v2: 외부 키 관리 서비스와 연동한 봉투 암호화(Envelope Encryption)
+1. etcd TLS(서버/클라이언트/피어): 통신 암호화 및 상호 인증(TLS handshake — X.509 인증서를 교환해 상대방을 검증하고 세션 키를 협상하는 절차)
+2. **Encryption at Rest(저장 시 암호화)**: etcd 디스크에 기록되는 Secret·ConfigMap 등의 데이터를 AES-GCM 같은 알고리즘으로 암호화한다. etcd 데이터 파일을 직접 읽어도 암호문만 보이며, API Server가 가진 암호화 키 없이는 복호화할 수 없다. 비교: TLS(전송 중 암호화)는 API Server ↔ etcd 통신 구간만 보호하며, etcd 디스크에 기록된 이후에는 효과가 없다.
+3. **KMS v2(Kubernetes 1.27+)**: 외부 키 관리 서비스(AWS KMS, HashiCorp Vault 등)와 연동한 봉투 암호화(Envelope Encryption)를 제공한다. 봉투 암호화는 편지봉투 구조와 유사하다. 실제 데이터는 DEK(Data Encryption Key, 데이터 암호화 키)로 암호화하고, 그 DEK 자체를 KEK(Key Encryption Key, 키 암호화 키 — 외부 KMS가 관리하는 마스터 키)로 한 번 더 암호화하여 저장한다. etcd에는 암호화된 데이터와 암호화된 DEK만 기록되므로, KEK를 가진 외부 KMS 없이는 복호화할 수 없다. KMS v1 대비 v2는 gRPC API를 사용하고, DEK를 로컬 캐시해 API Server 재시작 시에도 복호화가 가능하다.
 
 #### 공격-방어 매핑
 
@@ -1243,7 +1069,7 @@ etcd 보안이 중요해진 배경은 다음과 같다. 초기 Kubernetes 배포
 **문제 1: etcd 클러스터 상태 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
+ssh dev-master 'sudo ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
@@ -1251,30 +1077,23 @@ ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
   endpoint health'
 ```
 
-```text
-https://127.0.0.1:2379 is healthy: successfully committed proposal: took = 2.5ms
-```
+> **예시(참조) — https://127.0.0.1:2379 is healthy: successfull:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **문제 2: etcd TLS 인증서 불일치**
 
 ```bash
 # 인증서의 CN(Common Name) 확인
-ssh admin@<dev-master-ip> 'sudo openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -subject'
+ssh dev-master 'sudo openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -subject'
 ```
 
-```text
-subject=CN = dev-master
-```
+> **예시(참조) — subject=CN = dev-master:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 인증서의 SAN 확인
-ssh admin@<dev-master-ip> 'sudo openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -text' | grep -A1 "Subject Alternative Name"
+ssh dev-master 'sudo openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -text' | grep -A1 "Subject Alternative Name"
 ```
 
-```text
-            X509v3 Subject Alternative Name:
-                DNS:dev-master, DNS:localhost, IP Address:192.168.64.4, IP Address:127.0.0.1
-```
+> **예시(참조) — X509v3 Subject Alternative Name::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 listen-client-urls의 IP가 SAN에 포함되어 있지 않으면 TLS 핸드셰이크가 실패한다. 이 경우 인증서를 재발급해야 한다.
 
@@ -1288,24 +1107,17 @@ listen-client-urls의 IP가 SAN에 포함되어 있지 않으면 TLS 핸드셰�
 **1단계: etcd Static Pod 매니페스트 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/etcd.yaml'
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/etcd.yaml'
 ```
 
 **2단계: etcd TLS 인증서 설정 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -E "cert-file|key-file|trusted-ca"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -E "cert-file|key-file|trusted-ca"
 ```
 
-예상 출력:
-```
-    - --cert-file=/etc/kubernetes/pki/etcd/server.crt
-    - --key-file=/etc/kubernetes/pki/etcd/server.key
-    - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
-    - --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
-    - --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
-    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
-```
+**검증 - 기대 출력:** 서버 TLS(`cert-file`/`key-file`), 피어 TLS(`peer-*`), 검증 CA(`trusted-ca-file`/`peer-trusted-ca-file`)가 모두 설정돼 있다(dev-master 실측).
+![etcd TLS 인증서 설정(server·peer·ca)](images/kcsa04-20-etcd-tls.png)
 
 각 설정의 의미:
 - `cert-file` / `key-file`: etcd 서버의 TLS 인증서와 개인키이다. 클라이언트(API Server)가 etcd에 접속할 때 서버 인증에 사용된다.
@@ -1316,60 +1128,40 @@ ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep 
 **3단계: etcd 클라이언트 URL 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -E "listen-client|advertise-client"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -E "listen-client|advertise-client"
 ```
 
-예상 출력:
-```
-    - --listen-client-urls=https://127.0.0.1:2379,https://<dev-master-ip>:2379
-    - --advertise-client-urls=https://<dev-master-ip>:2379
-```
+**검증 - 기대 출력:** `listen-client-urls`·`advertise-client-urls` 가 모두 `https://` 다 — etcd 클라이언트 통신이 TLS 로 암호화된다. 노드 IP 는 환경별로 다르다(dev-master 실측).
+![etcd 클라이언트 URL(https TLS)](images/kcsa04-21-etcd-urls.png)
 
 `listen-client-urls`에 `https://`가 사용되고 있어 모든 클라이언트 통신이 TLS로 암호화된다.
 
 **4단계: API Server → etcd 접속 인증서 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep etcd
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep etcd
 ```
 
-예상 출력:
-```
-    - --etcd-servers=https://127.0.0.1:2379
-    - --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt
-    - --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt
-    - --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key
-```
+**검증 - 기대 출력:** API Server 는 전용 클라이언트 인증서(`apiserver-etcd-client.crt`)로 etcd(`https://127.0.0.1:2379`)에 접속한다(dev-master 실측).
+![apiserver→etcd 접속 인증서 설정](images/kcsa04-22-apiserver-etcd.png)
 
 API Server는 전용 클라이언트 인증서(`apiserver-etcd-client.crt`)를 사용하여 etcd에 접근한다.
 
 **5단계: etcd 인증서 파일 존재 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo ls -la /etc/kubernetes/pki/etcd/'
+ssh dev-master 'sudo ls -la /etc/kubernetes/pki/etcd/'
 ```
 
-예상 출력:
-```
-total XX
-drwxr-xr-x 2 root root ... .
-drwxr-xr-x 3 root root ... ..
--rw-r--r-- 1 root root ... ca.crt
--rw------- 1 root root ... ca.key
--rw-r--r-- 1 root root ... healthcheck-client.crt
--rw------- 1 root root ... healthcheck-client.key
--rw-r--r-- 1 root root ... peer.crt
--rw------- 1 root root ... peer.key
--rw-r--r-- 1 root root ... server.crt
--rw------- 1 root root ... server.key
-```
+**검증 - 기대 출력:** `.crt` 는 `644`, `.key` 는 `600`(소유자만 읽기) 권한이다 — 개인키가 다른 사용자에게 노출되지 않는다(dev-master 실측).
+![etcd PKI 디렉터리 — 인증서·키 파일 권한](images/kcsa04-23-etcd-pki.png)
 
 > **보안 점검**: `.key` 파일의 권한이 `600`(소유자만 읽기/쓰기)인지 확인한다. 다른 사용자가 읽을 수 있다면 보안 위험이다.
 
 **6단계: etcd 데이터 암호화(Encryption at Rest) 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider
 ```
 
 해당 플래그가 없다면, etcd에 저장된 Secret 등의 민감 데이터가 암호화되지 않은 상태(평문)로 저장되어 있는 것이다.
@@ -1378,7 +1170,7 @@ ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yam
 
 ```bash
 # etcd에서 Secret 데이터를 직접 조회 (인증서 필요)
-ssh admin@<dev-master-ip> 'sudo ETCDCTL_API=3 etcdctl \
+ssh dev-master 'sudo ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
@@ -1439,21 +1231,16 @@ kubelet 보안의 발전 과정:
 curl -k https://<dev-master-ip>:10250/pods --max-time 5 2>/dev/null
 ```
 
-```text
-Unauthorized
-```
+> **예시(참조) — Unauthorized:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `Unauthorized`가 반환되면 anonymous 인증이 비활성화된 것이다. 만약 Pod 목록이 반환되면 anonymous 인증이 활성화되어 있으므로 즉시 수정해야 한다.
 
 ```bash
 # kubelet 설정에서 anonymous 인증 상태 확인
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml | grep -A2 "anonymous"'
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml | grep -A2 "anonymous"'
 ```
 
-```text
-  anonymous:
-    enabled: false
-```
+> **예시(참조) — anonymous::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **문제: readOnlyPort가 열려 있는지 확인**
 
@@ -1462,10 +1249,7 @@ ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml | grep -A2 "ano
 curl -s http://<dev-master-ip>:10255/pods --max-time 3 2>/dev/null | head -5
 ```
 
-```text
-# readOnlyPort: 0 이면 연결 거부됨 (정상)
-curl: (7) Failed to connect to <dev-master-ip> port 10255: Connection refused
-```
+> **예시(참조) — readOnlyPort: 0 이면 연결 거부됨 (정상):** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 readOnlyPort가 열려 있으면 인증 없이 다음 정보가 노출된다:
 - `/pods`: 노드에서 실행 중인 모든 Pod 목록
@@ -1477,27 +1261,17 @@ readOnlyPort가 열려 있으면 인증 없이 다음 정보가 노출된다:
 
 ```bash
 # Master 노드 설정
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml | grep -E "anonymous|authorization|readOnly" -A1'
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml | grep -E "anonymous|authorization|readOnly" -A1'
 ```
 
-```text
-  anonymous:
-    enabled: false
-  mode: Webhook
-readOnlyPort: 0
-```
+> **예시(참조) — anonymous::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # Worker 노드 설정 (동일해야 한다)
-ssh admin@<dev-worker1-ip> 'sudo cat /var/lib/kubelet/config.yaml | grep -E "anonymous|authorization|readOnly" -A1'
+ssh dev-worker1 'sudo cat /var/lib/kubelet/config.yaml | grep -E "anonymous|authorization|readOnly" -A1'
 ```
 
-```text
-  anonymous:
-    enabled: false
-  mode: Webhook
-readOnlyPort: 0
-```
+> **예시(참조) — anonymous::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 두 노드의 설정이 동일하지 않으면 Worker 노드가 보안 공백이 된다.
 
@@ -1511,13 +1285,13 @@ readOnlyPort: 0
 **1단계: kubelet 설정 파일 전체 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml'
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml'
 ```
 
 **2단계: 인증 설정 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml' | grep -A 5 authentication
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml' | grep -A 5 authentication
 ```
 
 예상 출력:
@@ -1539,7 +1313,7 @@ authentication:
 **3단계: 인가 설정 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml' | grep -A 3 authorization
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml' | grep -A 3 authorization
 ```
 
 예상 출력:
@@ -1557,7 +1331,7 @@ authorization:
 **4단계: kubelet의 read-only 포트 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml' | grep readOnlyPort
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml' | grep readOnlyPort
 ```
 
 예상 출력:
@@ -1570,13 +1344,13 @@ readOnlyPort: 0
 **5단계: kubelet 인증서 경로 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml' | grep -E "tlsCertFile|tlsPrivateKey"
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml' | grep -E "tlsCertFile|tlsPrivateKey"
 ```
 
 **6단계: Worker 노드 kubelet 설정 비교**
 
 ```bash
-ssh admin@<dev-worker1-ip> 'sudo cat /var/lib/kubelet/config.yaml' | grep -A 5 -E "authentication|authorization"
+ssh dev-worker1 'sudo cat /var/lib/kubelet/config.yaml' | grep -A 5 -E "authentication|authorization"
 ```
 
 Master와 Worker 노드의 kubelet 설정이 동일하게 보안이 적용되어 있는지 비교한다.
@@ -1584,14 +1358,12 @@ Master와 Worker 노드의 kubelet 설정이 동일하게 보안이 적용되어
 **7단계: kubelet API 직접 접근 테스트**
 
 ```bash
-# 인증 없이 kubelet API에 접근 시도
-curl -k https://<dev-master-ip>:10250/pods --max-time 5
+# 인증 없이 kubelet API에 접근 시도 (tart ip로 IP 자동 치환)
+curl -k https://$(tart ip dev-master):10250/pods --max-time 5
 ```
 
-예상 출력:
-```
-Unauthorized
-```
+**검증 - 기대 출력:** `Unauthorized` — kubelet 의 anonymous 인증이 비활성화돼 있어 인증 없는 요청이 차단된다(dev 실측).
+![kubelet 10250 익명 접근 — Unauthorized](images/kcsa04-43-kubelet-10250.png)
 
 anonymous 인증이 비활성화되어 있으므로 접근이 차단된다.
 
@@ -1620,21 +1392,24 @@ PKI가 Kubernetes에 도입된 이유: 초기 Kubernetes에서는 컴포넌트 �
 3. **인증(Authentication)**: 통신 상대방이 정당한 주체임을 검증한다.
 
 Kubernetes PKI의 구조:
-```
-Root CA (ca.crt/ca.key)
-├── API Server 인증서 (apiserver.crt)
-├── API Server → kubelet 클라이언트 (apiserver-kubelet-client.crt)
-├── API Server → etcd 클라이언트 (apiserver-etcd-client.crt)
-└── ServiceAccount 토큰 서명 키 (sa.key/sa.pub)
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  rootca["Root CA\n(ca.crt/ca.key)"]
+  rootca --> apiserver["API Server 인증서\n(apiserver.crt)"]
+  rootca --> kubeletcli["API Server → kubelet 클라이언트\n(apiserver-kubelet-client.crt)"]
+  rootca --> etcdcli["API Server → etcd 클라이언트\n(apiserver-etcd-client.crt)"]
+  rootca --> sakey["ServiceAccount 토큰 서명 키\n(sa.key/sa.pub)"]
 
-etcd CA (etcd/ca.crt/ca.key)
-├── etcd 서버 인증서 (etcd/server.crt)
-├── etcd 피어 인증서 (etcd/peer.crt)
-└── etcd 헬스체크 클라이언트 (etcd/healthcheck-client.crt)
+  etcdca["etcd CA\n(etcd/ca.crt/ca.key)"]
+  etcdca --> etcdsrv["etcd 서버 인증서\n(etcd/server.crt)"]
+  etcdca --> etcdpeer["etcd 피어 인증서\n(etcd/peer.crt)"]
+  etcdca --> etcdhc["etcd 헬스체크 클라이언트\n(etcd/healthcheck-client.crt)"]
 
-Front Proxy CA (front-proxy-ca.crt/front-proxy-ca.key)
-└── Front Proxy 클라이언트 (front-proxy-client.crt)
+  fpca["Front Proxy CA\n(front-proxy-ca.crt/front-proxy-ca.key)"]
+  fpca --> fpcli["Front Proxy 클라이언트\n(front-proxy-client.crt)"]
 ```
+_그림 2. Kubernetes PKI의 CA별 인증서 서명 계층._
 
 #### 공격-방어 매핑
 
@@ -1653,62 +1428,38 @@ Front Proxy CA (front-proxy-ca.crt/front-proxy-ca.key)
 
 ```bash
 # 인증서 만료 여부 확인
-ssh admin@<dev-master-ip> 'sudo kubeadm certs check-expiration 2>/dev/null'
+ssh dev-master 'sudo kubeadm certs check-expiration 2>/dev/null'
 ```
 
-```text
-CERTIFICATE                EXPIRES                  RESIDUAL TIME
-admin.conf                 Jan 15, 2025 10:00 UTC   340d
-apiserver                  Jan 15, 2025 10:00 UTC   340d
-```
+**검증 - 기대 출력:** 인증서별 만료일·잔여기간을 표로 보여준다. 만료가 임박한 인증서가 있으면 `kubeadm certs renew` 로 갱신한다(dev-master 실측).
+![kubeadm certs check-expiration — 인증서 만료 현황](images/kcsa04-44-kubeadm-certs2.png)
 
 만료된 인증서가 있는 경우:
 ```bash
 # 전체 인증서 갱신
-ssh admin@<dev-master-ip> 'sudo kubeadm certs renew all'
+ssh dev-master 'sudo kubeadm certs renew all'
 ```
 
-```text
-[renew] Reading configuration from the cluster...
-certificate embedded in admin.conf renewed
-certificate for serving the Kubernetes API renewed
-certificate the apiserver uses to access etcd renewed
-certificate for the apiserver to connect to kubelet renewed
-...
-Done renewing certificates. You must restart the kube-apiserver, kube-controller-manager,
-kube-scheduler and etcd, so that they can use the new certificates.
-```
+> **예시(참조) — [renew] Reading configuration from the cluster:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 갱신 후 Static Pod 재시작이 필요하다:
 ```bash
 # Static Pod 매니페스트를 임시 이동하여 재시작 유도
-ssh admin@<dev-master-ip> 'sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/ && sleep 5 && sudo mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/'
+ssh dev-master 'sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/ && sleep 5 && sudo mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/'
 ```
 
 **문제: 개인키 파일 권한 점검**
 
 ```bash
 # 개인키 파일의 권한이 600인지 확인
-ssh admin@<dev-master-ip> 'sudo stat -c "%a %n" /etc/kubernetes/pki/*.key /etc/kubernetes/pki/etcd/*.key 2>/dev/null'
+ssh dev-master 'sudo stat -c "%a %n" /etc/kubernetes/pki/*.key /etc/kubernetes/pki/etcd/*.key 2>/dev/null'
 ```
 
-```text
-600 /etc/kubernetes/pki/apiserver.key
-600 /etc/kubernetes/pki/apiserver-etcd-client.key
-600 /etc/kubernetes/pki/apiserver-kubelet-client.key
-600 /etc/kubernetes/pki/ca.key
-600 /etc/kubernetes/pki/front-proxy-ca.key
-600 /etc/kubernetes/pki/front-proxy-client.key
-600 /etc/kubernetes/pki/sa.key
-600 /etc/kubernetes/pki/etcd/ca.key
-600 /etc/kubernetes/pki/etcd/healthcheck-client.key
-600 /etc/kubernetes/pki/etcd/peer.key
-600 /etc/kubernetes/pki/etcd/server.key
-```
+> **예시(참조) — 600 /etc/kubernetes/pki/apiserver.key:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 권한이 600이 아닌 파일이 있으면 즉시 수정한다:
 ```bash
-ssh admin@<dev-master-ip> 'sudo chmod 600 /etc/kubernetes/pki/*.key /etc/kubernetes/pki/etcd/*.key'
+ssh dev-master 'sudo chmod 600 /etc/kubernetes/pki/*.key /etc/kubernetes/pki/etcd/*.key'
 ```
 
 #### 학습 목표
@@ -1721,30 +1472,11 @@ ssh admin@<dev-master-ip> 'sudo chmod 600 /etc/kubernetes/pki/*.key /etc/kuberne
 **1단계: PKI 디렉토리 전체 조회**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo ls -la /etc/kubernetes/pki/'
+ssh dev-master 'sudo ls -la /etc/kubernetes/pki/'
 ```
 
-예상 출력:
-```
-total XX
-drwxr-xr-x 3 root root ... .
-drwxrwxr-x 4 root root ... ..
--rw-r--r-- 1 root root ... apiserver.crt
--rw------- 1 root root ... apiserver.key
--rw-r--r-- 1 root root ... apiserver-etcd-client.crt
--rw------- 1 root root ... apiserver-etcd-client.key
--rw-r--r-- 1 root root ... apiserver-kubelet-client.crt
--rw------- 1 root root ... apiserver-kubelet-client.key
--rw-r--r-- 1 root root ... ca.crt
--rw------- 1 root root ... ca.key
-drwxr-xr-x 2 root root ... etcd
--rw-r--r-- 1 root root ... front-proxy-ca.crt
--rw------- 1 root root ... front-proxy-ca.key
--rw-r--r-- 1 root root ... front-proxy-client.crt
--rw------- 1 root root ... front-proxy-client.key
--rw------- 1 root root ... sa.key
--rw-r--r-- 1 root root ... sa.pub
-```
+**검증 - 기대 출력:** Kubernetes PKI 디렉터리의 인증서(`.crt` 644)·개인키(`.key` 600)·etcd 하위 디렉터리가 보인다(dev-master 실측).
+![Kubernetes PKI 디렉터리 전체 목록](images/kcsa04-33-pki-ls.png)
 
 **2단계: 인증서 용도 매핑**
 
@@ -1764,36 +1496,31 @@ drwxr-xr-x 2 root root ... etcd
 
 ```bash
 # API Server 인증서 만료일 확인
-ssh admin@<dev-master-ip> 'sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -enddate'
+ssh dev-master 'sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -enddate'
 ```
 
-예상 출력:
-```
-notAfter=MMM DD HH:MM:SS YYYY GMT
-```
+**검증 - 기대 출력:** `notAfter=` 뒤에 apiserver 인증서 만료일이 표시된다(dev-master 실측, kubeadm 기본 인증서 유효기간 1년).
+![apiserver 인증서 만료일(openssl -enddate)](images/kcsa04-34-cert-enddate.png)
 
 ```bash
 # CA 인증서 만료일 확인
-ssh admin@<dev-master-ip> 'sudo openssl x509 -in /etc/kubernetes/pki/ca.crt -noout -enddate'
+ssh dev-master 'sudo openssl x509 -in /etc/kubernetes/pki/ca.crt -noout -enddate'
 ```
 
 ```bash
 # 모든 인증서 만료일을 한 번에 확인
-ssh admin@<dev-master-ip> 'for cert in /etc/kubernetes/pki/*.crt; do echo "=== $cert ==="; sudo openssl x509 -in $cert -noout -enddate; done'
+ssh dev-master 'for cert in /etc/kubernetes/pki/*.crt; do echo "=== $cert ==="; sudo openssl x509 -in $cert -noout -enddate; done'
 ```
 
 **4단계: 인증서 상세 정보 확인**
 
 ```bash
 # API Server 인증서의 Subject Alternative Names (SAN) 확인
-ssh admin@<dev-master-ip> 'sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text' | grep -A 5 "Subject Alternative Name"
+ssh dev-master 'sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text' | grep -A 5 "Subject Alternative Name"
 ```
 
-예상 출력:
-```
-            X509v3 Subject Alternative Name:
-                DNS:dev-master, DNS:kubernetes, DNS:kubernetes.default, DNS:kubernetes.default.svc, DNS:kubernetes.default.svc.cluster.local, IP Address:10.96.0.1, IP Address:192.168.64.X
-```
+**검증 - 기대 출력:** apiserver 인증서의 SAN(Subject Alternative Name)에 `kubernetes`·`kubernetes.default.svc.cluster.local` 등 DNS 와 kubernetes SVC IP·노드 IP 가 포함돼 있다(dev-master 실측, IP 는 환경별 상이).
+![apiserver 인증서 SAN 목록](images/kcsa04-35-cert-san.png)
 
 SAN에 포함된 이름/IP로만 API Server에 TLS 접속이 가능하다.
 
@@ -1801,35 +1528,21 @@ SAN에 포함된 이름/IP로만 API Server에 TLS 접속이 가능하다.
 
 ```bash
 # 개인키 파일의 권한 확인 — 600(소유자만 읽기/쓰기)이어야 안전하다
-ssh admin@<dev-master-ip> 'sudo stat -c "%a %n" /etc/kubernetes/pki/*.key'
+ssh dev-master 'sudo stat -c "%a %n" /etc/kubernetes/pki/*.key'
 ```
 
-예상 출력:
-```
-600 /etc/kubernetes/pki/apiserver.key
-600 /etc/kubernetes/pki/apiserver-etcd-client.key
-600 /etc/kubernetes/pki/apiserver-kubelet-client.key
-600 /etc/kubernetes/pki/ca.key
-600 /etc/kubernetes/pki/front-proxy-ca.key
-600 /etc/kubernetes/pki/front-proxy-client.key
-600 /etc/kubernetes/pki/sa.key
-```
+**검증 - 기대 출력:** 모든 개인키(`.key`) 파일 권한이 `600`(소유자만 읽기/쓰기)이다 — 다른 사용자가 키를 읽을 수 없다(dev-master 실측).
+![PKI 개인키 파일 권한(stat — 전부 600)](images/kcsa04-36-key-perms.png)
 
 **6단계: kubeadm 인증서 관리 명령어**
 
 ```bash
 # kubeadm으로 인증서 만료 정보 확인 (가능한 경우)
-ssh admin@<dev-master-ip> 'sudo kubeadm certs check-expiration' 2>/dev/null
+ssh dev-master 'sudo kubeadm certs check-expiration' 2>/dev/null
 ```
 
-예상 출력:
-```
-CERTIFICATE                EXPIRES                  RESIDUAL TIME   ...   EXTERNALLY MANAGED
-admin.conf                 MMM DD, YYYY HH:MM UTC   XXXd                  no
-apiserver                  MMM DD, YYYY HH:MM UTC   XXXd                  no
-apiserver-etcd-client      MMM DD, YYYY HH:MM UTC   XXXd                  no
-...
-```
+**검증 - 기대 출력:** kubeadm 이 관리하는 인증서별 만료일·잔여기간(RESIDUAL TIME)·외부관리 여부를 표로 보여준다 — 갱신은 `kubeadm certs renew` 로 한다(dev-master 실측).
+![kubeadm certs check-expiration — 인증서 만료 현황표](images/kcsa04-37-cert-expiration.png)
 
 #### 확인 문제
 1. Kubernetes PKI에서 CA 인증서(`ca.crt`)가 유출되면 어떤 보안 위험이 발생하는가?
@@ -1878,24 +1591,14 @@ CoreDNS가 보안에 중요한 이유: Kubernetes에서 서비스 간 통신은 
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 ```
 
-```text
-NAME                       READY   STATUS    RESTARTS   AGE
-coredns-xxxxxxx-xxxxx      1/1     Running   0          10d
-coredns-xxxxxxx-yyyyy      1/1     Running   0          10d
-```
+> **예시(참조) — NAME                       READY   STATUS    R:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # DNS 서비스 접근 테스트
 kubectl run dns-debug --image=busybox:1.36 --rm -it --restart=Never -- nslookup kubernetes.default.svc.cluster.local 2>/dev/null
 ```
 
-```text
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      kubernetes.default.svc.cluster.local
-Address 1: 10.96.0.1 kubernetes.default.svc.cluster.local
-```
+> **예시(참조) — Server:    10.96.0.10:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 DNS 조회가 실패하는 경우:
 1. CoreDNS Pod가 Running이 아닌지 확인한다.
@@ -1910,9 +1613,7 @@ DNS 조회가 실패하는 경우:
 kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}' | grep pods
 ```
 
-```text
-           pods insecure
-```
+> **예시(참조) — pods insecure:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 `pods insecure`는 Pod의 역방향 DNS 조회(IP → 이름)를 허용하되, 실제 Pod IP 매칭을 검증하지 않는다. `pods verified`로 변경하면 실제 존재하는 Pod IP만 응답하여 보안이 강화된다. `pods disabled`로 설정하면 Pod DNS 레코드를 완전히 비활성화한다.
 
@@ -1929,12 +1630,8 @@ kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}' | gr
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 ```
 
-예상 출력:
-```
-NAME                       READY   STATUS    RESTARTS   AGE
-coredns-xxxxxxx-xxxxx      1/1     Running   0          XXd
-coredns-xxxxxxx-yyyyy      1/1     Running   0          XXd
-```
+**검증 - 기대 출력:** CoreDNS Pod 2개가 Running 이다(고가용성을 위해 기본 2 레플리카, dev 실측).
+![CoreDNS Pod 상태](images/kcsa04-24-coredns-pods.png)
 
 **2단계: CoreDNS ConfigMap 확인**
 
@@ -1942,36 +1639,8 @@ coredns-xxxxxxx-yyyyy      1/1     Running   0          XXd
 kubectl get configmap coredns -n kube-system -o yaml
 ```
 
-예상 출력:
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns
-  namespace: kube-system
-data:
-  Corefile: |
-    .:53 {
-        errors
-        health {
-           lameduck 5s
-        }
-        ready
-        kubernetes cluster.local in-addr.arpa ip6.arpa {
-           pods insecure
-           fallthrough in-addr.arpa ip6.arpa
-           ttl 30
-        }
-        prometheus :9153
-        forward . /etc/resolv.conf {
-           max_concurrent 1000
-        }
-        cache 30
-        loop
-        reload
-        loadbalance
-    }
-```
+**검증 - 기대 출력:** CoreDNS 의 `Corefile` 설정이 보인다 — `kubernetes` 플러그인의 `pods insecure`, `forward`(업스트림 DNS), `cache` 등을 확인한다(dev 실측).
+![CoreDNS ConfigMap(Corefile) 내용](images/kcsa04-25-coredns-cm.png)
 
 **3단계: DNS 서비스 확인**
 
@@ -1979,30 +1648,21 @@ data:
 kubectl get svc -n kube-system kube-dns
 ```
 
-예상 출력:
-```
-NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
-kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   XXd
-```
+**검증 - 기대 출력:** CoreDNS 는 `kube-dns` 서비스로 노출되며 53/UDP·53/TCP·9153/TCP 포트를 연다. ClusterIP 는 클러스터 service CIDR 에 따라 다르다(dev 는 10.97.0.10).
+![kube-dns 서비스 — DNS ClusterIP·포트](images/kcsa04-26-kubedns-svc.png)
 
 CoreDNS는 `kube-dns`라는 이름의 서비스로 노출되며, 클러스터 내 모든 Pod의 DNS 조회는 이 서비스(10.96.0.10:53)를 통해 이루어진다.
 
 **4단계: DNS 조회 테스트**
 
 ```bash
-# demo 네임스페이스의 Pod에서 DNS 조회 테스트
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- nslookup httpbin.demo.svc.cluster.local 2>/dev/null || \
+# demo 네임스페이스의 Pod에서 DNS 조회 테스트 (nginx-web 컨테이너 이름은 nginx)
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- nslookup httpbin.demo.svc.cluster.local 2>/dev/null || \
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -n demo -- nslookup httpbin.demo.svc.cluster.local
 ```
 
-예상 출력:
-```
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      httpbin.demo.svc.cluster.local
-Address 1: 10.96.X.X httpbin.demo.svc.cluster.local
-```
+**검증 - 기대 출력:** nginx-web Pod 에서 `httpbin.demo.svc.cluster.local` 을 조회하면 kube-dns(dev 는 10.97.0.10)가 응답하고 httpbin 서비스 ClusterIP 를 반환한다 — 클러스터 내부 DNS 가 정상 동작한다(dev 실측).
+![Pod 내부 DNS 조회 — httpbin 서비스 이름 해석](images/kcsa04-27-dns-lookup.png)
 
 **5단계: CiliumNetworkPolicy에서의 DNS 허용 확인**
 
@@ -2085,10 +1745,7 @@ kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=cilium -
   cilium endpoint list 2>/dev/null | grep nginx
 ```
 
-```text
-ENDPOINT   POLICY (ingress)   POLICY (egress)   IDENTITY   LABELS
-1234       Enabled            Enabled           56789      k8s:app=nginx-web
-```
+> **예시(참조) — ENDPOINT   POLICY (ingress)   POLICY (egress) :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 POLICY가 `Disabled`이면 정책이 해당 엔드포인트에 적용되지 않은 것이다.
 
@@ -2097,10 +1754,7 @@ POLICY가 `Disabled`이면 정책이 해당 엔드포인트에 적용되지 않�
 kubectl get pod -n demo -l app=nginx-web --show-labels
 ```
 
-```text
-NAME                  READY   STATUS    RESTARTS   AGE   LABELS
-nginx-web-xxx-yyy     2/2     Running   0          10d   app=nginx-web,pod-template-hash=xxx
-```
+> **예시(참조) — NAME                  READY   STATUS    RESTAR:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 정책의 `endpointSelector.matchLabels`에 지정된 레이블이 Pod에 존재하는지 확인한다. 레이블이 불일치하면 정책이 적용되지 않는다.
 
@@ -2447,40 +2101,81 @@ spec:
 
 **2단계: 전체 트래픽 흐름 다이어그램**
 
-```
-                    ┌──────────────┐
-     world/cluster  │              │  world/cluster
-     ───── :80 ────>│  nginx-web   │
-                    │  (NodePort   │
-                    │   30080)     │
-                    └──┬───────┬───┘
-                       │       │
-              GET :80  │       │  :6379
-                       v       v
-                 ┌──────┐  ┌───────┐
-                 │httpbin│  │ redis │
-                 └──┬─┬──┘  └───────┘
-                    │ │
-         :5432 ─────┘ │ :5672        :8080
-                      │               │
-              ┌───────┘    ┌──────────┘
-              v            v
-         ┌─────────┐  ┌──────────┐
-         │rabbitmq │  │ keycloak │ <── world/cluster :8080
-         └─────────┘  │(NodePort │     (30880)
-                      │  30880)  │
-                      └────┬─────┘
-                           │ :5432
-                           v
-                      ┌──────────┐
-                      │ postgres │ <── httpbin :5432
-                      │ (pw:     │ <── keycloak :5432
-                      │  demo123)│
-                      └──────────┘
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  world(("world/cluster"))
+  nginx["nginx-web\n(NodePort 30080)"]
+  httpbin["httpbin"]
+  redis["redis"]
+  rabbitmq["rabbitmq"]
+  keycloak["keycloak\n(NodePort 30880)"]
+  postgres[("postgres\n(pw: demo123)")]
+  dns["kube-dns\n(kube-system)"]
+  allpod(("모든 Pod"))
+  istio(("istio-system"))
 
-     ──── 모든 Pod ──── :53/UDP ────> kube-dns (kube-system)
-     ──── istio-system ──── :15010,15012,15017 ────> 모든 Pod
+  world -->|":80"| nginx
+  nginx -->|"GET :80"| httpbin
+  nginx -->|":6379"| redis
+  httpbin -->|":5432"| postgres
+  httpbin -->|":5672"| rabbitmq
+  world -->|":8080 (30880)"| keycloak
+  keycloak -->|":5432"| postgres
+
+  allpod -.->|":53/UDP"| dns
+  istio -.->|":15010,15012,15017"| allpod
 ```
+_그림 3. 데모 워크로드 간 트래픽 흐름과 NodePort 노출._
+
+**3단계: 11개 정책 종합 검증 시나리오**
+
+개별 정책 분석 후, 정책들이 실제로 의도한 대로 동작하는지 한 번에 검증한다. 아래 스크립트는 허용/차단 시나리오를 표로 정리하여 확인하는 절차이다.
+
+```bash
+# 1단계: 허용된 Pod(nginx)와 차단되어야 하는 Pod(임시 busybox) 생성
+# nginx-web은 이미 실행 중이므로 아래는 busybox만 생성한다
+kubectl run verify-box --image=busybox:1.36 -n demo --restart=Never \
+  --labels="test=verify" -- sleep 600
+
+# 2단계: Pod 준비 대기 (Istio 사이드카 주입 포함 최대 60초)
+kubectl wait pod verify-box -n demo --for=condition=Ready --timeout=60s 2>/dev/null \
+  || echo "(주의) Pod 준비 시간 초과 — Istio 사이드카 주입이 완료되지 않았을 수 있다"
+
+# 3단계: nginx(허용된 소스)에서 각 대상으로 통신 시도
+echo "=== nginx → httpbin GET (허용 예상) ==="
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
+  curl -s -o /dev/null -w "%{http_code}" http://httpbin.demo.svc.cluster.local/get --max-time 5
+
+echo ""
+echo "=== nginx → redis 6379 (허용 예상) ==="
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
+  nc -z -w 3 redis.demo.svc.cluster.local 6379 && echo "open" || echo "closed"
+
+# 4단계: verify-box(허용 정책 없음)에서 각 대상으로 통신 시도 — 모두 차단 예상
+echo ""
+echo "=== verify-box → nginx 80 (차단 예상) ==="
+kubectl exec -n demo verify-box -- wget -qO- --timeout=5 http://nginx-web.demo.svc.cluster.local:80 2>&1 \
+  | grep -q "timed out" && echo "BLOCKED (정상)" || echo "ALLOWED (이상)"
+
+echo "=== verify-box → postgres 5432 (차단 예상) ==="
+kubectl exec -n demo verify-box -- nc -z -w 5 postgres.demo.svc.cluster.local 5432 2>&1 \
+  | grep -q "timed out" && echo "BLOCKED (정상)" || echo "ALLOWED (이상)"
+
+# 5단계: 정리
+kubectl delete pod verify-box -n demo --grace-period=0 --force 2>/dev/null
+```
+
+예상 결과 요약표:
+
+| 출발 Pod | 도착 Pod:포트 | 예상 결과 | 적용 정책 |
+|---------|-------------|---------|---------|
+| nginx-web | httpbin:80 GET | 허용 | allow-nginx-to-httpbin (L7 GET) |
+| nginx-web | httpbin:80 POST | 차단(403) | allow-nginx-to-httpbin (GET only) |
+| nginx-web | redis:6379 | 허용 | allow-nginx-to-redis |
+| nginx-web | postgres:5432 | 차단 | 허용 정책 없음 |
+| verify-box | nginx-web:80 | 차단 | default-deny-all(egress 없음) |
+| verify-box | postgres:5432 | 차단 | default-deny-all(egress 없음) |
 
 #### 확인 문제
 1. `endpointSelector: {}`의 의미는 무엇인가?
@@ -2499,6 +2194,8 @@ spec:
 ---
 
 ### Lab 3.2: Default Deny 정책 테스트 (busybox Pod에서 차단 확인)
+
+> 이 Lab은 Lab 3.1에서 분석한 `default-deny-all` 정책을 직접 검증하는 실습이다. 등장 배경과 정책의 설계 의도는 Lab 3.1의 등장 배경 절을 참조한다.
 
 #### 학습 목표
 - default-deny-all 정책이 실제로 트래픽을 차단하는지 검증한다.
@@ -2520,13 +2217,10 @@ kubectl run busybox-test --image=busybox:1.36 -n demo --restart=Never --labels="
 kubectl get pod busybox-test -n demo -o wide
 ```
 
-예상 출력:
-```
-NAME           READY   STATUS    RESTARTS   AGE   IP            NODE
-busybox-test   2/2     Running   0          30s   10.0.X.X      dev-worker1
-```
+**검증 - 기대 출력:** busybox-test Pod 가 Running 이고 IP·노드가 할당된다(dev 실측, istio 없는 환경이라 1/1).
+![busybox-test Pod 상태(test=deny 라벨)](images/kcsa04-30-busybox-pod.png)
 
-> **참고**: Istio 사이드카가 자동 주입되어 `2/2`로 표시될 수 있다.
+> **예시(참조) — Istio mTLS/sidecar:** Istio 서비스메시 환경에서는 istio-proxy 사이드카가 주입되어 `2/2` 로 보이고 PeerAuthentication(STRICT mTLS)을 확인할 수 있다(설치 환경 의존).
 
 **3단계: DNS 조회 테스트 (허용됨)**
 
@@ -2534,14 +2228,8 @@ busybox-test   2/2     Running   0          30s   10.0.X.X      dev-worker1
 kubectl exec -n demo busybox-test -- nslookup httpbin.demo.svc.cluster.local
 ```
 
-예상 출력:
-```
-Server:    10.96.0.10
-Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-
-Name:      httpbin.demo.svc.cluster.local
-Address 1: 10.96.X.X httpbin.demo.svc.cluster.local
-```
+**검증 - 기대 출력:** busybox-test 에 allow 정책이 없어도 DNS 조회는 성공한다 — default-deny-all 정책이 kube-system DNS egress 는 허용하기 때문이다(dev 실측).
+![busybox-test DNS 조회 성공(httpbin 이름 해석)](images/kcsa04-31-busybox-dns.png)
 
 DNS 조회는 default-deny-all 정책의 egress에서 허용되었으므로 성공한다.
 
@@ -2551,11 +2239,8 @@ DNS 조회는 default-deny-all 정책의 egress에서 허용되었으므로 성�
 kubectl exec -n demo busybox-test -- wget -O- --timeout=5 http://nginx-web.demo.svc.cluster.local:80 2>&1
 ```
 
-예상 출력:
-```
-Connecting to nginx-web.demo.svc.cluster.local:80 (10.96.X.X:80)
-wget: download timed out
-```
+**검증 - 기대 출력:** busybox-test 의 egress 가 차단되어 연결이 실패(timeout)한다. 아래 통합 캡처는 nginx-web·httpbin·redis·postgres·rabbitmq·keycloak·외부(example.com)로의 접근이 **모두 BLOCKED** 됨을 한 화면에 보여준다(dev 실측, 4~10단계의 결과를 통합).
+![busybox-test egress 전부 차단(zero-trust) — 6개 서비스+외부 BLOCKED](images/kcsa04-32-busybox-blocked.png)
 
 busybox-test Pod에는 nginx-web으로의 egress가 허용되지 않으므로 연결 시간 초과가 발생한다.
 
@@ -2565,11 +2250,7 @@ busybox-test Pod에는 nginx-web으로의 egress가 허용되지 않으므로 �
 kubectl exec -n demo busybox-test -- wget -O- --timeout=5 http://httpbin.demo.svc.cluster.local:80 2>&1
 ```
 
-예상 출력:
-```
-Connecting to httpbin.demo.svc.cluster.local:80 (10.96.X.X:80)
-wget: download timed out
-```
+**검증 - 기대 출력:** 연결 timeout(차단). 위 4단계 통합 캡처의 `httpbin:80 -> BLOCKED` 행 참조.
 
 **6단계: redis 접근 시도 (차단됨)**
 
@@ -2578,11 +2259,7 @@ kubectl exec -n demo busybox-test -- nc -z -w 5 redis.demo.svc.cluster.local 637
 echo "Exit code: $?"
 ```
 
-예상 출력:
-```
-nc: redis.demo.svc.cluster.local (10.96.X.X:6379): Connection timed out
-Exit code: 1
-```
+**검증 - 기대 출력:** 연결 timeout(차단, Exit code 1). 위 4단계 통합 캡처의 `redis:6379 -> BLOCKED` 행 참조.
 
 **7단계: postgres 접근 시도 (차단됨)**
 
@@ -2590,10 +2267,7 @@ Exit code: 1
 kubectl exec -n demo busybox-test -- nc -z -w 5 postgres.demo.svc.cluster.local 5432 2>&1
 ```
 
-예상 출력:
-```
-nc: postgres.demo.svc.cluster.local (10.96.X.X:5432): Connection timed out
-```
+**검증 - 기대 출력:** 연결 timeout(차단). 위 4단계 통합 캡처의 `postgres:5432 -> BLOCKED` 행 참조.
 
 **8단계: rabbitmq 접근 시도 (차단됨)**
 
@@ -2601,10 +2275,7 @@ nc: postgres.demo.svc.cluster.local (10.96.X.X:5432): Connection timed out
 kubectl exec -n demo busybox-test -- nc -z -w 5 rabbitmq.demo.svc.cluster.local 5672 2>&1
 ```
 
-예상 출력:
-```
-nc: rabbitmq.demo.svc.cluster.local (10.96.X.X:5672): Connection timed out
-```
+**검증 - 기대 출력:** 연결 timeout(차단). 위 4단계 통합 캡처의 `rabbitmq:5672 -> BLOCKED` 행 참조.
 
 **9단계: keycloak 접근 시도 (차단됨)**
 
@@ -2612,11 +2283,7 @@ nc: rabbitmq.demo.svc.cluster.local (10.96.X.X:5672): Connection timed out
 kubectl exec -n demo busybox-test -- wget -O- --timeout=5 http://keycloak.demo.svc.cluster.local:8080 2>&1
 ```
 
-예상 출력:
-```
-Connecting to keycloak.demo.svc.cluster.local:8080 (10.96.X.X:8080)
-wget: download timed out
-```
+**검증 - 기대 출력:** 연결 timeout(차단). 위 4단계 통합 캡처의 `keycloak:8080 -> BLOCKED` 행 참조.
 
 **10단계: 외부 인터넷 접근 시도 (차단됨)**
 
@@ -2624,11 +2291,7 @@ wget: download timed out
 kubectl exec -n demo busybox-test -- wget -O- --timeout=5 http://example.com 2>&1
 ```
 
-예상 출력:
-```
-Connecting to example.com (93.184.216.34:80)
-wget: download timed out
-```
+**검증 - 기대 출력:** 외부 인터넷(example.com)도 차단된다. 위 4단계 통합 캡처의 `example.com:80 -> BLOCKED` 행 참조.
 
 DNS 조회는 성공하지만(IP 해석됨), 실제 연결은 egress 정책에 의해 차단된다.
 
@@ -2652,6 +2315,8 @@ kubectl delete pod busybox-test -n demo --grace-period=0 --force
 
 ### Lab 3.3: L7 정책 테스트 (nginx→httpbin GET 허용, POST 차단)
 
+> 이 Lab은 Lab 3.1에서 분석한 `allow-nginx-to-httpbin` 정책의 L7 HTTP 메서드 제어를 직접 검증하는 실습이다. 배경은 Lab 3.1의 등장 배경 절을 참조한다.
+
 #### 학습 목표
 - Cilium의 L7(HTTP) 네트워크 정책이 실제로 동작하는지 검증한다.
 - HTTP GET은 허용되고 POST는 차단되는 것을 직접 확인한다.
@@ -2663,87 +2328,62 @@ kubectl delete pod busybox-test -n demo --grace-period=0 --force
 
 ```bash
 # nginx Pod에서 httpbin으로 HTTP GET 요청
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "%{http_code}" http://httpbin.demo.svc.cluster.local:80/get --max-time 10
 ```
 
-예상 출력:
-```
-200
-```
+**검증 - 기대 출력:** GET 은 200, POST·PUT·DELETE·PATCH 는 403 이다. 아래 통합 캡처는 5개 메서드를 한 번에 테스트한 결과로, 1~6단계의 개별 명령 결과를 모두 담고 있다(dev 실측, `allow-nginx-to-httpbin` 의 L7 `method: GET` 규칙).
+![nginx→httpbin L7 정책 — GET 200 / POST·PUT·DELETE·PATCH 403](images/kcsa04-28-l7-methods.png)
 
 GET 요청은 allow-nginx-to-httpbin 정책에 의해 허용되어 HTTP 200 응답을 받는다.
 
 **2단계: nginx Pod에서 httpbin으로 GET 요청 — 상세 확인**
 
 ```bash
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s http://httpbin.demo.svc.cluster.local:80/get --max-time 10
 ```
 
-예상 출력 (JSON 형식):
-```json
-{
-  "args": {},
-  "headers": {
-    "Accept": "*/*",
-    "Host": "httpbin.demo.svc.cluster.local",
-    ...
-  },
-  "origin": "10.0.X.X",
-  "url": "http://httpbin.demo.svc.cluster.local/get"
-}
-```
+**검증 - 기대 출력:** GET 응답 본문(httpbin 이 echo 한 JSON)이 보인다 — `headers`·`origin`(요청 Pod IP)·`url` 등을 확인한다(dev 실측).
+![nginx→httpbin GET 응답 JSON 본문](images/kcsa04-29-l7-get-json.png)
 
 **3단계: nginx Pod에서 httpbin으로 POST 요청 (차단됨)**
 
 ```bash
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "%{http_code}" -X POST http://httpbin.demo.svc.cluster.local:80/post --max-time 10
 ```
 
-예상 출력:
-```
-403
-```
+**검증 - 기대 출력:** `403` (위 1단계 통합 캡처의 `POST -> 403` 행 참조).
 
 POST 요청은 L7 정책에 의해 차단되어 HTTP 403 Forbidden 응답을 받는다.
 
 **4단계: nginx Pod에서 httpbin으로 PUT 요청 (차단됨)**
 
 ```bash
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "%{http_code}" -X PUT http://httpbin.demo.svc.cluster.local:80/put --max-time 10
 ```
 
-예상 출력:
-```
-403
-```
+**검증 - 기대 출력:** `403` (위 1단계 통합 캡처의 `PUT -> 403` 행 참조).
 
 **5단계: nginx Pod에서 httpbin으로 DELETE 요청 (차단됨)**
 
 ```bash
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "%{http_code}" -X DELETE http://httpbin.demo.svc.cluster.local:80/delete --max-time 10
 ```
 
-예상 출력:
-```
-403
-```
+**검증 - 기대 출력:** `403` (위 1단계 통합 캡처의 `DELETE -> 403` 행 참조).
 
 **6단계: nginx Pod에서 httpbin으로 PATCH 요청 (차단됨)**
 
 ```bash
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "%{http_code}" -X PATCH http://httpbin.demo.svc.cluster.local:80/patch --max-time 10
 ```
 
-예상 출력:
-```
-403
-```
+**검증 - 기대 출력:** `403` (위 1단계 통합 캡처의 `PATCH -> 403` 행 참조).
 
 **7단계: 결과 요약**
 
@@ -2827,11 +2467,7 @@ RBAC 규칙이 여러 계층으로 중첩되면 실제 권한을 파악하기 �
 kubectl auth can-i --list --as=system:serviceaccount:demo:default -n demo
 ```
 
-```text
-Resources                                       Non-Resource URLs   Resource Names   Verbs
-selfsubjectaccessreviews.authorization.k8s.io   []                  []               [create]
-selfsubjectrulesreviews.authorization.k8s.io    []                  []               [create]
-```
+> **예시(참조) — Resources                                     :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 출력이 매우 제한적이면 최소 권한 원칙이 잘 적용된 것이다. `*` 권한이 표시되면 과도한 권한이다.
 
@@ -2853,10 +2489,7 @@ for item in data['items']:
 " 2>/dev/null
 ```
 
-```text
-[CRITICAL] cluster-admin: resources=[*], verbs=[*]
-[CRITICAL] system:controller:generic-garbage-collector: resources=[*], verbs=[*]
-```
+![cluster-admin ClusterRoleBinding subjects](images/kcsa-clusteradmin.png)
 
 `cluster-admin`은 예상된 결과이지만, 사용자 정의 ClusterRole에 와일드카드가 있으면 즉시 수정해야 한다.
 
@@ -2873,18 +2506,8 @@ for item in data['items']:
 kubectl get clusterrole | head -30
 ```
 
-예상 출력 (일부):
-```
-NAME                                                                   CREATED AT
-admin                                                                  ...
-cluster-admin                                                          ...
-edit                                                                   ...
-system:aggregate-to-admin                                              ...
-system:aggregate-to-edit                                                ...
-system:aggregate-to-view                                                ...
-system:controller:*                                                     ...
-view                                                                   ...
-```
+**검증 - 기대 출력:** 클러스터에 내장된 ClusterRole 목록이 보인다 — `cluster-admin`·`admin`·`edit`·`view` 같은 기본 역할과 `system:*` 컨트롤러 역할들이 있다(dev 실측).
+![ClusterRole 목록(head -30)](images/kcsa04-38-clusterroles.png)
 
 **2단계: cluster-admin ClusterRole 분석**
 
@@ -2976,14 +2599,8 @@ kubectl get rolebinding -n demo
 kubectl auth can-i --list --as=system:serviceaccount:demo:default -n demo
 ```
 
-예상 출력:
-```
-Resources                          Non-Resource URLs   Resource Names   Verbs
-selfsubjectreviews.authentication.k8s.io   []          []               [create]
-selfsubjectaccessreviews.authorization.k8s.io []      []               [create]
-selfsubjectrulesreviews.authorization.k8s.io  []      []               [create]
-...
-```
+**검증 - 기대 출력:** demo 의 default SA 는 `selfsubject*reviews`(모든 SA 기본 부여) 정도의 매우 제한된 권한만 갖는다 — `*` 권한이 없으면 최소 권한 원칙이 잘 적용된 것이다(dev 실측).
+![default ServiceAccount 권한 목록(auth can-i --list)](images/kcsa04-39-cani-default-sa.png)
 
 default ServiceAccount는 기본적으로 매우 제한된 권한만 가지고 있다.
 
@@ -3046,34 +2663,21 @@ RBAC 설계 모범 사례:
 kubectl get role pod-viewer -n demo
 ```
 
-```text
-NAME         CREATED AT
-pod-viewer   2024-01-15T10:00:00Z
-```
+> **예시(참조) — NAME         CREATED AT:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # RoleBinding이 올바르게 연결되었는지 확인
 kubectl get rolebinding pod-viewer-binding -n demo -o yaml | grep -A5 "subjects:"
 ```
 
-```text
-subjects:
-- kind: ServiceAccount
-  name: pod-viewer-sa
-  namespace: demo
-```
+> **예시(참조) — subjects::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # RoleBinding의 roleRef 확인
 kubectl get rolebinding pod-viewer-binding -n demo -o yaml | grep -A5 "roleRef:"
 ```
 
-```text
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: pod-viewer
-```
+> **예시(참조) — roleRef::** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 subjects와 roleRef가 올바르면 권한이 즉시 적용된다. RBAC 변경은 API Server 재시작 없이 즉시 반영된다.
 
@@ -3086,9 +2690,7 @@ ClusterRoleBinding은 ClusterRole만 참조할 수 있다. 네임스페이스 Ro
 kubectl create clusterrolebinding wrong-binding --role=pod-viewer --serviceaccount=demo:pod-viewer-sa 2>&1
 ```
 
-```text
-error: failed to create clusterrolebinding: ... roles can only be referenced by RoleBindings
-```
+> **예시(참조) — error: failed to create clusterrolebinding: ..:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 #### 학습 목표
 - 최소 권한 원칙(Principle of Least Privilege)에 따라 Role을 생성한다.
@@ -3110,10 +2712,8 @@ kubectl create role pod-viewer \
   -n demo
 ```
 
-예상 출력:
-```
-role.rbac.authorization.k8s.io/pod-viewer created
-```
+**검증 - 기대 출력:** `role.rbac.authorization.k8s.io/pod-viewer created` — pods 에 대한 get/list/watch 만 가진 Role 이 생성된다(dev 실측).
+![pod-viewer Role 생성](images/kcsa04-52-role-created.png)
 
 **3단계: Role 내용 확인**
 
@@ -3121,23 +2721,13 @@ role.rbac.authorization.k8s.io/pod-viewer created
 kubectl get role pod-viewer -n demo -o yaml
 ```
 
-예상 출력:
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: pod-viewer
-  namespace: demo
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-  - watch
-```
+**검증 - 기대 출력:** Role 의 `rules` 가 `apiGroups: [""]`(core), `resources: [pods]`, `verbs: [get, list, watch]` 로 구성된다 — 읽기 전용 권한이다(dev 실측).
+![pod-viewer Role -o yaml — get/list/watch 규칙](images/kcsa04-53-role-yaml.png)
+
+각 verb의 의미:
+- `get`: 단일 Pod의 상세 정보를 조회한다(`kubectl get pod <name>` 내부 동작).
+- `list`: 네임스페이스 내 모든 Pod 목록을 한 번에 조회한다(`kubectl get pods` 내부 동작).
+- `watch`: Pod의 변화(생성·종료·업데이트)를 실시간으로 감시하는 스트리밍 연결을 유지한다. `kubectl get pods -w`나 `kubectl logs -f` 같은 명령은 내부적으로 watch 요청을 사용한다. watch 없이 get·list만 있으면 실시간 모니터링 도구가 동작하지 않는다.
 
 **4단계: ServiceAccount 생성 및 RoleBinding**
 
@@ -3159,20 +2749,15 @@ kubectl create rolebinding pod-viewer-binding \
 kubectl auth can-i list pods --as=system:serviceaccount:demo:pod-viewer-sa -n demo
 ```
 
-예상 출력:
-```
-yes
-```
+**검증 - 기대 출력:** `yes`. 아래 통합 매트릭스는 pod-viewer-sa 의 6개 권한 검사 결과를 한 화면에 보여준다 — list/get pods(demo)=yes, create/delete pods·get secrets(demo)·list pods(kube-system)=no(dev 실측).
+![pod-viewer-sa 권한 매트릭스 — 허용/차단 6종](images/kcsa04-54-pv-matrix.png)
 
 ```bash
 # Pod 상세 조회 (허용됨)
 kubectl auth can-i get pods --as=system:serviceaccount:demo:pod-viewer-sa -n demo
 ```
 
-예상 출력:
-```
-yes
-```
+**검증 - 기대 출력:** `yes` (위 통합 매트릭스 `get pods (demo)` 행 참조).
 
 **6단계: 권한 테스트 — 차단된 작업**
 
@@ -3181,40 +2766,28 @@ yes
 kubectl auth can-i create pods --as=system:serviceaccount:demo:pod-viewer-sa -n demo
 ```
 
-예상 출력:
-```
-no
-```
+**검증 - 기대 출력:** `no` (위 통합 매트릭스 `create pods (demo)` 행 참조).
 
 ```bash
 # Pod 삭제 (차단됨)
 kubectl auth can-i delete pods --as=system:serviceaccount:demo:pod-viewer-sa -n demo
 ```
 
-예상 출력:
-```
-no
-```
+**검증 - 기대 출력:** `no` (위 통합 매트릭스 `delete pods (demo)` 행 참조).
 
 ```bash
 # Secret 조회 (차단됨)
 kubectl auth can-i get secrets --as=system:serviceaccount:demo:pod-viewer-sa -n demo
 ```
 
-예상 출력:
-```
-no
-```
+**검증 - 기대 출력:** `no` (위 통합 매트릭스 `get secrets (demo)` 행 참조).
 
 ```bash
 # 다른 네임스페이스의 Pod 조회 (차단됨)
 kubectl auth can-i list pods --as=system:serviceaccount:demo:pod-viewer-sa -n kube-system
 ```
 
-예상 출력:
-```
-no
-```
+**검증 - 기대 출력:** `no` — Role 은 demo 네임스페이스 범위라 kube-system 에는 권한이 없다(위 통합 매트릭스 `list pods (kube-system)` 행 참조).
 
 **7단계: 전체 권한 목록 확인**
 
@@ -3275,9 +2848,7 @@ Kubernetes ServiceAccount 토큰 관리의 발전 과정:
 kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.automountServiceAccountToken}'
 ```
 
-```text
-true
-```
+> **예시(참조) — true:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # ServiceAccount 레벨에서 비활성화, Pod 레벨에서 활성화하는 패턴
@@ -3306,9 +2877,7 @@ EOF
 kubectl get secret my-sa-token -n demo -o jsonpath='{.data.token}' | base64 -d
 ```
 
-```text
-eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1Njc4OTAifQ...
-```
+> **예시(참조) — eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1Njc4OTAifQ:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 > **보안 경고**: 장기 토큰은 보안 위험이 있으므로 TokenRequest API를 통한 단기 토큰 사용이 권장된다.
 
@@ -3325,11 +2894,8 @@ eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1Njc4OTAifQ...
 kubectl get sa -n demo
 ```
 
-예상 출력:
-```
-NAME      SECRETS   AGE
-default   0         XXd
-```
+**검증 - 기대 출력:** demo 네임스페이스의 ServiceAccount 목록이 보인다. `default` SA 는 모든 네임스페이스에 자동 생성된다(K8s 1.24+ 부터 SECRETS 열이 0 — 토큰을 Secret 으로 자동 생성하지 않고 TokenRequest API 로 발급, dev 실측).
+![demo 네임스페이스 ServiceAccount 목록](images/kcsa04-40-sa-list.png)
 
 **2단계: default ServiceAccount의 automountServiceAccountToken 확인**
 
@@ -3352,20 +2918,16 @@ metadata:
 
 ```bash
 # nginx Pod의 ServiceAccount 토큰 마운트 확인
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   ls /var/run/secrets/kubernetes.io/serviceaccount/
 ```
 
-예상 출력:
-```
-ca.crt
-namespace
-token
-```
+**검증 - 기대 출력:** SA 토큰 디렉터리에 `ca.crt`·`namespace`·`token` 3개 파일이 자동 마운트돼 있다 — 컨테이너가 탈취되면 이 token 으로 API Server 에 접근될 수 있다(dev 실측).
+![nginx Pod 의 SA 토큰 자동 마운트(ca.crt·namespace·token)](images/kcsa04-58-sa-token-mount.png)
 
 ```bash
 # 토큰 내용 확인 (JWT)
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   cat /var/run/secrets/kubernetes.io/serviceaccount/token
 ```
 
@@ -3375,7 +2937,7 @@ kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -
 
 ```bash
 # nginx Pod 내부에서 API Server에 접근
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   sh -c 'TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) && \
   curl -s -k -H "Authorization: Bearer $TOKEN" \
   https://kubernetes.default.svc.cluster.local/api/v1/namespaces/demo/pods' 2>/dev/null | head -5
@@ -3419,10 +2981,8 @@ EOF
 kubectl exec -n demo secure-test -- ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>&1
 ```
 
-예상 출력:
-```
-ls: /var/run/secrets/kubernetes.io/serviceaccount/: No such file or directory
-```
+**검증 - 기대 출력:** `automountServiceAccountToken: false` 인 secure-test 에는 토큰 디렉터리가 없어 `No such file or directory` 가 출력된다(dev 실측).
+![secure-test — SA 토큰 미마운트 확인](images/kcsa04-59-no-token.png)
 
 토큰 디렉토리가 존재하지 않는다. 이 Pod가 침투당하더라도 API Server 토큰을 탈취할 수 없다.
 
@@ -3461,8 +3021,10 @@ Kubernetes Secret은 이 문제를 부분적으로 해결한다. Secret은 별�
 이 한계를 극복하기 위한 발전 과정:
 1. **EncryptionConfiguration (Kubernetes 1.7+)**: etcd에 저장되는 Secret을 AES 등으로 암호화한다.
 2. **KMS v1/v2 (Kubernetes 1.10+/1.27+)**: 외부 KMS와 연동하여 봉투 암호화를 수행한다.
-3. **External Secrets Operator**: 외부 비밀 저장소(Vault, AWS SM 등)와 자동 동기화한다.
+3. **External Secrets Operator(ESO)**: 외부 비밀 저장소(Vault, AWS Secrets Manager 등)에서 Kubernetes Secret으로 자동 동기화한다.
 4. **CSI Secret Store Driver**: 파일시스템 볼륨으로 Secret을 마운트하며, etcd 미저장 옵션을 제공한다.
+
+**tart-infra 현황**: 이 가이드의 tart-infra 환경에서는 EncryptionConfiguration 및 KMS가 **미적용**되어 있다(확인 명령: Lab 2.2 6단계 참조). 따라서 etcd에 저장된 Secret은 base64 인코딩 상태로만 존재하며, etcd에 직접 접근할 수 있는 공격자는 암호화 없이 데이터를 읽을 수 있다. KCSA 시험 범위(Secret의 기본 동작과 보안 리스크 이해)에는 이 상태로 충분하다. EncryptionConfiguration의 실제 활성화와 검증은 CKS 보안 강화 실습(staging 클러스터 권장)에서 다룬다.
 
 #### 공격-방어 매핑
 
@@ -3483,18 +3045,14 @@ Kubernetes Secret은 이 문제를 부분적으로 해결한다. Secret은 별�
 kubectl get secret demo-passwords -n demo -o jsonpath='{.data.postgres-password}'
 ```
 
-```text
-ZGVtbzEyMw==
-```
+> **예시(참조) — ZGVtbzEyMw==:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # base64 디코딩
 echo "ZGVtbzEyMw==" | base64 -d
 ```
 
-```text
-demo123
-```
+> **예시(참조) — demo123:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 base64 디코딩이 실패하는 경우는 대부분 줄바꿈 문자가 포함된 경우이다. `base64 -d` 대신 `base64 --decode`를 사용하거나, `tr -d '\n'`으로 줄바꿈을 제거한다.
 
@@ -3528,19 +3086,14 @@ volumes:
 kubectl exec -n demo <pod-name> -- ls -la /etc/secrets/
 ```
 
-```text
-total 0
-lrwxrwxrwx 1 root root 15 Jan 15 10:00 password -> ..data/password
-```
+> **예시(참조) — total 0:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 파일 내용 확인
 kubectl exec -n demo <pod-name> -- cat /etc/secrets/password
 ```
 
-```text
-demo123
-```
+> **예시(참조) — demo123:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 #### 학습 목표
 - Kubernetes Secret이 base64 인코딩일 뿐 암호화가 아님을 이해한다.
@@ -3555,14 +3108,8 @@ demo123
 kubectl get secret -n demo
 ```
 
-예상 출력:
-```
-NAME                    TYPE                                  DATA   AGE
-default-token-xxxxx     kubernetes.io/service-account-token   3      XXd
-postgres-secret         Opaque                                X      XXd
-rabbitmq-secret         Opaque                                X      XXd
-...
-```
+**검증 - 기대 출력:** 이 demo 배포의 앱들은 자격증명을 환경 변수로 직접 주입하므로 별도 앱 Secret 이 없다(`No resources found`). 또한 K8s 1.24+ 부터는 default SA 의 자동 토큰 Secret(`default-token-*`)도 생성되지 않는다 — 이 점 자체가 "Secret 보다 env 가 보안상 약하다"는 관찰 포인트다(dev 실측). Lab 3.7 에서 `demo-passwords` Secret 을 직접 만들어 base64 디코드 실습을 진행한다.
+![demo 네임스페이스 Secret 목록(앱 Secret 없음 — env 사용)](images/kcsa04-41-secret-list.png)
 
 **2단계: postgres Secret 내용 확인**
 
@@ -3598,30 +3145,24 @@ echo "ZGVtbzEyMwo=" | base64 -d
 kubectl get pod -n demo -l app=postgres -o jsonpath='{.items[0].spec.containers[0].env[?(@.name=="POSTGRES_PASSWORD")].value}'
 ```
 
-예상 출력:
-```
-demo123
-```
+**검증 - 기대 출력:** Pod 스펙의 환경 변수에서 비밀번호(`demo123`)가 **평문 그대로** 노출된다 — env 에 직접 넣은 자격증명은 `get pod -o yaml` 권한만 있어도 읽힌다(dev 실측).
+![postgres Pod env 의 평문 비밀번호 노출](images/kcsa04-46-pg-env.png)
 
 ```bash
 # rabbitmq Pod의 환경 변수에서 비밀번호 직접 확인
 kubectl get pod -n demo -l app=rabbitmq -o jsonpath='{.items[0].spec.containers[0].env[?(@.name=="RABBITMQ_DEFAULT_PASS")].value}'
 ```
 
-예상 출력:
-```
-demo123
-```
+**검증 - 기대 출력:** rabbitmq 비밀번호(`demo123`)도 env 에 평문 노출된다(dev 실측).
+![rabbitmq Pod env 의 평문 비밀번호](images/kcsa04-51-rmq-env.png)
 
 ```bash
 # keycloak Pod의 환경 변수에서 관리자 비밀번호 확인
 kubectl get pod -n demo -l app=keycloak -o jsonpath='{.items[0].spec.containers[0].env[?(@.name=="KEYCLOAK_ADMIN_PASSWORD")].value}'
 ```
 
-예상 출력:
-```
-admin
-```
+**검증 - 기대 출력:** keycloak 관리자 비밀번호(`admin`)도 env 에 평문 노출된다 — 이런 자격증명은 Secret 으로 옮기는 것이 안전하다(dev 실측).
+![keycloak Pod env 의 평문 관리자 비밀번호](images/kcsa04-47-kc-env.png)
 
 **5단계: Secret으로 비밀번호 관리하는 올바른 방법 시연**
 
@@ -3639,38 +3180,28 @@ kubectl create secret generic demo-passwords \
 kubectl get secret demo-passwords -n demo -o yaml
 ```
 
-예상 출력:
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: demo-passwords
-  namespace: demo
-type: Opaque
-data:
-  keycloak-admin-password: YWRtaW4=
-  postgres-password: ZGVtbzEyMw==
-  rabbitmq-password: ZGVtbzEyMw==
-```
+**검증 - 기대 출력:** Secret 의 `data` 값이 **base64 인코딩**으로 저장된다(`YWRtaW4=`=admin, `ZGVtbzEyMw==`=demo123). base64 는 암호화가 아니라 인코딩일 뿐임에 주의한다(dev 실측).
+![demo-passwords Secret -o yaml — base64 인코딩 data](images/kcsa04-48-secret-yaml.png)
 
 ```bash
 # Secret 값을 디코딩하여 원본 확인
 kubectl get secret demo-passwords -n demo -o jsonpath='{.data.postgres-password}' | base64 -d
 ```
 
-예상 출력:
-```
-demo123
-```
+**검증 - 기대 출력:** `base64 -d` 한 줄로 원본 비밀번호(`demo123`)가 복원된다 — Secret 조회 권한이 있으면 누구나 디코딩 가능하므로 RBAC 로 Secret 접근을 제한해야 한다(dev 실측).
+![demo-passwords base64 디코딩 — 원본 비밀번호 복원](images/kcsa04-49-secret-decode.png)
 
 **6단계: Encryption at Rest 설정 확인**
 
 ```bash
 # API Server에 encryption-provider-config가 설정되어 있는지 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep encryption-provider
 ```
 
-설정이 없다면 etcd에 저장된 Secret은 평문(base64 인코딩만)으로 저장되어 있다.
+**검증 - 기대 출력:** 이 dev 클러스터는 `--encryption-provider-config` 가 설정돼 있어 etcd 저장 시 Secret 이 암호화된다(Encryption at Rest 적용, dev 실측 — CKS 실습에서 구성).
+![apiserver encryption-provider-config 설정 확인](images/kcsa04-50-encryption.png)
+
+이 플래그가 **없으면** etcd 에 저장된 Secret 은 평문(base64 인코딩만)으로 저장된다. 본 dev 환경은 설정돼 있어 암호화된다.
 
 **7단계: 정리**
 
@@ -3740,14 +3271,7 @@ PSA는 이 문제를 해결하기 위해 설계되었다:
 kubectl run violation-check --image=nginx -n psa-test --dry-run=server 2>&1
 ```
 
-```text
-Error from server (Forbidden): pods "violation-check" is forbidden:
-violates PodSecurity "restricted:latest":
-  allowPrivilegeEscalation != false (container "violation-check" must set securityContext.allowPrivilegeEscalation=false),
-  unrestricted capabilities (container "violation-check" must set securityContext.capabilities.drop=["ALL"]),
-  runAsNonRoot != true (pod or container "violation-check" must set securityContext.runAsNonRoot=true),
-  seccompProfile (pod or container "violation-check" must set securityContext.seccompProfile.type to "RuntimeDefault" or "Localhost")
-```
+> **예시(참조) — Error from server (Forbidden): pods "violation:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 이 출력은 위반 항목을 정확히 나열하므로, 하나씩 수정하여 준수하는 Pod 스펙을 작성할 수 있다.
 
@@ -3760,18 +3284,16 @@ violates PodSecurity "restricted:latest":
 
 **1단계: PSA 개념 이해**
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph priv["privileged (특권) — 제한 없음"]
+    subgraph base["baseline (기준) — 알려진 권한 상승 차단"]
+      restricted["restricted (제한) — 최소 권한 강제"]
+    end
+  end
 ```
-PSA 프로파일:
-┌─────────────────────────────────────────────────┐
-│ privileged (특권)                                │  ← 제한 없음
-│  ┌──────────────────────────────────────────┐   │
-│  │ baseline (기준)                           │   │  ← 알려진 권한 상승 차단
-│  │  ┌───────────────────────────────────┐   │   │
-│  │  │ restricted (제한)                  │   │   │  ← 최소 권한 강제
-│  │  └───────────────────────────────────┘   │   │
-│  └──────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────┘
-```
+_그림 4. Pod Security Standards 세 프로파일의 포함 관계._
 
 **2단계: restricted 프로파일 네임스페이스 생성**
 
@@ -3791,13 +3313,8 @@ kubectl label namespace psa-test \
 kubectl get namespace psa-test -o yaml | grep pod-security
 ```
 
-예상 출력:
-```
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: restricted
-```
+**검증 - 기대 출력:** psa-test 네임스페이스에 `pod-security.kubernetes.io/enforce=restricted`(+audit·warn·version) 라벨이 적용돼 있다 — 이 네임스페이스에 배포되는 Pod 는 restricted 프로파일을 강제받는다(dev 실측).
+![psa-test 네임스페이스 PSA 라벨(restricted enforce)](images/kcsa04-62-psa-labels.png)
 
 **3단계: 보안 위반 Pod 배포 시도 — privileged 컨테이너**
 
@@ -3818,12 +3335,8 @@ spec:
 EOF
 ```
 
-예상 출력:
-```
-Error from server (Forbidden): error when creating "STDIN": pods "privileged-pod" is forbidden:
-violates PodSecurity "restricted:latest": privileged (container "test" must not set
-securityContext.privileged=true), ...
-```
+**검증 - 기대 출력:** `Error from server (Forbidden)` — restricted 프로파일이 privileged·allowPrivilegeEscalation·capabilities·runAsNonRoot·seccompProfile 위반을 한꺼번에 지적하며 생성을 거부한다(dev 실측).
+![privileged-pod 배포 거부(PodSecurity restricted Forbidden)](images/kcsa04-63-psa-priv-denied.png)
 
 privileged 컨테이너는 restricted 프로파일에서 완전히 차단된다.
 
@@ -3846,11 +3359,8 @@ spec:
 EOF
 ```
 
-예상 출력:
-```
-Error from server (Forbidden): error when creating "STDIN": pods "root-pod" is forbidden:
-violates PodSecurity "restricted:latest": runAsUser=0 (pod must not set runAsUser=0), ...
-```
+**검증 - 기대 출력:** `Error from server (Forbidden)` — `runAsUser=0`(root) 위반 등으로 거부된다(dev 실측).
+![root-pod 배포 거부(runAsUser=0 위반)](images/kcsa04-64-psa-root-denied.png)
 
 root(UID 0)로 실행하는 Pod도 차단된다.
 
@@ -3881,10 +3391,7 @@ spec:
 EOF
 ```
 
-예상 출력:
-```
-Error from server (Forbidden): ... violates PodSecurity "restricted:latest": hostNetwork ...
-```
+**검증 - 기대 출력:** `Error from server (Forbidden)` — 컨테이너 securityContext 는 restricted 를 충족해도 `hostNetwork: true` 자체가 위반이라 거부된다(위 privileged/root 거부와 동일한 PodSecurity 차단 메커니즘).
 
 **6단계: restricted 프로파일을 준수하는 Pod 배포 (성공)**
 
@@ -3913,10 +3420,8 @@ spec:
 EOF
 ```
 
-예상 출력:
-```
-pod/secure-pod created
-```
+**검증 - 기대 출력:** `pod/secure-pod created` — runAsNonRoot·runAsUser:1000·seccompProfile·allowPrivilegeEscalation:false·capabilities drop ALL 을 모두 충족해 restricted 네임스페이스에 정상 생성된다(dev 실측).
+![secure-pod 생성 성공(restricted 프로파일 충족)](images/kcsa04-65-psa-secure-ok.png)
 
 이 Pod는 restricted 프로파일의 모든 조건을 충족한다:
 - `runAsNonRoot: true` — root가 아닌 사용자로 실행
@@ -3999,19 +3504,7 @@ for app in nginx-web httpbin redis postgres rabbitmq keycloak; do
 done
 ```
 
-```text
-=== nginx-web STRIDE 점검 ===
-[S] SA 토큰 마운트: YES
-[T] 이미지: nginx:alpine (sha256 미사용 시 변조 위험)
-[I] 환경 변수 비밀번호 항목: 0
-[D] 리소스 제한: 없음 (DoS 취약)
-
-=== postgres STRIDE 점검 ===
-[S] SA 토큰 마운트: YES
-[T] 이미지: postgres:16-alpine (sha256 미사용 시 변조 위험)
-[I] 환경 변수 비밀번호 항목: 1
-[D] 리소스 제한: 없음 (DoS 취약)
-```
+> **참조 — 위협 모델(STRIDE):** === nginx-web STRIDE 점검 === ...
 
 이 스크립트의 출력에서 `[I] 환경 변수 비밀번호 항목: 1`이 표시되면 해당 앱에 Information Disclosure 위험이 존재하는 것이다.
 
@@ -4037,7 +3530,7 @@ done
 
 ```bash
 # [S] Spoofing — ServiceAccount 토큰 확인
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   ls /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null && echo "토큰 존재 — 위장 위험"
 
 # [T] Tampering — 이미지 태그 확인 (다이제스트 미사용)
@@ -4158,11 +3651,7 @@ echo "KC_DB_PASSWORD=demo123으로 postgres에 직접 접근 가능 — DB 권�
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
 
-```text
-httpbin-xxxx     docker.io/kong/httpbin@sha256:abc123...
-nginx-web-xxxx   docker.io/library/nginx@sha256:def456...
-postgres-xxxx    docker.io/library/postgres@sha256:789abc...
-```
+> **예시(참조) — httpbin-xxxx     docker.io/kong/httpbin@sha256:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 **문제: 태그와 다이제스트의 차이 검증**
 
@@ -4189,15 +3678,8 @@ echo "→ 이 다이제스트는 특정 이미지 레이어를 영구적으로 �
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
 ```
 
-예상 출력:
-```
-httpbin-xxxx-xxxxx         kong/httpbin
-keycloak-xxxx-xxxxx        quay.io/keycloak/keycloak
-nginx-web-xxxx-xxxxx       nginx:alpine
-postgres-xxxx-xxxxx        postgres:16-alpine
-rabbitmq-xxxx-xxxxx        rabbitmq:3-management
-redis-xxxx-xxxxx           redis:7-alpine
-```
+**검증 - 기대 출력:** demo 각 Pod 가 사용하는 이미지(태그)가 보인다 — 이미지 출처(공식/커뮤니티 레지스트리)를 분석하는 출발점이다(dev 실측, 이미지 태그는 배포 매니페스트에 따라 다를 수 있다).
+![demo Pod 별 이미지 목록](images/kcsa04-60-pod-images.png)
 
 **2단계: 이미지 출처(Registry) 분석**
 
@@ -4222,13 +3704,8 @@ kubectl get pods -n demo -o jsonpath='{range .items[*]}{.spec.containers[*].imag
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
 
-예상 출력:
-```
-httpbin-xxxx-xxxxx         docker.io/kong/httpbin@sha256:abcdef...
-keycloak-xxxx-xxxxx        quay.io/keycloak/keycloak@sha256:123456...
-nginx-web-xxxx-xxxxx       docker.io/library/nginx@sha256:789abc...
-...
-```
+**검증 - 기대 출력:** 각 Pod 의 `imageID` 에 `@sha256:...` 다이제스트가 포함된다 — 태그로 배포해도 런타임에서는 다이제스트로 고정된다(dev 실측).
+![demo Pod 별 이미지 다이제스트(imageID)](images/kcsa04-61-pod-digests.png)
 
 Pod 배포 시 태그(`nginx:alpine`)를 사용했지만, 실제 런타임에서는 다이제스트로 고정된다. 그러나 배포 매니페스트에 다이제스트를 명시하지 않으면 태그가 가리키는 이미지가 변경될 수 있다(태그 변조 공격).
 
@@ -4268,6 +3745,22 @@ kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.s
 
 ### Lab 4.3: Trivy 이미지 스캔 (nginx:alpine, postgres:16-alpine, keycloak)
 
+> **앞 실습과의 연결**: Lab 4.2까지 Admission Controller와 OPA/Gatekeeper로 정책 위반을 사전에 차단하는 방법을 확인했다. 그러나 정책 통과 후에도 이미지 자체에 알려진 취약점(CVE)이 포함되어 있을 수 있다. Lab 4.3에서는 이미지가 컨테이너 레지스트리에 올라오기 전(또는 배포 전)에 취약점을 자동으로 탐지하는 Trivy를 실습한다.
+
+#### 등장 배경과 기존 한계점
+
+컨테이너 이미지에 포함된 취약점을 관리하는 일은 컨테이너 기술이 보편화되면서 새롭게 대두된 문제이다.
+
+**수동 CVE 추적의 한계**: 2015~2018년 초기 컨테이너 도입 시기에는 보안 팀이 NVD(National Vulnerability Database)를 수동으로 검색하거나 공식 보안 권고를 구독해 이미지에 포함된 패키지를 일일이 대조하는 방식을 사용했다. 이미지 하나에도 수십~수백 개의 OS 패키지와 언어 런타임 의존성이 포함되어 있어, 수동 추적은 현실적으로 불가능했다.
+
+**직전 해결책과 그 한계**: Docker Hub의 자체 스캔 기능과 Clair(CoreOS, 2015)가 대표적인 1세대 이미지 스캐너이다. Clair는 레지스트리 연동 방식이어서 CI/CD 파이프라인에 직접 통합하기 어렵고, 별도 서버 운영이 필요하며, OS 패키지만 스캔하고 언어 패키지(npm, pip, cargo 등)를 스캔하지 않는다는 한계가 있었다. Snyk는 언어 패키지를 지원하지만 SaaS 의존성이 높고 오프라인 환경에서 사용하기 어렵다.
+
+**Trivy의 개선점**: Aqua Security가 2019년에 공개한 Trivy(트리비)는 단일 바이너리로 설치·실행되며, OS 패키지(Alpine apk, Debian apt, RHEL rpm)와 언어 패키지(Go modules, npm, pip, cargo, Gemfile 등)를 통합 스캔한다. 취약점 데이터베이스를 로컬에 캐시하여 오프라인 실행이 가능하며, SARIF·JSON·테이블 형식으로 결과를 출력해 CI/CD 통합이 간단하다. GitHub Actions 공식 액션(`aquasecurity/trivy-action`)도 제공된다.
+
+**eBPF 기반 런타임 스캐너와의 차이**: Falco·Tetragon 같은 런타임 보안 도구는 컨테이너가 실행 중일 때 비정상 시스템 콜을 탐지한다. 이는 CVE 악용 시도를 런타임에서 감지하지만, 취약점이 존재한다는 사실 자체를 사전에 알려주지는 않는다. Trivy는 배포 전(shift-left) 단계에서 취약점의 존재를 정적으로 탐지하며, 두 접근 방식은 상호 보완적이다.
+
+**트레이드오프**: Alpine 같은 경량 이미지는 패키지 수가 적어 CVE 노출 면적이 작지만, Ubuntu·UBI 기반 이미지는 호환성이 높은 대신 더 많은 패키지를 포함해 취약점 수가 많다. Trivy 스캔 결과는 취약점 데이터베이스 갱신 시점에 따라 달라지므로, 동일한 명령을 다른 날 실행하면 수치가 다를 수 있다.
+
 #### 학습 목표
 - Trivy를 사용하여 컨테이너 이미지의 취약점을 스캔한다.
 - 스캔 결과를 분석하여 CVE 위험도를 평가한다.
@@ -4292,19 +3785,8 @@ brew install trivy
 trivy image nginx:alpine
 ```
 
-예상 출력 (일부):
-```
-nginx:alpine (alpine 3.XX)
-==========================
-Total: XX (UNKNOWN: X, LOW: X, MEDIUM: X, HIGH: X, CRITICAL: X)
-
-┌────────────────────┬──────────────┬──────────┬────────┬─────────────────┐
-│     Library        │ Vulnerability│ Severity │ Status │ Fixed Version   │
-├────────────────────┼──────────────┼──────────┼────────┼─────────────────┤
-│ libcurl            │ CVE-XXXX-XXXX│ HIGH     │ fixed  │ X.XX.X-rX       │
-│ openssl            │ CVE-XXXX-XXXX│ MEDIUM   │ fixed  │ X.X.X-rX        │
-└────────────────────┴──────────────┴──────────┴────────┴─────────────────┘
-```
+**검증 - 기대 출력:** trivy 가 이미지 OS 패키지의 CVE 를 심각도(CRITICAL/HIGH/...)·수정버전과 함께 표로 보여준다. CVE 목록은 Trivy DB 갱신일에 따라 달라지므로 숫자보다 "취약점이 검출되는가"를 본다(로컬 실측).
+![trivy image nginx:alpine — 이미지 취약점 스캔 결과](images/kcsa04-45-trivy-nginx.png)
 
 **3단계: postgres:16-alpine 이미지 스캔**
 
@@ -4349,14 +3831,18 @@ trivy image --severity CRITICAL,HIGH rabbitmq:3-management
 
 **9단계: 스캔 결과 종합 분석**
 
+> **주의**: 아래 표의 CVE 수치는 스캔 시점의 취약점 데이터베이스 버전에 따라 달라진다. 동일한 이미지라도 Trivy DB 갱신 이후 실행하면 다른 수치가 나올 수 있다. 직접 실행한 결과를 기준으로 판단하고, 이 표는 이미지 간 상대적 경향을 파악하기 위한 참고 자료로 사용한다(미캡처).
+
 | 이미지 | Base OS | CRITICAL | HIGH | MEDIUM | LOW | 조치 |
 |--------|---------|----------|------|--------|-----|------|
-| nginx:alpine | Alpine | X | X | X | X | 업데이트 필요 |
-| postgres:16-alpine | Alpine | X | X | X | X | 패치 확인 |
-| redis:7-alpine | Alpine | X | X | X | X | 패치 확인 |
-| rabbitmq:3-management | Ubuntu | X | X | X | X | 업데이트 필요 |
-| kong/httpbin | - | X | X | X | X | 대안 검토 |
-| keycloak | UBI | X | X | X | X | 업데이트 필요 |
+| nginx:alpine | Alpine | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 업데이트 필요 |
+| postgres:16-alpine | Alpine | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 패치 확인 |
+| redis:7-alpine | Alpine | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 패치 확인 |
+| rabbitmq:3-management | Ubuntu | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 업데이트 필요 |
+| kong/httpbin | - | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 대안 검토 |
+| keycloak | UBI | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 업데이트 필요 |
+
+**Alpine vs Ubuntu 기반 이미지의 취약점 수 차이**: Alpine Linux는 musl libc와 BusyBox를 기반으로 하여 설치된 패키지 수가 매우 적다(기본 이미지 ~5MB). 반면 Ubuntu 기반 이미지(`rabbitmq:3-management` 등)는 glibc와 더 많은 유틸리티를 포함하여 기본 이미지가 100MB 이상이다. 패키지 수가 많을수록 CVE 노출 면적이 넓어지므로, Alpine 기반 이미지가 Ubuntu 기반보다 CVE 총 수가 적은 경향이 있다. 다만 Alpine도 취약점이 없는 것은 아니며, musl libc 관련 특유의 CVE가 존재할 수 있다.
 
 **10단계: 정리**
 
@@ -4422,10 +3908,7 @@ mTLS의 동작 원리:
 kubectl get pod -n demo -o jsonpath='{range .items[*]}{.metadata.name}{" containers: "}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}'
 ```
 
-```text
-httpbin-xxx containers: httpbin istio-proxy
-nginx-web-xxx containers: nginx-web istio-proxy
-```
+> **예시(참조) — Istio mTLS/sidecar:** Istio 서비스메시 환경에서 PeerAuthentication(STRICT mTLS)·istio-proxy 사이드카 주입(2/2)을 확인한다(설치 환경 의존).
 
 사이드카(`istio-proxy`)가 없는 Pod는 STRICT 모드에서 통신이 차단된다. 해결 방법:
 1. 네임스페이스에 `istio-injection: enabled` 레이블을 추가한다.
@@ -4437,11 +3920,7 @@ nginx-web-xxx containers: nginx-web istio-proxy
 istioctl proxy-status 2>/dev/null | head -10
 ```
 
-```text
-NAME                                  CLUSTER        CDS        LDS        EDS        RDS        ECDS
-httpbin-xxx.demo                      Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT
-nginx-web-xxx.demo                    Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT
-```
+> **예시(참조) — NAME                                  CLUSTER :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 STATUS가 `SYNCED`이면 사이드카가 정상적으로 istiod와 동기화된 것이다. `STALE`이면 통신 문제가 있다.
 
@@ -4485,12 +3964,10 @@ kubectl get peerauthentication -n istio-system -o yaml 2>/dev/null || echo "isti
 kubectl get pod -n demo -l app=nginx-web -o jsonpath='{.items[0].spec.containers[*].name}'
 ```
 
-예상 출력:
-```
-nginx-web istio-proxy
-```
+**검증 - 기대 출력:** Pod 의 컨테이너 이름 목록이 보인다. 본 dev 환경은 Istio 미설치라 앱 컨테이너(`nginx`)만 나온다(dev 실측).
+![nginx-web Pod 컨테이너 목록(Istio 미설치 — 단일 컨테이너)](images/kcsa04-66-container-names.png)
 
-`istio-proxy`(Envoy) 컨테이너가 사이드카로 주입되어 모든 트래픽을 가로채고 mTLS를 적용한다.
+> **예시(참조) — Istio 설치 시:** Istio 가 설치돼 사이드카 주입이 켜진 네임스페이스에서는 `nginx-web istio-proxy` 처럼 `istio-proxy`(Envoy) 컨테이너가 함께 나오며, 이 사이드카가 모든 트래픽을 가로채 mTLS 를 적용한다(설치 환경 의존).
 
 **4단계: mTLS 인증서 확인**
 
@@ -4580,19 +4057,19 @@ kubectl get cnp allow-nginx-to-httpbin -n demo -o yaml
 
 ```bash
 # /get 경로 (허용됨)
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "GET /get: %{http_code}\n" http://httpbin.demo.svc.cluster.local:80/get --max-time 10
 
 # /headers 경로 (허용됨 — GET 메서드이므로)
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "GET /headers: %{http_code}\n" http://httpbin.demo.svc.cluster.local:80/headers --max-time 10
 
 # /ip 경로 (허용됨 — GET 메서드이므로)
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "GET /ip: %{http_code}\n" http://httpbin.demo.svc.cluster.local:80/ip --max-time 10
 
 # /user-agent 경로 (허용됨 — GET 메서드이므로)
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "GET /user-agent: %{http_code}\n" http://httpbin.demo.svc.cluster.local:80/user-agent --max-time 10
 ```
 
@@ -4600,11 +4077,11 @@ kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -
 
 ```bash
 # /post 경로 — POST (차단됨)
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "POST /post: %{http_code}\n" -X POST http://httpbin.demo.svc.cluster.local:80/post --max-time 10
 
 # /anything 경로 — POST (차단됨)
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "POST /anything: %{http_code}\n" -X POST http://httpbin.demo.svc.cluster.local:80/anything --max-time 10
 ```
 
@@ -4694,13 +4171,13 @@ Kubernetes에서 AppArmor 지원의 발전 과정:
 **1단계: 노드에 AppArmor 설치 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo aa-status 2>/dev/null | head -10 || echo "AppArmor 미설치"'
+ssh dev-master 'sudo aa-status 2>/dev/null | head -10 || echo "AppArmor 미설치"'
 ```
 
 **2단계: 현재 로드된 AppArmor 프로파일 확인**
 
 ```bash
-ssh admin@<dev-master-ip> 'sudo aa-status 2>/dev/null | grep -E "profiles|processes"'
+ssh dev-master 'sudo aa-status 2>/dev/null | grep -E "profiles|processes"'
 ```
 
 **3단계: AppArmor 프로파일 적용 Pod 생성**
@@ -4897,11 +4374,8 @@ EOF
 kubectl exec -n demo seccomp-test -- cat /proc/1/status | grep Seccomp
 ```
 
-예상 출력:
-```
-Seccomp:     2
-Seccomp_filters:     1
-```
+**검증 - 기대 출력:** `Seccomp: 2` (SECCOMP_MODE_FILTER) + `Seccomp_filters: 1` — RuntimeDefault seccomp 프로파일이 컨테이너 PID 1 에 적용돼 있다(dev 실측).
+![seccomp-test 프로세스의 Seccomp 상태(필터 모드 2)](images/kcsa04-67-seccomp-status.png)
 
 - `Seccomp: 2`는 SECCOMP_MODE_FILTER (필터 모드)가 활성화되어 있음을 의미한다.
 - `Seccomp: 0`은 비활성화 상태이다.
@@ -4918,10 +4392,8 @@ kubectl exec -n demo no-seccomp-test -- cat /proc/1/status | grep Seccomp
 kubectl exec -n demo seccomp-test -- unshare -r whoami 2>&1
 ```
 
-예상 출력:
-```
-unshare: unshare(0x10000000): Operation not permitted
-```
+**검증 - 기대 출력:** `Operation not permitted` — RuntimeDefault seccomp 프로파일이 `unshare`(네임스페이스 생성) 시스템 콜을 차단한다(dev 실측).
+![seccomp RuntimeDefault — unshare 시스템 콜 차단](images/kcsa04-68-seccomp-unshare.png)
 
 ```bash
 # 비교: seccomp 없는 Pod에서는 성공할 수 있음
@@ -4932,7 +4404,7 @@ kubectl exec -n demo no-seccomp-test -- unshare -r whoami 2>&1
 
 ```bash
 # containerd의 기본 seccomp 프로파일 확인 (노드에서)
-ssh admin@<dev-master-ip> 'sudo cat /etc/containerd/config.toml' | grep -i seccomp
+ssh dev-master 'sudo cat /etc/containerd/config.toml' | grep -i seccomp
 ```
 
 RuntimeDefault 프로파일은 약 300개 이상의 시스템 콜 중 위험한 것들(예: `reboot`, `mount`, `kexec_load`, `bpf`)을 차단한다.
@@ -4999,19 +4471,14 @@ CIS Benchmark 검사 영역:
 kubectl get pods -l job-name=kube-bench
 ```
 
-```text
-NAME               READY   STATUS             RESTARTS   AGE
-kube-bench-xxxxx   0/1     CrashLoopBackOff   3          2m
-```
+> **예시(참조) — NAME               READY   STATUS             :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 ```bash
 # 로그로 원인 확인
 kubectl logs -l job-name=kube-bench
 ```
 
-```text
-Error: unable to read /etc/kubernetes/manifests/kube-apiserver.yaml: permission denied
-```
+> **예시(참조) — Error: unable to read /etc/kubernetes/manifest:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 해결: kube-bench Pod에 hostPID, hostPath 등 필요한 권한이 부여되어 있는지 확인한다. Worker 노드에서 실행된 경우 Control Plane 파일에 접근할 수 없으므로 `--targets node`를 지정한다.
 
@@ -5037,10 +4504,8 @@ Error: unable to read /etc/kubernetes/manifests/kube-apiserver.yaml: permission 
 kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
 ```
 
-예상 출력:
-```
-job.batch/kube-bench created
-```
+**검증 - 기대 출력:** `job.batch/kube-bench created` — CIS Kubernetes Benchmark 점검 Job 이 생성된다(dev 실측).
+![kube-bench Job 생성](images/kcsa04-69-kubebench-apply.png)
 
 **2단계: Job 완료 대기**
 
@@ -5054,25 +4519,8 @@ kubectl wait --for=condition=complete job/kube-bench --timeout=120s
 kubectl logs job/kube-bench
 ```
 
-예상 출력 (일부):
-```
-[INFO] 1 Control Plane Security Configuration
-[INFO] 1.1 Control Plane Node Configuration Files
-[PASS] 1.1.1 Ensure that the API server pod specification file permissions are set to 644 or more restrictive
-[PASS] 1.1.2 Ensure that the API server pod specification file ownership is set to root:root
-...
-[FAIL] 1.2.6 Ensure that the --kubelet-certificate-authority argument is set
-...
-[INFO] 1.3 Controller Manager
-[PASS] 1.3.1 Ensure that the --terminated-pod-gc-threshold argument is set as appropriate
-...
-
-== Summary total ==
-XX checks PASS
-XX checks FAIL
-XX checks WARN
-XX checks INFO
-```
+**검증 - 기대 출력:** kube-bench 가 CIS 벤치마크 항목별로 `[PASS]`·`[FAIL]`·`[WARN]` 판정을 출력한다 — `[FAIL]` 항목이 보안 강화 대상이다(dev 실측, 항목 번호·결과는 클러스터 설정에 따라 다름).
+![kube-bench CIS 벤치마크 결과(PASS/FAIL/WARN)](images/kcsa04-70-kubebench-logs.png)
 
 **4단계: FAIL 항목만 추출**
 
@@ -5106,7 +4554,7 @@ kubectl logs job/kube-bench | tail -10
 
 ```bash
 # Worker 노드에서 kube-bench 직접 실행
-ssh admin@<dev-worker1-ip> 'sudo docker run --rm --pid=host -v /etc:/etc:ro -v /var:/var:ro aquasec/kube-bench node' 2>/dev/null | tail -20
+ssh dev-worker1 'sudo docker run --rm --pid=host -v /etc:/etc:ro -v /var:/var:ro aquasec/kube-bench node' 2>/dev/null | tail -20
 ```
 
 **8단계: 정리**
@@ -5162,12 +4610,10 @@ Audit Policy 설계 시 고려 사항:
 
 ```bash
 # API Server에 audit 플래그가 설정되어 있는지 확인
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep audit'
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep audit'
 ```
 
-```text
-# 출력이 없으면 Audit Logging이 비활성화된 것이다
-```
+> **예시(참조) — 출력이 없으면 Audit Logging이 비활성화된 것이다:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 설정 방법:
 1. `/etc/kubernetes/audit-policy.yaml` 파일을 생성한다.
@@ -5178,7 +4624,7 @@ ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yam
 
 ```bash
 # Secret 접근 이벤트 검색
-ssh admin@<dev-master-ip> 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null | python3 -c "
+ssh dev-master 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null | python3 -c "
 import sys, json
 for line in sys.stdin:
     try:
@@ -5189,10 +4635,7 @@ for line in sys.stdin:
 " 2>/dev/null | tail -10'
 ```
 
-```text
-2024-01-15T10:30:00.000000Z list demo/* by system:serviceaccount:demo:default
-2024-01-15T10:31:00.000000Z get kube-system/admin-token by system:kube-controller-manager
-```
+> **예시(참조) — 2024-01-15T10:30:00.000000Z list demo/* by sys:** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.
 
 이 출력에서 `demo` 네임스페이스의 Secret을 `default` ServiceAccount가 조회한 기록을 확인할 수 있다. 이 ServiceAccount에 Secret 접근 권한이 부여되어 있는지, 해당 접근이 정당한지 검토해야 한다.
 
@@ -5308,11 +4751,11 @@ spec:
 
 ```bash
 # Secret 접근 로그 필터링 (audit.log가 있는 경우)
-ssh admin@<dev-master-ip> 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null' | \
+ssh dev-master 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null' | \
   grep '"resource":"secrets"' | head -5
 
 # 실패한 인증 시도 필터링
-ssh admin@<dev-master-ip> 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null' | \
+ssh dev-master 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null' | \
   grep '"code":403' | head -5
 ```
 
@@ -5344,20 +4787,20 @@ ssh admin@<dev-master-ip> 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/n
 ```bash
 # API Server 보안 점검
 echo "=== API Server ==="
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "authorization-mode" && echo "[OK] authorization-mode 설정됨"
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "enable-admission" && echo "[OK] admission plugins 설정됨"
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "audit-policy-file" && echo "[OK] audit policy 설정됨" || echo "[WARN] audit policy 미설정"
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "encryption-provider" && echo "[OK] encryption at rest 설정됨" || echo "[WARN] encryption at rest 미설정"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "authorization-mode" && echo "[OK] authorization-mode 설정됨"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "enable-admission" && echo "[OK] admission plugins 설정됨"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "audit-policy-file" && echo "[OK] audit policy 설정됨" || echo "[WARN] audit policy 미설정"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml' | grep -c "encryption-provider" && echo "[OK] encryption at rest 설정됨" || echo "[WARN] encryption at rest 미설정"
 
 # etcd 보안 점검
 echo "=== etcd ==="
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -c "cert-file" && echo "[OK] TLS 인증서 설정됨"
-ssh admin@<dev-master-ip> 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -c "peer-cert-file" && echo "[OK] 피어 TLS 설정됨"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -c "cert-file" && echo "[OK] TLS 인증서 설정됨"
+ssh dev-master 'sudo cat /etc/kubernetes/manifests/etcd.yaml' | grep -c "peer-cert-file" && echo "[OK] 피어 TLS 설정됨"
 
 # kubelet 보안 점검
 echo "=== kubelet ==="
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml' | grep "anonymous" -A 1 | grep -c "false" && echo "[OK] anonymous 인증 비활성화"
-ssh admin@<dev-master-ip> 'sudo cat /var/lib/kubelet/config.yaml' | grep -c "Webhook" && echo "[OK] Webhook 인가 설정됨"
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml' | grep "anonymous" -A 1 | grep -c "false" && echo "[OK] anonymous 인증 비활성화"
+ssh dev-master 'sudo cat /var/lib/kubelet/config.yaml' | grep -c "Webhook" && echo "[OK] Webhook 인가 설정됨"
 ```
 
 **2단계: 네트워크 보안 체크리스트**
@@ -5498,7 +4941,7 @@ echo ""
 echo "새로운 강력한 비밀번호를 생성하여 Secret으로 관리한다."
 
 # 6) Audit 로그에서 최근 Secret 접근 기록 확인 (감사 로깅이 활성화된 경우)
-ssh admin@<dev-master-ip> 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null' | \
+ssh dev-master 'sudo cat /var/log/kubernetes/audit/audit.log 2>/dev/null' | \
   grep -i "secret" | grep -i "demo" | tail -5 || echo "Audit 로그 없음 — 향후 활성화 필요"
 ```
 
@@ -5587,12 +5030,8 @@ kubectl auth can-i list secrets --as=system:serviceaccount:demo:order-api-sa -n 
 kubectl auth can-i list pods --as=system:serviceaccount:demo:order-api-sa -n demo
 ```
 
-예상 출력:
-```
-yes
-no
-no
-```
+**검증 - 기대 출력:** order-api-sa 는 configmaps 만 `yes`, secrets·pods 는 `no` — 최소 권한(ConfigMap 읽기만)이 정확히 적용됐다(dev 실측).
+![order-api-sa 최소 권한 검증(configmaps=yes, secrets·pods=no)](images/kcsa04-71-orderapi-rbac.png)
 
 **Phase 3: 보안 Pod 배포**
 
@@ -5753,25 +5192,27 @@ Kubernetes 환경의 침투 테스트가 기존 네트워크 침투 테스트와
 
 #### 공격 체인 분석
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  s1["1. 정찰 (Reconnaissance)\n외부 노출 서비스 파악 (NodePort 30080, 30880)"]
+  s2["2. 초기 접근 (Initial Access)\nnginx Pod 침해 가정"]
+  s3["3. 횡적 이동 시도 (Lateral Movement)"]
+  b1["nginx→postgres: 차단 (egress 정책)"]
+  b2["nginx→rabbitmq: 차단 (egress 정책)"]
+  b3["nginx→httpbin POST: 차단 (L7 정책)"]
+  b4["새 Pod 생성→postgres: 차단 (default-deny)"]
+  s4["4. 정책 우회 시도 (Defense Evasion)\n레이블 위조 Pod→postgres: 성공 가능!"]
+  s5["5. 데이터 탈취 (Exfiltration)\npostgres 데이터 접근"]
+
+  s1 --> s2 --> s3
+  s3 --> b1
+  s3 --> b2
+  s3 --> b3
+  s3 --> b4
+  s3 --> s4 --> s5
 ```
-1. 정찰 (Reconnaissance)
-   └─ 외부 노출 서비스 파악 (NodePort 30080, 30880)
-      │
-2. 초기 접근 (Initial Access)
-   └─ nginx Pod 침해 가정
-      │
-3. 횡적 이동 시도 (Lateral Movement)
-   ├─ nginx→postgres: 차단 (egress 정책)
-   ├─ nginx→rabbitmq: 차단 (egress 정책)
-   ├─ nginx→httpbin POST: 차단 (L7 정책)
-   └─ 새 Pod 생성→postgres: 차단 (default-deny)
-      │
-4. 정책 우회 시도 (Defense Evasion)
-   └─ 레이블 위조 Pod→postgres: 성공 가능!
-      │
-5. 데이터 탈취 (Exfiltration)
-   └─ postgres 데이터 접근
-```
+_그림 5. 데모 환경 공격 체인과 각 단계의 차단 지점._
 
 각 방어 레이어의 역할:
 
@@ -5813,7 +5254,7 @@ kubectl get svc -n demo
 
 ```bash
 # 3) nginx Pod에서 postgres로 직접 TCP 연결 시도
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   sh -c 'echo "SELECT 1;" | nc -w 5 postgres.demo.svc.cluster.local 5432 2>&1' || echo "연결 실패"
 ```
 
@@ -5823,7 +5264,7 @@ kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -
 
 ```bash
 # 4) nginx Pod에서 rabbitmq로 직접 접근 시도
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   sh -c 'nc -z -w 5 rabbitmq.demo.svc.cluster.local 5672 2>&1' || echo "연결 실패"
 ```
 
@@ -5833,7 +5274,7 @@ kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -
 
 ```bash
 # 5) nginx에서 httpbin으로 POST 요청 — L7 정책 우회 시도
-kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -c nginx-web -- \
+kubectl exec -n demo $(kubectl get pod -n demo -l app=nginx-web -o name | head -1) -- \
   curl -s -o /dev/null -w "%{http_code}" -X POST -d '{"attack":"payload"}' \
   http://httpbin.demo.svc.cluster.local:80/post --max-time 10
 ```
@@ -5968,7 +5409,7 @@ tart-infra의 모든 VM은 `admin/admin` 계정으로 SSH 접속이 가능하다
 
 ```bash
 # SSH 보안 점검
-ssh admin@<dev-master-ip> 'sudo cat /etc/ssh/sshd_config' | grep -E "PasswordAuthentication|PermitRootLogin|PubkeyAuthentication"
+ssh dev-master 'sudo cat /etc/ssh/sshd_config' | grep -E "PasswordAuthentication|PermitRootLogin|PubkeyAuthentication"
 ```
 
 프로덕션 보안 권장 사항:

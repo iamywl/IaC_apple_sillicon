@@ -41,7 +41,7 @@ Kubernetes 자격 시험 준비에서 가장 큰 어려움은 실제 멀티 클�
 
 ### Pod CIDR 할당 내부 메커니즘
 
-kube-controller-manager의 `--cluster-cidr` 플래그(예: 10.10.0.0/16)는 클러스터 전체의 Pod 네트워크 대역을 지정한다. Node CIDR Allocator는 이 대역을 `--node-cidr-mask-size`(기본값: /24)로 분할하여 각 노드에 서브넷을 할당한다. platform 클러스터의 경우:
+kube-controller-manager의 `--cluster-cidr` 플래그(예: 10.10.0.0/16)는 클러스터 전체의 Pod 네트워크 대역을 지정한다. Node CIDR Allocator(노드 CIDR 할당기 — kube-controller-manager 안에서 도는 컨트롤 루프로, 클러스터 전체 CIDR을 노드마다 겹치지 않는 작은 서브넷으로 쪼개 배분하는 역할)는 이 대역을 `--node-cidr-mask-size`(노드 한 대에 줄 서브넷의 프리픽스 길이, 기본값 /24)로 분할하여 각 노드에 서브넷을 할당한다. CIDR(Classless Inter-Domain Routing)은 `10.10.0.0/16`처럼 `IP/프리픽스길이` 형식으로 IP 대역을 표기하는 방식이며, 프리픽스가 길수록(예: /24가 /16보다) 대역이 좁다. platform 클러스터의 경우:
 
 - 클러스터 CIDR: 10.10.0.0/16 (65,536개 IP)
 - 노드당 CIDR: /24 (256개 IP, 이 중 약 250개를 Pod에 사용 가능)
@@ -49,13 +49,15 @@ kube-controller-manager의 `--cluster-cidr` 플래그(예: 10.10.0.0/16)는 클�
 
 이 할당은 노드가 클러스터에 조인할 때 자동으로 이루어지며, `kubectl get node <name> -o jsonpath='{.spec.podCIDR}'`로 확인할 수 있다.
 
+**왜 노드마다 서브넷을 따로 쪼개는가**: 이렇게 노드별로 겹치지 않는 서브넷을 미리 나눠 주지 않던 시절에는 어느 노드가 어떤 Pod IP를 가졌는지 클러스터 전체가 IP 단위로 추적해야 했고, Pod IP만 보고는 그 Pod가 어느 노드에 있는지 알 수 없었다. 노드별 /24 분할은 "Pod IP의 앞 24비트가 노드를 식별한다"는 규칙을 만들어, 노드 간 패킷 라우팅을 IP 단위 테이블이 아니라 노드 단위 경로(10.10.5.0/24는 worker1로) 한 줄로 처리할 수 있게 한다. 트레이드오프는 노드당 Pod 수가 서브넷 크기에 묶인다는 점이다. /24면 노드당 약 250개 Pod가 상한이고, 노드 수가 256개(8비트)를 넘으면 더 이상 서브넷을 못 떼어 노드 조인이 실패한다. 큰 클러스터는 `--node-cidr-mask-size`를 /25 이하로 좁히는 대신 `--cluster-cidr`을 /15 등으로 넓혀 두 한계를 함께 푼다.
+
 ### 4개 클러스터 (kubeadm v1.31)
 
 | 클러스터 | 노드 수 | Master 사양 | Worker 사양 | Pod CIDR | Service CIDR |
 |----------|---------|------------|------------|----------|-------------|
 | platform | 3 | 2 CPU / 4 GB | worker1: 3 CPU / 12 GB, worker2: 2 CPU / 8 GB | 10.10.0.0/16 | 10.96.0.0/16 |
 | dev | 2 | 2 CPU / 4 GB | worker1: 2 CPU / 8 GB | 10.20.0.0/16 | 10.97.0.0/16 |
-| staging | 2 | - | - | 10.30.0.0/16 | 10.98.0.0/16 |
+| staging | 2 | 2 CPU / 4 GB | worker1: 2 CPU / 8 GB | 10.30.0.0/16 | 10.98.0.0/16 |
 | prod | 3 | 2 CPU / 3 GB | worker1: 2 CPU / 8 GB, worker2: 2 CPU / 8 GB | 10.40.0.0/16 | 10.99.0.0/16 |
 
 - **SSH 접속**: `admin` / `admin`
@@ -87,7 +89,7 @@ kube-controller-manager의 `--cluster-cidr` 플래그(예: 10.10.0.0/16)는 클�
 
 #### HPA 내부 동작 원리
 
-HPA 컨트롤러는 기본 15초 간격으로 metrics-server에서 CPU/메모리 사용량을 조회한다. 목표 레플리카 수는 다음 공식으로 산출된다:
+HPA 컨트롤러는 기본 15초 간격으로 metrics-server에서 CPU/메모리 사용량을 조회한다. 목표 레플리카 수의 직관은 단순하다. "지금 Pod들이 목표치보다 1.5배 바쁘면 Pod도 1.5배로 늘린다"는 비례 관계이다. 다만 Pod 개수는 정수여야 하므로 소수점이 나오면 처리 방향이 문제가 된다. HPA는 부하를 감당하지 못하는 상황을 피하기 위해 스케일 업 계산에서는 항상 올림(`ceil`)을 쓴다. 4.5개가 필요하다고 나오면 4개로는 부족하니 5개로 올린다는 보수적 선택이다. 목표 레플리카 수는 다음 공식으로 산출된다(`ceil(x)`는 x 이상의 가장 작은 정수, 즉 올림):
 
 ```
 desiredReplicas = ceil(currentReplicas * (currentMetricValue / desiredMetricValue))
@@ -303,31 +305,8 @@ for ctx in platform dev staging prod; do
 done
 ```
 
-**기대 출력**:
-```
-============================================
-  클러스터: platform
-============================================
-NAME              STATUS   CPU   MEMORY      PODS
-platform-master   Ready    2     4Gi         110
-platform-worker1  Ready    3     12Gi        110
-platform-worker2  Ready    2     8Gi         110
-
-============================================
-  클러스터: dev
-============================================
-NAME          STATUS   CPU   MEMORY   PODS
-dev-master    Ready    2     4Gi      110
-dev-worker1   Ready    2     8Gi      110
-
-============================================
-  클러스터: prod
-============================================
-NAME           STATUS   CPU   MEMORY   PODS
-prod-master    Ready    2     3Gi      110
-prod-worker1   Ready    2     8Gi      110
-prod-worker2   Ready    2     8Gi      110
-```
+**검증 - 기대 출력:** 4개 클러스터(platform·dev·staging·prod)의 노드별 STATUS·CPU·메모리·최대 Pod 수가 클러스터별로 출력된다. 값은 VM 사양에 따라 다르다(실측).
+![4개 클러스터 노드 리소스 비교](images/lab-cluster-resources.png)
 
 #### Step 2: Pod CIDR 및 Service CIDR 확인
 
@@ -348,22 +327,8 @@ for ctx in platform dev staging prod; do
 done
 ```
 
-**기대 출력 (Pod CIDR)**:
-```
-=== platform: Pod CIDR ===
-platform-master     10.10.0.0/24
-platform-worker1    10.10.1.0/24
-platform-worker2    10.10.2.0/24
-
-=== dev: Pod CIDR ===
-dev-master     10.20.0.0/24
-dev-worker1    10.20.1.0/24
-
-=== prod: Pod CIDR ===
-prod-master     10.40.0.0/24
-prod-worker1    10.40.1.0/24
-prod-worker2    10.40.2.0/24
-```
+**검증 - 기대 출력:** 각 클러스터의 노드별 `spec.podCIDR`(노드에 할당된 Pod IP 대역)이 출력된다. 대역은 클러스터 구성에 따라 다르다(실측).
+![4개 클러스터 노드별 Pod CIDR](images/lab-pod-cidr.png)
 
 #### Step 3: 클러스터 버전 및 런타임 확인
 
@@ -406,6 +371,17 @@ done
 **학습 목표**: 컨트롤 플레인의 4대 구성 요소(kube-apiserver, kube-controller-manager, kube-scheduler, etcd)가 Static Pod로 실행되는 방식을 이해한다.
 
 **CKA 관련 도메인**: Cluster Architecture, Installation & Configuration (25%)
+
+#### 실습 전제
+
+- platform 클러스터가 가동 중이어야 하며, kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 에 있다(`--context=platform` 은 이 kubeconfig 로드 시의 컨텍스트 이름).
+- master 노드 SSH는 `ssh platform-master` 별칭으로 비밀번호 없이 접속된다(키 `~/.ssh/tart_k8scert`). 아래의 `ssh admin@<platform-master-ip>` 는 이 별칭으로 대체 가능하다.
+
+#### 등장 배경
+
+컨트롤 플레인을 Static Pod로 돌리지 않던 시절에는 kube-apiserver·controller-manager·scheduler·etcd를 노드에 직접 설치한 바이너리(또는 별도 systemd 서비스)로 띄웠다. 이 방식의 고통은 두 가지였다. 첫째, 컴포넌트마다 설치·버전 관리·재시작 방식이 제각각이라 운영이 번거로웠다. 둘째, 컨트롤 플레인 자체를 "Pod처럼" 컨테이너로 띄우려 하면 닭과 달걀 문제에 부딪혔다. Pod를 만들려면 kube-apiserver가 필요한데, 정작 kube-apiserver 자신이 그 Pod로 떠야 했기 때문이다.
+
+kubeadm은 이 문제를 Static Pod로 해결했다. Static Pod는 kubelet이 `/etc/kubernetes/manifests/` 디렉토리의 YAML 파일을 직접 읽어 띄우는 Pod로, **kube-apiserver를 거치지 않는다**(상세 동작은 뒤의 Lab 2.7). 덕분에 API Server가 아직 없는 부팅 초기에도 kubelet 혼자서 컨트롤 플레인 4대 컴포넌트를 컨테이너로 올릴 수 있다. 나아진 점은 컨트롤 플레인도 일반 워크로드와 같은 컨테이너·이미지·로그 체계로 통일되어, 업그레이드가 매니페스트의 이미지 태그 한 줄 교체로 끝난다는 것이다. 트레이드오프는 이들이 일반 Pod가 아니라서 `kubectl delete`로 지워지지 않고(미러 Pod만 지워졌다가 즉시 재생성), 설정 변경은 반드시 노드에 SSH로 들어가 매니페스트 파일을 고쳐야 한다는 점이다. 또한 매니페스트에 오타가 나면 kubelet이 해당 컴포넌트를 못 띄워 클러스터 전체가 멈출 수 있어, 컨트롤 플레인 매니페스트 편집은 위험도가 높은 작업이다.
 
 #### Step 1: 컨트롤 플레인 Pod 확인
 
@@ -522,6 +498,12 @@ kubectl --context=platform -n kube-system get pod etcd-platform-master -o yaml |
 **학습 목표**: etcd 스냅샷을 생성하여 클러스터 데이터를 백업한다. CKA 시험에서 거의 매번 출제되는 필수 항목이다.
 
 **CKA 관련 도메인**: Cluster Architecture, Installation & Configuration (25%)
+
+#### 실습 전제
+
+- platform 클러스터가 가동 중이고, kubeconfig가 `~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 에 있다(`--context=platform`).
+- master 노드 SSH는 `ssh platform-master` 별칭으로 접속된다(아래 `ssh admin@<platform-master-ip>` 대체 가능).
+- 인증서 경로의 의미: `/etc/kubernetes/pki/etcd/ca.crt` 는 etcd 서버 인증서를 검증하는 **CA 인증서**, `server.crt`/`server.key` 는 etcdctl이 etcd에 자신을 mTLS(양방향 TLS — 서버와 클라이언트가 서로 인증서로 신원을 증명하는 방식)로 증명하는 **클라이언트 인증서/키**다. 백업 명령에서 이 세 파일을 `--cacert`/`--cert`/`--key` 로 넘기는 이유다.
 
 #### 등장 배경
 
@@ -792,6 +774,18 @@ etcd 스냅샷 복구의 내부 동작은 다음과 같다:
 **학습 목표**: 4개 클러스터의 kubeconfig를 관리하고, 컨텍스트를 빠르게 전환하는 방법을 익힌다.
 
 **CKA 관련 도메인**: Cluster Architecture, Installation & Configuration (25%)
+
+#### 실습 전제
+
+이 저장소에서 클러스터별 kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/{platform,dev,staging,prod}.yaml` 에 가동 시 자동 생성된다(gitignore). 아래처럼 네 파일을 한꺼번에 로드하면 `kubectl config get-contexts` 에 네 컨텍스트가 함께 보인다.
+
+```bash
+export KUBECONFIG=kubeconfig/platform.yaml:kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/prod.yaml
+```
+
+#### 등장 배경
+
+kubeconfig가 표준화되기 전에는 클러스터마다 API Server 주소·인증서·토큰을 명령마다 플래그로 직접 넘기거나, 클러스터별로 다른 설정 파일을 손으로 바꿔 끼워야 했다. 클러스터가 여럿이면 "지금 내가 어느 클러스터를 보고 있는가"를 사람이 기억해야 했고, dev에 적용할 명령을 prod에 잘못 날리는 사고가 잦았다. kubeconfig는 이 정보를 **cluster(어디로)·user(누구로)·context(이 둘의 조합 + 기본 네임스페이스)** 세 블록으로 구조화하고, "현재 컨텍스트(current-context)"라는 단일 상태로 대상을 묶어 이 문제를 줄였다. `kubectl config use-context dev` 한 번이면 이후 모든 명령이 dev를 향한다. 나아진 점은 컨텍스트 이름만 보면 대상이 명확해지고, 여러 kubeconfig 파일을 `KUBECONFIG` 환경변수에 콜론으로 이어 붙여 하나처럼 다룰 수 있다는 것이다. 트레이드오프는 "현재 컨텍스트"라는 숨은 전역 상태가 생겨, use-context를 깜빡하면 의도와 다른 클러스터에 명령이 나간다는 점이다. CKA 실기는 문제마다 `kubectl config use-context <ctx>` 로 클러스터를 바꾸므로, 매 문제 첫 줄에서 현재 컨텍스트를 확인하는 습관이 오답을 막는다.
 
 #### Step 1: 현재 kubeconfig 구조 분석
 
@@ -1665,6 +1659,8 @@ Kubernetes의 워크로드 관리는 선언적(declarative) 모델에 기반한�
 
 Deployment는 ReplicaSet 위에 추가된 추상화 계층으로, Rolling Update와 롤백 기능을 제공한다. 내부적으로 Deployment 컨트롤러는 이미지 변경 시 새 ReplicaSet을 생성하고, 기존 ReplicaSet의 replicas를 점진적으로 0으로 줄이면서 새 ReplicaSet의 replicas를 늘린다. 이 과정에서 `maxSurge`(추가 허용 Pod 수)와 `maxUnavailable`(비가용 허용 Pod 수)이 조절 변수로 작용한다.
 
+이 두 값은 `25%`처럼 퍼센트로 적을 수 있는데, 그러면 `replicas * 비율`이 소수로 나온다. Pod 개수는 정수여야 하므로 둘은 서로 반대 방향으로 반올림한다. 직관은 "양쪽 모두 안전한 쪽으로 보수적으로 깎는다"이다. `maxUnavailable`은 *얼마까지 죽여도 되는가*의 상한이므로 내림(`floor`, 소수점 버림)해서 덜 죽이고, `maxSurge`는 *얼마까지 추가로 띄워도 되는가*의 상한이므로 올림(`ceil`)해서 여유를 준다. 예로 replicas=3, `maxUnavailable=25%`이면 `floor(3 * 0.25) = floor(0.75) = 0`이라 한 개도 미리 죽이지 못하고, 새 Pod가 Ready가 된 뒤에야 기존 Pod를 종료한다. replicas=4가 되어서야 `floor(4 * 0.25) = 1`로 의미 있는 값이 된다. 단, 내림 때문에 둘 다 0이 되는 일을 막기 위해 비율 지정 시 `maxUnavailable`이 0으로 떨어지면 쿠버네티스가 자동으로 `maxSurge`를 최소 1로 보정한다.
+
 스케줄링 제어(nodeSelector, Taint/Toleration, Affinity)는 Pod를 특정 노드에 배치하거나 배제하는 메커니즘이다. 이 메커니즘이 필요한 이유는 다음과 같다:
 - GPU 워크로드는 GPU가 있는 노드에만 배치해야 한다 (nodeSelector/nodeAffinity).
 - 마스터 노드에는 일반 워크로드를 배치하지 않아야 한다 (Taint/Toleration).
@@ -2386,6 +2382,17 @@ Kubernetes는 리소스 설정에 따라 Pod에 자동으로 QoS(Quality of Serv
 | **Burstable** | requests와 limits가 설정되어 있으나, 값이 다르다 (또는 일부만 설정) | 중간 |
 | **BestEffort** | requests와 limits가 모두 미설정이다 | 가장 먼저 퇴거 (최저 보호) |
 
+QoS 분류에는 흔히 빠뜨리는 전제가 하나 있다. limits만 지정하면 Guaranteed가 되리라 오해하기 쉬운데, **limits만 적고 requests를 비우면 kubelet이 requests를 limits와 같은 값으로 자동 복사한다.** 그 결과 CPU·메모리 모두에서 requests = limits가 성립해 Guaranteed가 된다. 반대로 requests만 있고 limits가 없으면 상한이 없으므로 Guaranteed가 될 수 없고 Burstable에 머문다. 즉 Guaranteed의 진짜 조건은 "모든 컨테이너의 모든 리소스에서 requests와 limits가 명시되었고 그 값이 같다"이며, "requests를 생략한 채 limits만 명시"한 경우는 자동 복사에 의해 같아진 특수 케이스이다. 아래 표는 한 컨테이너에서 CPU·메모리의 requests/limits 지정 조합이 어떤 QoS로 매핑되는지 정리한 것이다(여러 컨테이너면 가장 낮은 등급으로 수렴한다 — 한 컨테이너라도 BestEffort 요소가 있으면 Pod 전체가 Burstable 이하로 떨어진다).
+
+| CPU requests | CPU limits | Mem requests | Mem limits | 결과 QoS | 설명 |
+|---|---|---|---|---|---|
+| 없음 | 없음 | 없음 | 없음 | **BestEffort** | 어떤 리소스에도 requests/limits가 없다 |
+| 100m | 200m | 64Mi | 128Mi | **Burstable** | requests < limits (가장 흔한 형태, nginx-web이 이 경우) |
+| 100m | 없음 | 없음 | 없음 | **Burstable** | requests만 일부 설정. limits 없어 상한 없음 |
+| 없음 | 200m | 없음 | 128Mi | **Guaranteed** | limits만 설정 → requests가 limits 값으로 자동 복사되어 양쪽 모두 requests = limits |
+| 100m | 200m | 64Mi | 64Mi | **Burstable** | 메모리는 같지만 CPU가 requests < limits이므로 전체는 Burstable |
+| 100m | 100m | 128Mi | 128Mi | **Guaranteed** | CPU·메모리 모두 requests = limits (명시) |
+
 노드 메모리 부족(MemoryPressure) 시 kubelet의 eviction manager는 다음 순서로 Pod를 퇴거한다:
 1. BestEffort Pod 중 메모리 사용량이 가장 높은 Pod
 2. Burstable Pod 중 requests 대비 메모리 초과 비율이 가장 높은 Pod
@@ -2393,7 +2400,7 @@ Kubernetes는 리소스 설정에 따라 Pod에 자동으로 QoS(Quality of Serv
 
 #### CPU Throttling vs Memory OOMKill 차이
 
-CPU limits 초과 시에는 cgroup의 CPU bandwidth controller가 프로세스의 CPU 시간을 제한한다. 프로세스는 종료되지 않고 느려진다. 100ms 주기에서 limits에 해당하는 시간만큼만 CPU를 사용할 수 있으며, 나머지 시간은 대기한다. 이를 "CPU throttling"이라 한다.
+CPU limits 초과 시에는 cgroup(control group — 리눅스 커널이 프로세스 묶음의 CPU·메모리 사용량을 측정하고 상한을 강제하는 기능. 컨테이너 격리의 자원 제한 부분을 담당한다)의 CPU bandwidth controller가 프로세스의 CPU 시간을 제한한다. 프로세스는 종료되지 않고 느려진다. 100ms 주기에서 limits에 해당하는 시간만큼만 CPU를 사용할 수 있으며, 나머지 시간은 대기한다. 이를 "CPU throttling"이라 한다.
 
 메모리 limits 초과 시에는 리눅스 커널의 OOM Killer가 해당 cgroup의 프로세스를 SIGKILL(신호 9)로 강제 종료한다. 이것이 OOMKilled이며, Exit Code 137(128+9)로 표시된다. 메모리는 CPU와 달리 "빌려줬다가 돌려받기"가 불가능하므로, 초과 시 즉시 프로세스가 종료된다.
 
@@ -3355,6 +3362,14 @@ echo "Jenkins: http://$NODE_IP:30900"
 2. NodePort의 포트 범위(30000-32767) 제한의 이유는 무엇인가?
 3. keycloak에 설정된 probes(liveness, readiness)의 역할은 무엇인가?
 
+**확인 문제 풀이**:
+
+1. **NodePort 전체 노드 접근 가능 이유**: NodePort Service를 생성하면 kube-proxy(또는 Cilium 같은 CNI 대체제)가 클러스터 내 **모든 노드**의 해당 포트에서 트래픽을 수신하도록 iptables/eBPF 규칙을 설정한다. 따라서 Pod가 실제로 실행 중인 노드가 아닌 다른 노드 IP로 요청을 보내도 kube-proxy가 해당 트래픽을 ClusterIP를 거쳐 실제 백엔드 Pod까지 전달한다. 이 동작이 "어느 노드로든 같은 NodePort로 도달 가능하다"는 원칙의 근거다.
+
+2. **30000-32767 범위 이유**: 리눅스 커널은 포트 1~1023(well-known ports)을 특권 포트로 예약하고, 1024~29999 범위는 ephemeral port(단기 클라이언트 소켓)로 OS가 자동 할당할 수 있다. NodePort가 이 영역과 겹치면 kube-proxy가 예약한 포트를 커널이 클라이언트 소켓에 임시로 사용해 충돌이 발생한다. 30000 이상의 고정 범위를 별도로 정의함으로써 운영체제 ephemeral port 풀(`/proc/sys/net/ipv4/ip_local_port_range`, 기본 32768~60999)과도 가능한 한 겹치지 않게 유지한다. Kubernetes 설치 시 `--service-node-port-range` 플래그로 범위를 변경할 수 있다.
+
+3. **keycloak readinessProbe/livenessProbe 역할**: `livenessProbe`는 컨테이너가 **살아 있는지** 판단한다. 지정한 연속 실패 횟수(`failureThreshold`) 초과 시 kubelet이 컨테이너를 강제 재시작한다. `readinessProbe`는 컨테이너가 **트래픽을 받을 준비가 됐는지** 판단한다. keycloak처럼 기동 후 DB 연결·테마 로딩에 수십 초가 걸리는 서비스는 readinessProbe가 성공할 때까지 Service Endpoint에서 제외되므로, 준비 전에 트래픽이 유입되어 503 오류가 발생하는 상황을 방지한다. 두 probe는 독립적으로 동작하며, 일반적으로 liveness는 더 관대한 임계값(`failureThreshold` 높게, `periodSeconds` 길게)을 사용해 일시적인 지연에 의한 불필요한 재시작을 줄인다.
+
 ---
 
 ### Lab 3.5: NetworkPolicy — Default Deny 테스트
@@ -3700,6 +3715,11 @@ kubectl --context=dev delete ciliumnetworkpolicy l7-http-filter -n demo
 1. L7 NetworkPolicy가 표준 Kubernetes NetworkPolicy와 다른 점은 무엇인가?
 2. CiliumNetworkPolicy는 CKA 시험 범위에 포함되는가?
 3. L7 정책이 HTTP 메서드뿐 아니라 어떤 프로토콜까지 제어할 수 있는가?
+
+**확인 문제 풀이**:
+1. 표준 Kubernetes NetworkPolicy는 OSI 3계층(IP 주소·CIDR)과 4계층(TCP/UDP 포트 번호) 수준만 제어한다. 따라서 같은 포트 80을 사용하는 GET과 POST 요청을 구별하는 것이 불가능하다. CiliumNetworkPolicy는 Cilium의 eBPF(extended Berkeley Packet Filter — 커널 내부에서 안전하게 실행되는 샌드박스 프로그램) 기반 L7 파싱 기능을 사용하여 HTTP 헤더·메서드·경로·응답 코드 등 애플리케이션 계층 속성을 인식하고 허용/차단을 결정한다. 동일한 포트에서도 GET만 허용하고 POST는 차단하는 세밀한 제어가 가능하다.
+2. CiliumNetworkPolicy는 CKA 공식 커리큘럼(Services & Networking 도메인)의 정식 범위에 포함되지 않는다. CKA 시험은 표준 `networking.k8s.io/v1` NetworkPolicy 오브젝트를 기준으로 출제된다. 그러나 클러스터에 Cilium이 CNI(Container Network Interface — 컨테이너 네트워크 플러그인 표준 인터페이스)로 설치된 환경에서는 CiliumNetworkPolicy가 표준 NetworkPolicy와 함께 적용되므로, CNI 심화 이해 차원에서 파악해 두는 것이 유용하다.
+3. Cilium은 HTTP(메서드·경로·헤더) 외에 gRPC(원격 프로시저 호출 — 서비스 간 고성능 API 통신 프로토콜), Kafka(분산 메시지 큐 — 토픽·파티션 수준까지 허용/거부), DNS(도메인 이름 기반 egress 필터링) 프로토콜을 파싱하여 L7 수준에서 제어할 수 있다. 예를 들어 특정 Kafka 토픽에 대한 produce는 허용하고 consume은 차단하는 정책이 가능하다.
 
 ---
 
@@ -4084,12 +4104,7 @@ kubectl get pods --all-namespaces | grep provisioner
 
 검증 (PVC Pending 시 describe 출력):
 
-```text
-Events:
-  Type     Reason              Age   From                         Message
-  ----     ------              ----  ----                         -------
-  Warning  ProvisioningFailed  10s   persistentvolume-controller  storageclass.storage.k8s.io "nonexistent-sc" not found
-```
+![존재하지 않는 StorageClass 지정 시 PVC describe Events — ProvisioningFailed](images/m04-01-provisioning-failed.png)
 
 ---
 
@@ -4253,21 +4268,11 @@ kubectl describe pvc <name>
 
 검증 (storageClassName 불일치):
 
-```text
-Events:
-  Type     Reason              Age   From                         Message
-  ----     ------              ----  ----                         -------
-  Normal   FailedBinding       10s   persistentvolume-controller  no persistent volumes available for this claim and no storage class is set
-```
+![StorageClass 미지정 PVC describe Events — FailedBinding](images/m04-02-failed-binding.png)
 
 검증 (용량 부족):
 
-```text
-Events:
-  Type     Reason              Age   From                         Message
-  ----     ------              ----  ----                         -------
-  Normal   FailedBinding       10s   persistentvolume-controller  no persistent volumes available for this claim and no storage class is set
-```
+![StorageClass 미지정 PVC describe Events — FailedBinding](images/m04-02-failed-binding.png)
 
 바인딩 조건 체크리스트:
 1. `storageClassName` 일치 여부
@@ -4695,15 +4700,7 @@ kubectl get pod <name> -o jsonpath='{.status.containerStatuses[0].lastState.term
 
 검증:
 
-```text
-{
-    "containerID": "containerd://abc123...",
-    "exitCode": 1,
-    "finishedAt": "2026-03-30T10:00:15Z",
-    "reason": "Error",
-    "startedAt": "2026-03-30T10:00:10Z"
-}
-```
+![종료 컨테이너의 lastState.terminated — exitCode/reason/시각](images/m04-04-exitcode.png)
 
 ```bash
 # 2. 이전 컨테이너의 로그 확인 (핵심!)
@@ -4712,10 +4709,7 @@ kubectl logs <pod> --previous
 
 검증 (설정 파일 누락으로 인한 크래시):
 
-```text
-Error: config file /etc/app/config.yaml not found
-Fatal: unable to start application
-```
+![CrashLoopBackOff Pod 의 직전 컨테이너 로그(--previous)](images/m04-05-logs.png)
 
 ```bash
 # 3. describe에서 이벤트와 Restart Count 확인
@@ -4724,14 +4718,7 @@ kubectl describe pod <name> | grep -E "(Restart Count|Exit Code|Reason|State)"
 
 검증:
 
-```text
-    State:          Waiting
-      Reason:       CrashLoopBackOff
-    Last State:     Terminated
-      Reason:       Error
-      Exit Code:    1
-    Restart Count:  5
-```
+![describe pod — State=Waiting(CrashLoopBackOff), Last State Terminated, Restart Count](images/m04-06-crashloop.png)
 
 **확인 문제**:
 1. `kubectl logs --previous` 플래그의 용도는 무엇인가?
@@ -4970,6 +4957,13 @@ CPU throttling과의 차이: CPU 제한 초과 시에는 cgroup의 CPU bandwidth
 
 **CKA 관련 도메인**: Troubleshooting (30%)
 
+#### 실습 전제
+
+- 대상 클러스터(여기서는 platform)가 가동 중이어야 한다. `./scripts/boot.sh` 로 VM을 띄우고, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh platform` 으로 IP 드리프트를 복구한 상태여야 한다.
+- kubectl 검증 명령은 kubeconfig가 `~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 에 있다고 가정한다. 문서의 `--context=platform` 은 이 kubeconfig를 `KUBECONFIG`로 로드했을 때의 컨텍스트 이름이다(`export KUBECONFIG=kubeconfig/platform.yaml` 또는 `--kubeconfig kubeconfig/platform.yaml` 로 대체 가능).
+- 노드 SSH는 전용 키가 전 노드에 배포돼 있어 `ssh platform-worker1` 처럼 **VM 이름 별칭으로 비밀번호 없이** 접속된다(키 `~/.ssh/tart_k8scert`, 키 미배포 시 `./scripts/setup-ssh-keys.sh platform` 으로 배포). 아래 예시의 `ssh admin@<platform-worker1-ip>` 는 이 별칭(`ssh platform-worker1`)으로 대체해도 동일하게 동작한다. IP는 재부팅마다 바뀌므로 별칭 접속을 권장한다.
+- 노드 내부에서 다루는 인증서 경로의 의미: `/var/lib/kubelet/pki/kubelet-client-current.pem` 은 kubelet이 API Server에 자신을 증명하는 **클라이언트 인증서**(만료되면 노드가 NotReady), `/etc/kubernetes/kubelet.conf` 는 그 인증서와 API Server 주소를 담은 **kubeconfig**다. 이 둘이 SSH 진단의 핵심 파일이다.
+
 #### 등장 배경
 
 kubelet은 각 노드에서 실행되는 에이전트로, Pod의 생성/삭제/모니터링을 담당한다. kubelet이 중지되면 해당 노드의 모든 Pod 관리가 중단되고, 노드가 NotReady 상태로 전환된다. kubelet은 systemd 서비스로 관리되므로, `systemctl`과 `journalctl`이 진단의 핵심 도구이다.
@@ -5063,10 +5057,7 @@ sudo journalctl -u kubelet | tail -5
 
 검증:
 
-```text
-Mar 30 10:00:00 node systemd[1]: kubelet.service: Failed to execute /usr/bin/kublet: No such file or directory
-Mar 30 10:00:00 node systemd[1]: kubelet.service: Failed at step EXEC spawning /usr/bin/kublet: No such file or directory
-```
+![잘못된 바이너리 경로 — systemctl status 에 status=203/EXEC(실행 파일 없음)](images/m04-07-bad-binary.png)
 
 해결: `which kubelet`로 실제 경로를 확인하고, `/etc/systemd/system/kubelet.service.d/10-kubeadm.conf`의 ExecStart를 수정한다.
 
@@ -5077,9 +5068,7 @@ sudo journalctl -u kubelet | grep "runtime" | tail -5
 
 검증:
 
-```text
-E0330 10:00:00.000000    1234 remote_runtime.go:116] "RunPodSandbox from runtime service failed" err="rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial unix /run/containerd/containerd.sock: connect: no such file or directory\""
-```
+![containerd 중지 시 kubelet 로그 — containerd.sock connect 실패](images/m04-08-containerd-sock.png)
 
 해결: `sudo systemctl start containerd && sudo systemctl restart kubelet`
 
@@ -5090,9 +5079,7 @@ sudo journalctl -u kubelet | grep "x509" | tail -5
 
 검증:
 
-```text
-E0330 10:00:00.000000    1234 reflector.go:140] k8s.io/client-go/informers/factory.go:150: Failed to watch *v1.Node: failed to list *v1.Node: x509: certificate has expired or is not yet valid
-```
+> **에러 시그니처(참조) — 인증서 만료:** kubelet 로그에 `x509: certificate has expired or is not yet valid` 가 보이면 kubelet↔API 서버 TLS 인증서가 만료된 것이다. 이 실습 클러스터의 인증서는 유효하므로 재현 대신 시그니처만 제시한다. 만료 확인은 `ssh staging-master`(또는 해당 클러스터 마스터) 접속 후 `sudo kubeadm certs check-expiration` 을 실행한다. CERTIFICATE 항목의 EXPIRES 열이 현재 날짜를 지났으면 만료다. 조치: `sudo kubeadm certs renew all` 실행 후 `sudo systemctl restart kubelet` 로 kubelet 을 재시작하면 새 인증서로 TLS 핸드셰이크를 재시도한다.
 
 해결: `sudo kubeadm certs renew all && sudo systemctl restart kubelet`
 
@@ -5103,9 +5090,7 @@ sudo journalctl -u kubelet | grep "swap" | tail -5
 
 검증:
 
-```text
-E0330 10:00:00.000000    1234 server.go:302] "Failed to run kubelet" err="running with swap on is not supported, please disable swap! or set --fail-swap-on flag to false"
-```
+![swap 활성 상태로 kubelet 기동 — running with swap on is not supported](images/m04-10-swap.png)
 
 해결: `sudo swapoff -a && sudo systemctl restart kubelet`
 
@@ -5116,9 +5101,7 @@ sudo journalctl -u kubelet | grep "config" | tail -5
 
 검증:
 
-```text
-E0330 10:00:00.000000    1234 server.go:302] "Failed to run kubelet" err="failed to construct kubelet dependencies: failed to load kubelet config file, error: failed to decode, error: yaml: line 15: did not find expected key"
-```
+![kubelet config.yaml 문법 오류 — failed to load kubelet config file](images/m04-11-config-syntax.png)
 
 해결: `/var/lib/kubelet/config.yaml`의 YAML 문법을 수정한다.
 
@@ -5621,15 +5604,7 @@ kubectl describe node <name> | grep -A20 Conditions
 
 검증:
 
-```text
-Conditions:
-  Type                 Status  LastHeartbeatTime                 Reason                       Message
-  ----                 ------  -----------------                 ------                       -------
-  MemoryPressure       False   2026-03-30T10:00:00Z              KubeletHasSufficientMemory   kubelet has sufficient memory available
-  DiskPressure         False   2026-03-30T10:00:00Z              KubeletHasNoDiskPressure     kubelet has no disk pressure
-  PIDPressure          False   2026-03-30T10:00:00Z              KubeletHasSufficientPID      kubelet has sufficient PID available
-  Ready                False   2026-03-30T09:58:00Z              KubeletNotReady              PLEG is not healthy: pleg was last seen active ...
-```
+> **에러 시그니처(참조) — PLEG 불건전(노드 NotReady):** `describe node` 의 Ready 컨디션이 `PLEG is not healthy` 로 NotReady 가 되면 kubelet 의 Pod Lifecycle Event Generator 가 컨테이너 런타임 응답을 받지 못한 것이다(주로 containerd 과부하·정지). 위 블록2(containerd 소켓 단절)와 같은 뿌리다. 조치: containerd 상태·디스크·메모리 점검 후 재시작. NotReady 의 또 다른 형태인 'Kubelet stopped posting node status' 는 kubelet 이 `--node-status-update-frequency`(기본 10초) 주기로 node lease 를 갱신하지 못할 때 발생한다. `kubectl describe node <name>` 의 Conditions 에서 Ready 항목의 Reason 이 `KubeletNotReady`, Message 가 `Kubelet stopped posting node status` 로 나타난다. `ssh <vm-별칭>` 으로 노드에 접속한 뒤 `sudo systemctl status kubelet` 으로 상태를 확인하고, `sudo journalctl -u kubelet -n 50` 으로 최근 로그를 검토한 후 `sudo systemctl restart kubelet` 으로 복구한다.
 
 ```bash
 # 2. SSH 접속 후 kubelet/containerd 상태 확인
@@ -5653,7 +5628,7 @@ sudo systemctl restart kubelet
 3. kubelet이 API Server와 통신하지 못하면 노드 상태는 어떻게 표시되는가?
 
 **확인 문제 풀이**:
-1. (1) kubelet 서비스가 중지되었다, (2) 컨테이너 런타임(containerd)이 중지되었다, (3) 노드의 디스크 공간이 부족하다(DiskPressure), (4) 노드의 메모리가 부족하다(MemoryPressure), (5) kubelet 인증서가 만료되어 API Server와 통신할 수 없다. 추가: 네트워크 장애로 API Server에 도달 불가, PLEG(Pod Lifecycle Event Generator) 비정상.
+1. (1) kubelet 서비스가 중지되었다, (2) 컨테이너 런타임(containerd)이 중지되었다, (3) 노드의 디스크 공간이 부족하다(DiskPressure), (4) 노드의 메모리가 부족하다(MemoryPressure), (5) kubelet 인증서가 만료되어 API Server와 통신할 수 없다. 추가: 네트워크 장애로 API Server에 도달 불가, PLEG(Pod Lifecycle Event Generator — kubelet이 컨테이너 런타임에 주기적으로 컨테이너 상태를 물어 Pod 생명주기 이벤트를 만들어 내는 내부 컴포넌트) 비정상. PLEG가 런타임 응답 지연 등으로 일정 시간(`pleg was last seen active`) 갱신을 못 하면 kubelet은 노드 상태를 신뢰할 수 없다고 보고 노드를 NotReady로 표시한다.
 2. `kubectl cordon`은 노드에 `SchedulingDisabled` 상태를 설정하여 새 Pod의 스케줄링을 금지한다. 기존에 실행 중인 Pod는 영향받지 않는다. `kubectl drain`은 cordon + 기존 Pod 축출을 수행한다. 노드의 모든 Pod(DaemonSet 제외)를 graceful하게 삭제하고, ReplicaSet/Deployment가 다른 노드에 대체 Pod를 생성한다. drain은 유지보수 작업 전에, cordon은 점진적으로 워크로드를 이동시킬 때 사용한다.
 3. kubelet이 API Server와 통신하지 못하면 Node Lease가 갱신되지 않는다. `--node-monitor-grace-period`(기본 40초) 후 kube-controller-manager가 노드 상태를 `Unknown`으로 전환한다. `Ready` 조건의 Status가 `Unknown`이 되고, Reason은 `NodeStatusUnknown`, Message는 `Kubelet stopped posting node status`로 표시된다.
 
@@ -6436,6 +6411,19 @@ kubectl get networkpolicies -n <ns>
 
 ### tart-infra 주요 접근 정보
 
+표의 `<node-ip>` 플레이스홀더를 실제 IP로 교체하려면 다음 명령으로 노드 IP를 조회한다.
+
+```bash
+# dev 클러스터 노드 IP 조회 (재부팅마다 IP가 바뀌므로 매번 실행)
+kubectl --context=dev get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
+
+# 단일 값만 필요할 때 (첫 번째 노드 IP)
+NODE_IP=$(kubectl --context=dev get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+echo "NODE_IP=$NODE_IP"
+```
+
+tart 환경은 재부팅 시 VM IP가 재할당된다. IP 드리프트가 발생한 경우 `./scripts/fix-cluster-ip-drift.sh dev`를 먼저 실행한 뒤 위 명령으로 새 IP를 확인한다(§3 IP 드리프트 복구 참조).
+
 | 서비스 | 접근 방법 | 용도 |
 |--------|----------|------|
 | nginx-web | `http://<node-ip>:30080` | 데모 웹 서버 |
@@ -6486,14 +6474,7 @@ sudo crictl logs <container-id>
 
 검증:
 
-```text
-# crictl ps 정상 출력
-CONTAINER           IMAGE               CREATED             STATE     NAME                      ATTEMPT   POD ID
-a1b2c3d4e5f6        registry.k8s.io...  2 hours ago         Running   kube-apiserver            0         ...
-b2c3d4e5f6a1        registry.k8s.io...  2 hours ago         Running   kube-controller-manager   0         ...
-c3d4e5f6a1b2        registry.k8s.io...  2 hours ago         Running   kube-scheduler            0         ...
-d4e5f6a1b2c3        registry.k8s.io...  2 hours ago         Running   etcd                      0         ...
-```
+![crictl ps — Control Plane 컨테이너 정상 Running(platform 실측)](images/m04-13-crictl-ps.png)
 
 ### 패턴 2: Pod 네트워크 연결 불가 체계적 진단
 
@@ -6526,9 +6507,7 @@ kubectl get pods -n kube-system -l k8s-app=cilium
 
 인증서가 만료되면 kubectl 명령이 다음과 같은 오류를 반환한다:
 
-```text
-Unable to connect to the server: x509: certificate has expired or is not yet valid: current time 2026-03-30T10:00:00Z is after 2026-03-29T23:59:59Z
-```
+> **에러 시그니처(참조) — 클라이언트 측 인증서 만료:** `kubectl` 이 `Unable to connect to the server: x509: certificate has expired or is not yet valid` 를 내면 kubeconfig 의 클라이언트 인증서(또는 API 서버 인증서)가 만료된 것이다. 조치: 컨트롤플레인에서 `kubeadm certs renew all` → `/etc/kubernetes/admin.conf` 를 새 kubeconfig 로 복사.
 
 이 경우 SSH로 마스터 노드에 접속하여 다음 절차를 수행한다:
 
@@ -6553,12 +6532,7 @@ kubectl get nodes
 
 검증:
 
-```text
-NAME              STATUS   ROLES           AGE   VERSION
-platform-master   Ready    control-plane   30d   v1.31.x
-platform-worker1  Ready    <none>          30d   v1.31.x
-platform-worker2  Ready    <none>          30d   v1.31.x
-```
+![인증서 갱신 후 platform 노드 전부 Ready](images/m04-15-nodes-after-renew.png)
 
 ### 패턴 4: kubelet 장애 유형별 복구
 
@@ -6596,22 +6570,7 @@ kubectl explain deployment.spec.strategy
 
 검증:
 
-```text
-KIND:       Deployment
-VERSION:    apps/v1
-
-FIELD: strategy <DeploymentStrategy>
-
-DESCRIPTION:
-    The deployment strategy to use to replace existing pods with new ones.
-
-FIELDS:
-  rollingUpdate <RollingUpdateDeployment>
-    Rolling update config params.
-
-  type  <string>
-    Type of deployment. Can be "Recreate" or "RollingUpdate".
-```
+![kubectl explain deployment.spec.strategy — 필드 설명](images/m04-16-explain.png)
 
 ### 빠른 YAML 생성 패턴
 

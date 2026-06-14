@@ -200,15 +200,111 @@ Phase 1 (입문)          Phase 2 (실기)           Phase 3 (보안)
 ├── 02-examples.md              ← YAML 예제 + 명령어 모음
 ├── 03-exam-questions.md        ← 모의시험 문제 + 풀이
 ├── 04-tart-infra-practice.md   ← tart-infra 환경 실습
+├── 05-supplement.md            ← 보충 자료 (트러블슈팅·심화)
 └── daily/
     └── day01~dayNN.md          ← 일별 학습 가이드
 ```
+
+### 무엇을 어디서 찾는가 (개념·예제·실행·기출)
+
+각 자격증 폴더의 5개 파일은 **하나의 실습 루프**를 이룬다. "개념을 읽고 → 예제 YAML을 보고 → 클러스터에서 실행해 출력을 확인하고 → 기출로 점검한다."
+
+| 원하는 것 | 보는 파일 | 내용 |
+|-----------|-----------|------|
+| **개념 설명** (왜 등장했나·내부 동작) | `01-concepts.md` | 컴포넌트·오브젝트 원리, 커널/OS 레벨 메커니즘 |
+| **YAML 파일 / 명령어 예제** | `02-examples.md` | 복붙 가능한 매니페스트 + `kubectl` 명령 모음 |
+| **실행 방법 / 실측 출력(스샷)** | `04-tart-infra-practice.md` | tart 클러스터에서 직접 실행하는 시나리오 + 기대 출력(```text 블록) |
+| **기출 / 모의시험 문제** | `03-exam-questions.md` | 시험 유형 문제 + 단계별 풀이 |
+| **트러블슈팅 / 심화** | `05-supplement.md` | 장애 시나리오·복구·추가 주제 |
+| **하루치 학습 코스** | `daily/dayNN.md` | 위 내용을 날짜별로 묶은 가이드 |
+
+### 실습 빠른 시작 (5분)
+
+```bash
+# 0) 노드 SSH 키 배포(최초 1회) — CKA/CKS 노드 실습용
+./scripts/setup-ssh-keys.sh dev
+
+# 1) 클러스터 기동 + 상태 확인
+./scripts/boot.sh
+./scripts/status.sh
+
+# 2) kubeconfig 지정 후 실습 (예: dev 클러스터)
+export KUBECONFIG=$(pwd)/kubeconfig/dev.yaml
+kubectl get nodes
+```
+```text
+# 기대 출력 예 (노드가 Ready 면 정상)
+NAME         STATUS   ROLES           AGE   VERSION
+dev-master   Ready    control-plane   1d    v1.31.x
+dev-worker1  Ready    <none>          1d    v1.31.x
+```
+```bash
+# 3) 예제 적용 → 4) 검증 → 5) 정리
+kubectl create deploy web --image=nginx --replicas=2
+kubectl get pods -o wide        # 실측 출력 확인(=스샷 대용 증거)
+kubectl delete deploy web
+```
+
+> 권장 루프: `01-concepts`로 개념 → `02-examples`의 YAML을 dev/staging에서 `kubectl apply` → `04-tart-infra-practice` 시나리오로 손에 익히기 → `03-exam-questions`로 점검. **파괴적 실습은 dev/staging에서만** 한다(platform/prod는 읽기 위주).
 
 ---
 
 ## 실습 환경 구성
 
 이 프로젝트의 tart-infra를 활용하면 로컬 Mac에서 실제 멀티클러스터 K8s 환경으로 실습할 수 있다.
+
+### 이 환경의 동작 방식 (먼저 읽기)
+
+- **전부 tart 기반이다.** 별도 도구(Docker/kind) 없이, tart VM 10대(`platform`·`dev`·`staging`·`prod`)가 곧 실습용 K8s 노드다. 생성·기동·종료·IP 조회 모두 `tart` 명령을 감싼 `scripts/`로 한다. SSH 접속도 `ssh dev-master`의 `ProxyCommand`가 접속 시점에 `tart ip`로 IP를 조회하므로, **재부팅으로 IP가 바뀌어도 그대로 동작한다.**
+- **재부팅 후에는 반드시 `./scripts/boot.sh`로 올린다.** kubeadm 클러스터는 최초 init 시점 IP에 묶여 있는데 tart는 재부팅마다 IP를 바꾼다(IP 드리프트). `boot.sh`는 VM 기동 후 **IP 드리프트를 자동 복구**한다 — apiserver 인증서·kubeconfig 재생성(`boot/02-wait-clusters.sh`)에 더해, `boot/`에 빠져 있던 나머지 결함까지 `fix-cluster-ip-drift.sh`(Phase 2.5)가 멱등 교정한다. `tart run`으로 VM만 켜면 복구가 안 돼 `kubectl`이 `i/o timeout` 난다.
+
+  ```bash
+  ./scripts/boot.sh        # VM 기동 + IP 드리프트 전체 자동 복구 + kubeconfig 갱신
+  ./scripts/status.sh      # 노드/서비스 상태 확인
+  ```
+- **메모리에 주의한다.** 4개 클러스터를 동시에 띄우면 요청 메모리 합이 약 **68GB**다(이 Mac 128GB). 자격증 하나만 실습할 때는 전부 띄울 필요가 없다.
+
+  ```bash
+  ./scripts/shutdown-all.sh          # 전체 VM 종료(데이터는 유지)
+
+  # 필요한 클러스터만 골라서 사용 (예: dev 2노드 = 12GB)
+  tart run dev-master  --no-graphics &
+  tart run dev-worker1 --no-graphics &
+  ./scripts/setup-ssh-keys.sh --no-boot dev   # 켜진 노드에 SSH 키/별칭만 갱신
+  # ※ 단일 클러스터 기동 후에도 IP 드리프트 복구가 필요하면 ./scripts/boot.sh 를 한 번 돌린다.
+  ```
+- **파괴적 실습은 `dev`/`staging`에서만.** `platform`(Prometheus·Grafana·ArgoCD·Jenkins 상주)·`prod`는 읽기 위주로 둔다.
+
+### 클러스터가 깨졌을 때 — 복구 또는 재생성
+
+재부팅 후 `kubectl`이 `i/o timeout` 나거나, 노드는 `Ready`인데 파드가 `ContainerCreating`/DNS가 안 되면 IP 드리프트가 원인이다. 두 가지 방법이 있다.
+
+| 명령 | 하는 일 | 데이터 | 소요 | 언제 |
+|------|---------|--------|------|------|
+| `./scripts/boot.sh` | VM 기동 + IP 드리프트 **자동 복구** | 보존 | 수 분 | 평소 재부팅 후 항상 |
+| `./scripts/fix-cluster-ip-drift.sh [클러스터]` | 켜져 있는 클러스터만 드리프트 **복구**(데이터 유지) | 보존 | 1~2분/클러스터 | VM은 떠 있는데 깨졌을 때 |
+| `./scripts/reset-cluster.sh [클러스터]` | VM째 **완전 삭제 후 새로 생성**(현재 IP로 fresh init → 드리프트 원천 차단) | **삭제** | 5~8분/노드 | 복구가 꼬이거나 깨끗이 다시 시작할 때 **(가장 단순·확실)** |
+
+```bash
+# 권장: 자격증 실습은 한 클러스터면 충분. 깨졌으면 그냥 깨끗하게 다시 만든다.
+./scripts/reset-cluster.sh dev          # dev 완전 재생성(확인 프롬프트)
+./scripts/reset-cluster.sh --yes dev    # 확인 없이
+./scripts/reset-cluster.sh all          # 전체(오래 걸림)
+
+# 데이터를 살리고 싶으면 복구만
+./scripts/fix-cluster-ip-drift.sh dev
+```
+
+> `reset-cluster.sh`는 모니터링/CI 같은 무거운 스택 없이 **K8s + CNI(Cilium)만** 깔아 빠르다. `kubeadm init`·Cilium 설치가 모두 *현재 IP*로 수행되므로 새로 만든 클러스터는 IP 드리프트가 발생하지 않는다. 재생성 후 노드 SSH가 필요하면 `./scripts/setup-ssh-keys.sh --no-boot dev`.
+
+#### IP 드리프트가 깨뜨리는 4가지 (참고)
+
+`boot.sh`/`fix-cluster-ip-drift.sh`가 자동 교정하는 항목이다. 수동 디버깅 시 참고:
+
+1. **apiserver 인증서 SAN** — 실제 service-CIDR의 kubernetes SVC IP(dev `10.97.0.1`, staging `10.98.0.1`, prod `10.99.0.1`)가 빠지면 CoreDNS가 API 인증서 검증에 실패해 `Ready`가 안 된다.
+2. **control-plane 정적 파드** — `controller-manager`/`scheduler`가 옛 IP로 리더 선출을 시도하면 DaemonSet/Deployment가 reconcile되지 않는다(재기동 필요).
+3. **worker `kubelet.conf`** — 옛 master IP를 가리키면 worker가 `NotReady`.
+4. **Cilium `KUBERNETES_SERVICE_HOST`** — 옛 master IP가 하드코딩되면(kube-proxy 대체 모드) CNI가 죽어 파드가 안 뜬다.
 
 ### 방법 1: tart-infra 환경 (권장)
 
@@ -249,6 +345,49 @@ kubectl get nodes
 ```
 
 각 자격증 디렉토리의 `04-tart-infra-practice.md`에 클러스터별 실습 시나리오가 정리되어 있다.
+
+#### SSH 키 배포 및 노드 접속 (CKA·CKS 노드 레벨 실습용)
+
+CKA의 etcd 백업/복구·kubeadm 업그레이드, CKS의 AppArmor·seccomp·Falco 실습은 노드에 직접 SSH로 들어가야 한다. 기본 인증은 `admin/admin` 비밀번호이지만, 매번 비밀번호를 입력하지 않도록 **전용 SSH 키를 전 노드에 배포**하는 스크립트를 제공한다.
+
+```bash
+# 전용 키 생성 + 전 노드(authorized_keys)에 배포 + ~/.ssh/config 자동 등록
+./scripts/setup-ssh-keys.sh                 # 모든 클러스터(platform/dev/staging/prod)
+./scripts/setup-ssh-keys.sh dev staging     # 지정 클러스터만
+./scripts/setup-ssh-keys.sh --no-boot dev   # 이미 켜진 노드만(부팅 안 함)
+
+# 배포 후: 비밀번호 없이 VM 이름으로 바로 접속
+ssh dev-master
+ssh staging-worker1
+```
+
+```text
+# 검증 — 비밀번호 없이(BatchMode) 접속되면 정상이다
+$ ssh -o BatchMode=yes dev-master 'hostname; whoami'
+dev-master
+admin
+```
+
+**SSH 키 ↔ 호스트 매핑.** 노드는 전부 **하나의 전용 키**(`~/.ssh/tart_k8scert`)를 공유하며, `~/.ssh/config`의 관리 블록에 VM 이름이 그대로 Host 별칭으로 등록된다. IP는 `ProxyCommand`가 접속 시점에 `tart ip <vm>`로 조회하므로 **재부팅으로 IP가 바뀌어도 재설정이 필요 없다**.
+
+| Host 별칭 (`ssh <별칭>`) | 클러스터 | 역할 | 사용자 | 개인키 파일 |
+|--------------------------|----------|------|--------|-------------|
+| `platform-master` | platform | master | admin | `~/.ssh/tart_k8scert` |
+| `platform-worker1` / `platform-worker2` | platform | worker | admin | `~/.ssh/tart_k8scert` |
+| `dev-master` | dev | master | admin | `~/.ssh/tart_k8scert` |
+| `dev-worker1` | dev | worker | admin | `~/.ssh/tart_k8scert` |
+| `staging-master` | staging | master | admin | `~/.ssh/tart_k8scert` |
+| `staging-worker1` | staging | worker | admin | `~/.ssh/tart_k8scert` |
+| `prod-master` | prod | master | admin | `~/.ssh/tart_k8scert` |
+| `prod-worker1` / `prod-worker2` | prod | worker | admin | `~/.ssh/tart_k8scert` |
+
+| 파일 | 용도 |
+|------|------|
+| `~/.ssh/tart_k8scert` | 전 노드 공용 **개인키**(SSH 접속 시 사용) |
+| `~/.ssh/tart_k8scert.pub` | 전 노드 `authorized_keys`에 배포되는 **공개키** |
+| `~/.ssh/config` (관리 블록 `>>> tart-k8scert managed >>>`) | Host 별칭 + ProxyCommand 정의. 스크립트가 자동 갱신(이전 내용은 `~/.ssh/config.bak.tart`로 백업) |
+
+> 참고: 인프라 설치 자동화(`scripts/install/*`)는 그대로 `admin/admin` 비밀번호(`sshpass`)를 쓴다. SSH 키는 **수동 실습 접속 편의용**이며 자동화 동작을 바꾸지 않는다.
 
 ### 방법 2: kind (간단 실습)
 

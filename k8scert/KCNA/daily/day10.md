@@ -1,5 +1,9 @@
 # KCNA Day 10: 최종 정리 & 시험 전략
 
+> 도메인: 전체 (최종 정리) | 예상 소요 시간: 90~120분
+
+이전 학습: Day 9 모의시험 50문에서 오답이 많은 도메인을 이 파일의 해당 암기 카드로 집중 복습한다. Day 1~9의 전 도메인이 이 파일 하나에 압축되어 있으므로 시험 당일 최종 점검용으로도 활용한다.
+
 ## 학습 목표
 
 - 5개 도메인 핵심 암기 카드로 빠른 복습 완료
@@ -12,19 +16,28 @@
 
 ## 0. 등장 배경
 
-KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해를 평가하는 객관식 시험이다. Cloud Native 생태계가 급격히 확장되면서, Kubernetes 뿐만 아니라 CNCF 프로젝트 분류, 관측성 아키텍처, GitOps 원칙, 컨테이너 런타임 표준 등 넓은 범위의 지식이 요구된다. 이 시험은 "실무에서 Kubernetes를 운영할 수 있는가?"보다 "Cloud Native 전체 맥락에서 각 기술의 역할과 관계를 이해하는가?"를 측정한다. 따라서 개별 도구의 사용법보다 아키텍처 원칙(선언적, Reconciliation, Hub-and-Spoke, Pull 기반)과 CNCF 생태계 분류를 정확히 파악하는 것이 합격의 핵심이다.
+KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해를 평가하는 객관식 시험이다. Cloud Native 생태계가 급격히 확장되면서, Kubernetes 뿐만 아니라 CNCF 프로젝트 분류, 관측성 아키텍처, GitOps 원칙, 컨테이너 런타임 표준 등 넓은 범위의 지식이 요구된다. 이 시험은 "실무에서 Kubernetes를 운영할 수 있는가?"보다 "Cloud Native 전체 맥락에서 각 기술의 역할과 관계를 이해하는가?"를 측정한다. 따라서 개별 도구의 사용법보다 아키텍처 원칙(선언적, Reconciliation, Hub-and-Spoke(API Server가 모든 컴포넌트의 중심 허브 역할을 하고 나머지 컴포넌트가 스포크로 연결되는 아키텍처 패턴 — etcd 접근·인증·인가가 모두 API Server를 통과한다), Pull 기반)과 CNCF 생태계 분류를 정확히 파악하는 것이 합격의 핵심이다.
 
 ---
 
 ## 1. 도메인별 핵심 암기 카드
 
+> **이 섹션을 읽기 전 선수 개념 확인**
+>
+> - **Raft**: 분산 합의 알고리즘. 여러 서버가 동일한 상태를 유지하도록 리더 선출 + 로그 복제로 동기화를 보장한다. etcd가 클러스터 상태를 안전하게 저장하기 위해 이 알고리즘을 사용한다(→ Day 1 Control Plane 참조).
+> - **Linux Namespace**: 프로세스가 보는 시스템 자원의 범위를 격리하는 커널 기능. PID·NET·MNT 등 6종이 존재하며, 컨테이너가 서로 독립된 프로세스 공간을 갖는 기반이다(→ Day 5 Container Orchestration 참조).
+> - **sidecar proxy**: 애플리케이션 컨테이너와 같은 Pod 내에 주입되어 인바운드·아웃바운드 트래픽을 가로채는 보조 컨테이너. Service Mesh의 Data Plane이 이 패턴으로 구현된다(→ Day 6 참조).
+> - **eBPF**: 커널 소스 코드 수정 없이 커널 내부에서 사용자 정의 프로그램을 안전하게 실행하는 Linux 기술. Cilium이 이를 활용해 iptables 없이 L3~L7 네트워크 정책을 커널 수준에서 처리한다.
+
 ### 1-1. Kubernetes Fundamentals (46 %)
+
+**[등장 배경]** 초기 컨테이너 운영은 각 호스트에서 Docker를 직접 실행하고, 네트워크는 호스트 iptables를 수동으로 관리했다. 서비스가 수십 개로 늘어나면 노드 장애 시 수동 재배치, iptables 규칙 폭증, 설정 일관성 유지 불가 문제가 발생했다. Kubernetes는 이를 해결하기 위해 선언적(desired state) + 자동 조정(Reconciliation) 모델을 채택했다. 트레이드오프: Control Plane 컴포넌트들이 추가되므로 운영 복잡도가 높아지고, etcd 장애가 곧 클러스터 전체 장애로 이어진다.
 
 | # | 항목 | 암기 포인트 |
 |---|------|------------|
 | 1 | Control Plane 구성 | API Server, etcd, Scheduler, Controller Manager |
 | 2 | API Server 역할 | 유일한 etcd 접근 컴포넌트, 인증/인가/Admission Control |
-| 3 | etcd 특성 | key-value store, Raft 합의, --snapshot-count로 스냅샷 |
+| 3 | etcd 특성 | key-value store, Raft 합의(분산 노드 간 리더 선출 + 로그 복제로 일관성을 보장하는 알고리즘), --snapshot-count로 스냅샷 |
 | 4 | Scheduler 프로세스 | Filtering → Scoring → Binding |
 | 5 | Controller Manager | Desired State ↔ Current State 루프 (Reconciliation) |
 | 6 | kubelet | Node 에이전트, Pod spec 수신 → Container Runtime 호출 |
@@ -38,17 +51,19 @@ KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해�
 | 14 | Namespace 기본 4개 | default, kube-system, kube-public, kube-node-lease |
 | 15 | RBAC 4대 리소스 | Role, ClusterRole, RoleBinding, ClusterRoleBinding |
 | 16 | Ingress | L7 라우팅, Ingress Controller 별도 설치 필요 |
-| 17 | PV 회수 정책 | Retain(보존), Delete(삭제), Recycle(deprecated) |
+| 17 | PV 회수 정책 | PVC 삭제 후 적용 — Retain(PV 보존, 수동 회수), Delete(PV+외부 스토리지 삭제), Recycle(deprecated) |
 | 18 | StorageClass | Dynamic Provisioning, volumeBindingMode: WaitForFirstConsumer |
 | 19 | Label vs Annotation | Label=선택용(selector), Annotation=메타데이터 저장 |
 | 20 | Job vs CronJob | Job=1회 배치, CronJob=스케줄 반복 |
 
 ### 1-2. Container Orchestration (22 %)
 
+**[등장 배경]** Docker 이전에는 애플리케이션을 VM에 통째로 올려 OS 전체를 복제했다. 수백 MB~수 GB에 달하는 VM 이미지 빌드·배포 시간이 길었고, 하이퍼바이저 오버헤드로 밀도도 낮았다. Linux Namespace + cgroups 조합으로 프로세스 격리와 자원 제한이 가능해지자 컨테이너가 VM의 효율적 대안으로 떠올랐다. 단, 컨테이너는 호스트 커널을 공유하므로 커널 취약점이 전체 호스트에 영향을 줄 수 있다는 트레이드오프가 있다. OCI 표준이 나오기 전까지는 런타임마다 이미지 포맷과 실행 방식이 달라 도구 간 호환이 불가능했고, CRI(Container Runtime Interface)가 없던 시절 kubelet은 Docker에 직접 의존해 런타임 교체가 불가능했다.
+
 | # | 항목 | 암기 포인트 |
 |---|------|------------|
 | 1 | Container vs VM | Container: OS 커널 공유, 프로세스 격리 / VM: 하이퍼바이저, 전체 OS |
-| 2 | Linux Namespace | PID, NET, MNT, UTS, IPC, USER → 격리 담당 |
+| 2 | Linux Namespace | 프로세스가 보는 커널 자원 범위를 격리하는 기능 — PID(프로세스), NET(네트워크), MNT(파일시스템), UTS(호스트명), IPC(프로세스간 통신), USER(UID) 총 6종 |
 | 3 | Linux cgroups | CPU, Memory, I/O 등 자원 제한 담당 |
 | 4 | OCI 3대 Spec | Runtime Spec, Image Spec, Distribution Spec |
 | 5 | CRI | Container Runtime Interface - kubelet ↔ Runtime 통신 |
@@ -59,8 +74,11 @@ KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해�
 | 10 | Tag vs Digest | Tag=mutable(latest 변경 가능), Digest(sha256)=immutable |
 | 11 | Container Registry | Harbor(private), Docker Hub(public), ECR/GCR/ACR |
 | 12 | CoreDNS | K8s 기본 DNS, Service 이름 → ClusterIP 해석 |
+| 13 | Image Layers | Union filesystem(OverlayFS) — Dockerfile 명령 1개당 레이어 1개, 실행 시 최상단에 읽기-쓰기 레이어 추가 |
 
 ### 1-3. Cloud Native Architecture (16 %)
+
+**[등장 배경]** 모놀리식(Monolithic) 아키텍처는 단일 코드베이스에 모든 기능이 결합되어 있어, 일부 기능을 수정해도 전체를 재배포해야 했다. 장애 격리가 불가능해 DB 연결 오류 하나가 전체 서비스 다운으로 이어졌다. Microservices로 전환하면 서비스별 독립 배포와 장애 격리가 가능해지지만, 서비스 간 네트워크 통신 관리·분산 트랜잭션·분산 디버깅이라는 새로운 복잡성이 생긴다. Service Mesh는 이 복잡성을 애플리케이션 코드 밖(sidecar proxy: 애플리케이션 옆에 붙어 트래픽을 가로채는 보조 컨테이너)으로 분리해 처리하지만, sidecar가 추가되므로 CPU·메모리 오버헤드가 발생한다. Cilium은 기존 kube-proxy의 iptables 방식(규칙 수가 서비스 수에 비례해 증가, 커널 모드 전환 비용)을 eBPF로 대체해 커널 내 L3~L7 필터링과 관측을 동시에 수행한다.
 
 | # | 항목 | 암기 포인트 |
 |---|------|------------|
@@ -70,14 +88,16 @@ KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해�
 | 4 | Immutable Infra | 서버 수정 X → 새 이미지로 교체 (Pets vs Cattle) |
 | 5 | Microservices 장점 | 독립 배포, 기술 이기종, 장애 격리 |
 | 6 | Microservices 단점 | 네트워크 복잡성, 분산 트랜잭션, 디버깅 어려움 |
-| 7 | 12-Factor App | 코드베이스, 의존성, 설정, 백엔드 서비스 등 12개 원칙 |
-| 8 | Service Mesh 구조 | Data Plane(sidecar proxy) + Control Plane |
+| 7 | 12-Factor App | 코드베이스·의존성·설정·백엔드 서비스·빌드-릴리스-실행·프로세스·포트 바인딩·동시성·폐기 용이성·dev/prod 동일성·로그·관리자 프로세스, 총 12개 원칙 |
+| 8 | Service Mesh 구조 | Data Plane(sidecar proxy: 앱 컨테이너 옆에 주입되어 인바운드·아웃바운드 트래픽을 가로채는 보조 컨테이너) + Control Plane |
 | 9 | Istio vs Linkerd | Istio=Envoy 기반/기능 풍부, Linkerd=경량/Rust proxy |
 | 10 | HPA | CPU/Memory 기반 Pod 수 자동 조절 |
 | 11 | VPA | Pod 리소스 request/limit 자동 조절 |
 | 12 | Cluster Autoscaler | 노드 수 자동 조절 (Pending Pod 발생 시 확장) |
 
 ### 1-4. Cloud Native Observability (8 %)
+
+**[등장 배경]** 모놀리식 환경에서는 단일 프로세스의 로그 파일 하나를 보면 장애 원인을 파악할 수 있었다. Microservices로 분산되면 요청 하나가 수십 개 서비스를 통과하므로, 어느 서비스에서 지연이 발생했는지 단일 로그만으로는 추적이 불가능하다. 이를 해결하기 위해 수치(Metrics) + 이벤트(Logs) + 요청 흐름(Traces)의 세 축이 필요해졌다. OpenTelemetry(벤더 중립 관측 프레임워크: 특정 벤더에 종속되지 않고 다양한 백엔드로 데이터를 전송할 수 있는 표준 계측 라이브러리·에이전트 모음)가 등장하기 전에는 Jaeger SDK, Prometheus 클라이언트 등을 각각 직접 연동해야 했고, 벤더를 바꾸면 코드를 다시 작성해야 했다. 트레이드오프: 관측 인프라 자체도 자원을 소비하므로 scrape 주기·로그 보존 기간·샘플링 비율 조정이 필요하다.
 
 | # | 항목 | 암기 포인트 |
 |---|------|------------|
@@ -95,6 +115,8 @@ KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해�
 
 ### 1-5. Application Delivery (8 %)
 
+**[등장 배경]** 전통적 배포는 운영자가 수동으로 서버에 SSH 접속해 패키지를 올리고, 설정 파일을 수정하는 방식이었다. 이 방식은 "누가 언제 무엇을 바꿨는지" 추적이 불가능하고, 여러 환경(dev/staging/prod) 간 설정 일관성 유지가 어렵다. GitOps는 Git을 Single Source of Truth로 삼아 선언적 상태를 버전 관리하고, ArgoCD·Flux 같은 Pull 모델 도구가 Git과 클러스터 상태의 차이를 자동으로 조정(Reconciliation)한다. Helm v2에서는 서버 측 컴포넌트 Tiller가 클러스터 내에 상주해 ClusterAdmin 권한을 보유했는데, 이는 보안 취약점이었다. v3에서 Tiller를 제거해 클라이언트가 직접 API Server에 요청하도록 개선했지만, 릴리스 상태가 클러스터 Secret으로 저장되므로 해당 Namespace의 RBAC 관리가 더 중요해졌다.
+
 | # | 항목 | 암기 포인트 |
 |---|------|------------|
 | 1 | GitOps 4원칙 | 선언적, 버전 관리, 자동 적용, 지속적 조정(Reconciliation) |
@@ -107,11 +129,15 @@ KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해�
 | 8 | Helm 3요소 | Chart(패키지), Release(인스턴스), Repository(저장소) |
 | 9 | Helm v3 변경 | Tiller 제거 → 클라이언트만으로 동작 |
 | 10 | Kustomize | base + overlay 구조, 패치 기반 커스터마이징 |
-| 11 | IaC 도구 | Terraform(HCL), Crossplane(K8s CRD 기반) |
+| 11 | IaC 도구 | Terraform(HCL 파일 기반), Crossplane(K8s CRD/Operator 기반 — `kubectl apply`로 클라우드 리소스를 선언적으로 프로비저닝. Terraform이 별도 상태 파일·HCL을 사용하는 것과 달리 Crossplane은 K8s API를 그대로 활용) |
 
 ---
 
 ## 2. CNCF 프로젝트 마스터 리스트
+
+**[등장 배경]** Cloud Native 생태계가 확산되면서 벤더마다 호환되지 않는 솔루션이 난립했다. CNCF(Cloud Native Computing Foundation)는 표준 채택·프로젝트 중립 거버넌스를 통해 생태계를 정리하는 역할을 한다. Sandbox(실험 단계, 프로덕션 미보장) → Incubating(성장 단계, 일부 프로덕션 사례) → Graduated(프로덕션 검증 완료, 보안 감사 통과, 거버넌스 완비) 3단계로 성숙도를 분류한다. 시험에서는 특정 프로젝트가 어느 단계에 속하는지, 어느 카테고리(런타임·관측·보안 등)인지를 묻는다.
+
+**Graduated 3대 조건 상세:** ① **프로덕션 검증** — 다수의 독립적인 조직이 프로덕션 환경에서 사용하고 있음을 공개 증거로 제시해야 한다. ② **보안 감사** — CNCF가 제3자 보안 회사에 의뢰한 공개 감사 보고서를 제출해야 하며, 발견된 취약점은 수정하고 보고서를 공개한다. ③ **거버넌스 완비** — TOC(Technical Oversight Committee) 투표(2/3 이상 찬성)를 통과해야 하며, 공개 로드맵·기여 가이드라인·행동 강령이 갖춰져야 한다. Incubating과의 실질적 차이는 이 보안 감사와 TOC 투표 통과 여부로, 시험에서 "프로덕션 신뢰도가 검증된 프로젝트"를 고르는 문제에서 Graduated가 정답이 된다.
 
 ### 2-1. Graduated 프로젝트 (시험 빈출)
 
@@ -120,10 +146,10 @@ KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해�
 | 오케스트레이션 | **Kubernetes** | 컨테이너 오케스트레이션 표준 |
 | 컨테이너 런타임 | **containerd** | 산업 표준 컨테이너 런타임 |
 | 모니터링 | **Prometheus** | Pull 기반 메트릭 수집 및 알림 |
-| 시각화 | **Grafana** (참조) | 다중 데이터소스 대시보드 (CNCF 외부이나 시험 출제) |
 | 서비스 메시 | **Linkerd** | 경량 서비스 메시 |
+| 서비스 메시 | **Istio** | Envoy 기반 서비스 메시 (Graduated 2023) |
 | 서비스 프록시 | **Envoy** | L4/L7 고성능 프록시 |
-| 네트워크 | **Cilium** | eBPF 기반 네트워킹/보안/관측 |
+| 네트워크 | **Cilium** | eBPF(커널 소스 수정 없이 커널 내 사용자 정의 프로그램을 안전하게 실행하는 Linux 기술) 기반 네트워킹/보안/관측 |
 | CI/CD | **Argo** | GitOps CD, Workflows, Events, Rollouts |
 | CI/CD | **Flux** | GitOps 지속적 배포 도구 |
 | 패키지 관리 | **Helm** | K8s 패키지 매니저 |
@@ -139,16 +165,23 @@ KCNA 시험은 CKA/CKAD/CKS 같은 실습 기반 시험과 달리 개념 이해�
 | DNS | **CoreDNS** | K8s 기본 DNS 서버 |
 | API Gateway | **Emissary-ingress** | K8s 네이티브 API Gateway |
 | Key/Value | **etcd** | 분산 key-value 저장소 |
-| 스케줄링 | **Volcano** | 배치 작업 스케줄러 |
-| 빌드 | **Buildpacks** | 소스코드 → OCI 이미지 자동 빌드 |
+
+> **시험 출제 참고 — 비(非) CNCF 프로젝트**
+>
+> | 카테고리 | 프로젝트 | 설명 |
+> |----------|---------|------|
+> | 시각화 | **Grafana** | 다중 데이터소스 대시보드. CNCF Graduated 프로젝트가 아니므로 "CNCF Graduated 프로젝트를 고르시오" 문제의 정답이 될 수 없다. 단, Prometheus·Loki와 함께 관측성 스택 구성 요소로 출제된다. |
 
 ### 2-2. 주요 Incubating 프로젝트
 
+> **주의**: 아래 목록은 KCNA 시험 출제 당시 기준이다. 프로젝트 성숙도는 갱신되므로 응시 전 cncf.io/projects 에서 최신 단계를 확인한다.
+
 | 카테고리 | 프로젝트 | 한줄 설명 |
 |----------|---------|-----------|
-| 서비스 메시 | **Istio** | Envoy 기반 서비스 메시 |
+| 스케줄링 | **Volcano** | 배치 작업 스케줄러 (Incubating) |
+| 빌드 | **Buildpacks** | 소스코드 → OCI 이미지 자동 빌드 (Incubating) |
 | 네트워크 | **Calico** (참조) | BGP 기반 네트워크 정책 (CNCF 외) |
-| 보안 | **cert-manager** | X.509 인증서 자동 관리 |
+| 보안 | **cert-manager** | X.509 인증서(TLS/mTLS에 사용되는 공개 키 기반 디지털 인증서 표준) 자동 발급·갱신 관리 |
 | 보안 | **Kyverno** | K8s 네이티브 정책 엔진 |
 | 런타임 | **CRI-O** | K8s 전용 경량 컨테이너 런타임 |
 | Serverless | **Knative** | K8s 서버리스 프레임워크 |
@@ -259,28 +292,28 @@ Application Delivery       8%      ~4문항       3개 이상
 
 아래 문제를 3초 이내에 답할 수 있으면 해당 개념은 충분히 암기된 것이다.
 
-| # | 질문 | 정답 |
-|---|------|------|
-| 1 | etcd에 직접 접근하는 유일한 컴포넌트는? | API Server |
-| 2 | Scheduler의 3단계 프로세스는? | Filtering → Scoring → Binding |
-| 3 | kube-proxy의 두 가지 모드는? | iptables, IPVS |
-| 4 | StatefulSet에 필요한 Service 타입은? | Headless Service (clusterIP: None) |
-| 5 | Secret의 인코딩 방식은? | base64 (암호화 아님) |
-| 6 | 기본 Namespace 4개를 나열하라 | default, kube-system, kube-public, kube-node-lease |
-| 7 | ClusterRole과 Role의 차이는? | ClusterRole=클러스터 범위, Role=Namespace 범위 |
-| 8 | PV 회수 정책 3가지는? | Retain, Delete, Recycle(deprecated) |
-| 9 | Container 격리를 담당하는 Linux 기술은? | Namespace(격리) + cgroups(자원제한) |
-| 10 | OCI 3대 스펙은? | Runtime Spec, Image Spec, Distribution Spec |
-| 11 | CRI / CNI / CSI 각각 무엇의 약자? | Container Runtime / Network / Storage Interface |
-| 12 | CNCF 프로젝트 성숙도 3단계는? | Sandbox → Incubating → Graduated |
-| 13 | Prometheus의 메트릭 수집 방식은? | Pull-based (HTTP scraping) |
-| 14 | Observability 3 Pillars는? | Metrics, Logs, Traces |
-| 15 | OpenTelemetry의 핵심 특징은? | 벤더 중립 관측 프레임워크 (Metrics+Logs+Traces) |
-| 16 | GitOps의 Single Source of Truth는? | Git Repository |
-| 17 | Helm v3에서 제거된 서버 측 컴포넌트는? | Tiller |
-| 18 | Kustomize의 구조 패턴은? | base + overlay |
-| 19 | Blue-Green 배포의 단점은? | 2배 리소스 필요 |
-| 20 | Canary 배포의 핵심 원리는? | 소수 트래픽으로 먼저 검증 후 전체 적용 |
+| # | 질문 | 정답 | 개념 확인 명령 |
+|---|------|------|--------------|
+| 1 | etcd에 직접 접근하는 유일한 컴포넌트는? | API Server | `kubectl explain pod.spec` (API Server 경유 확인) |
+| 2 | Scheduler의 3단계 프로세스는? | Filtering → Scoring → Binding | `kubectl get events --field-selector reason=Scheduled` |
+| 3 | kube-proxy의 두 가지 모드는? | iptables, IPVS | `kubectl -n kube-system describe cm kube-proxy \| grep mode` |
+| 4 | StatefulSet에 필요한 Service 타입은? | Headless Service (clusterIP: None) | `kubectl explain statefulset.spec.serviceName` |
+| 5 | Secret의 인코딩 방식은? | base64 (암호화 아님) | `kubectl explain secret.data` |
+| 6 | 기본 Namespace 4개를 나열하라 | default, kube-system, kube-public, kube-node-lease | `kubectl get ns` |
+| 7 | ClusterRole과 Role의 차이는? | ClusterRole=클러스터 범위, Role=Namespace 범위 | `kubectl explain role.rules` |
+| 8 | PV 회수 정책 3가지는? | Retain, Delete, Recycle(deprecated) — PVC 삭제 후 적용됨 | `kubectl explain pv.spec.persistentVolumeReclaimPolicy` |
+| 9 | Container 격리를 담당하는 Linux 기술은? | Namespace(격리) + cgroups(자원제한) | `kubectl explain pod.spec.containers.resources` |
+| 10 | OCI 3대 스펙은? | Runtime Spec, Image Spec, Distribution Spec | (개념 문항, 검증 명령 없음) |
+| 11 | CRI / CNI / CSI 각각 무엇의 약자? | Container Runtime / Network / Storage Interface | `kubectl explain node.status.nodeInfo.containerRuntimeVersion` |
+| 12 | CNCF 프로젝트 성숙도 3단계는? | Sandbox → Incubating → Graduated | (개념 문항, cncf.io/projects 확인) |
+| 13 | Prometheus의 메트릭 수집 방식은? | Pull-based (HTTP scraping) | `kubectl -n monitoring get servicemonitor` (platform 클러스터) |
+| 14 | Observability 3 Pillars는? | Metrics, Logs, Traces | (개념 문항) |
+| 15 | OpenTelemetry의 핵심 특징은? | 벤더 중립 관측 프레임워크 (Metrics+Logs+Traces) | `kubectl explain opentelemetrycollector` (otel-operator 설치 시) |
+| 16 | GitOps의 Single Source of Truth는? | Git Repository | (개념 문항) |
+| 17 | Helm v3에서 제거된 서버 측 컴포넌트는? | Tiller | `helm version` (서버 정보 없음 확인) |
+| 18 | Kustomize의 구조 패턴은? | base + overlay | `kubectl kustomize --help` |
+| 19 | Blue-Green 배포의 단점은? | 2배 리소스 필요 | (개념 문항) |
+| 20 | Canary 배포의 핵심 원리는? | 소수 트래픽으로 먼저 검증 후 전체 적용 | (개념 문항) |
 
 **자가 채점:**
 - 18-20개 정답: 시험 준비 완료
@@ -359,7 +392,7 @@ Application Delivery       8%      ~4문항       3개 이상
 2. OCI               → 3대 Spec (Runtime, Image, Distribution)
 3. CRI/CNI/CSI       → 플러그인 인터페이스 삼총사
 4. containerd        → 산업 표준 런타임 (Graduated)
-5. Image Layers      → Union filesystem, 읽기 전용 + RW 레이어
+5. Image Layers      → Union filesystem(여러 읽기 전용 레이어를 하나의 디렉터리로 합쳐 보여주는 파일시스템, OverlayFS 가 대표적) — Dockerfile 명령어 1개당 레이어 1개가 추가되며, 컨테이너 실행 시 최상단에 읽기-쓰기 레이어 1개가 추가된다
 ```
 
 ### 6-3. Architecture 최다빈출
@@ -418,7 +451,8 @@ Application Delivery       8%      ~4문항       3개 이상
 ```
 1. Secret은 암호화가 아니다 (base64 인코딩)
 2. Namespace는 자원 제한이 아니다 (ResourceQuota가 제한)
-3. kube-proxy는 실제 트래픽을 프록시하지 않는다 (iptables 규칙만 관리)
+3. [iptables 모드] kube-proxy는 실제 트래픽을 프록시하지 않는다 — 커널 netfilter(iptables) 규칙을 생성·관리할 뿐이며, 트래픽은 커널이 규칙에 따라 직접 처리한다. kube-proxy 프로세스 자체는 데이터 경로에 없다.
+3a. [IPVS 모드] kube-proxy는 IPVS(IP Virtual Server) 규칙을 커널에 심고, 커널의 넷필터 IPVS 모듈이 L4 로드밸런싱을 직접 수행한다. iptables 모드보다 서비스 수가 늘어도 규칙 조회가 O(1)로 처리된다. 두 모드 모두 kube-proxy 프로세스가 실제 패킷을 릴레이하지 않는다는 점은 동일하다.
 4. Ingress는 자체적으로 동작하지 않는다 (Controller 필요)
 5. Pod는 영구적이지 않다 (ephemeral, 언제든 재생성)
 6. Label은 메타데이터 저장용이 아니다 (Annotation이 저장용)
@@ -432,38 +466,50 @@ Application Delivery       8%      ~4문항       3개 이상
 
 ## 8. 시험에서 자주 나오는 트러블슈팅 시나리오
 
+앞 섹션 7의 개념 비교를 바탕으로, KCNA 시험은 상태 이름(Pending·CrashLoopBackOff 등)과 원인을 연결하는 객관식 형태로도 출제된다. 아래 시나리오별 "실측 검증" 명령은 dev 클러스터(`kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`)에서 직접 실행해 결과를 확인한다.
+
 시험 문제에서 장애 시나리오를 설명하고 원인 또는 해결 방법을 묻는 패턴이 자주 출제된다.
+
+> **실습 전제**: dev 또는 staging 클러스터 가동 상태, kubeconfig 경로 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`, 클러스터 접근은 `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 또는 `ssh dev-master`. 파괴 실습은 dev/staging에서만 수행한다.
 
 ```
 시나리오 1: Pod가 Pending 상태
   → Scheduler가 적합한 노드를 찾지 못했다
   → 원인: 리소스 부족, Taint 불일치, nodeSelector 불일치, PVC 미바인딩
+  → 실측 검증: kubectl describe pod <name> -n <ns> | grep -A 5 Events
 
 시나리오 2: Pod가 CrashLoopBackOff 상태
   → 컨테이너가 시작 후 즉시 종료되고 반복 재시작된다
   → 원인: 앱 코드 오류, 설정 누락, 메모리 초과(OOMKilled), 잘못된 command
+  → 실측 검증: kubectl logs <name> -n <ns> --previous
 
 시나리오 3: Service에 접근해도 응답 없음
   → Endpoints가 비어 있다
   → 원인: Service selector와 Pod labels 불일치, Pod가 Ready 상태가 아님
+  → 실측 검증: kubectl get endpoints <svc-name> -n <ns>
 
 시나리오 4: kubectl 명령이 Forbidden
   → RBAC 권한 부족이다
   → 원인: 사용자에게 해당 리소스에 대한 Role/RoleBinding이 없다
+  → 실측 검증: kubectl auth can-i <verb> <resource> --as <user> -n <ns>
 
 시나리오 5: 이미지를 가져올 수 없음 (ImagePullBackOff)
   → 원인: 이미지 이름/태그 오타, 프라이빗 레지스트리 인증 실패, 네트워크 문제
+  → 실측 검증: kubectl describe pod <name> -n <ns> | grep -A 5 Events
 
 시나리오 6: Deployment 업데이트 후 롤백 필요
   → kubectl rollout undo deployment/<name>
   → Deployment가 이전 ReplicaSet을 보관하고 있으므로 가능하다
+  → 실측 검증: kubectl rollout history deployment/<name>
 
 시나리오 7: HPA가 동작하지 않음 (TARGETS: <unknown>)
   → metrics-server 미설치 또는 Pod에 resources.requests 미설정
+  → 실측 검증: kubectl describe hpa <name> -n <ns>
 
 시나리오 8: Ingress가 동작하지 않음
   → Ingress Controller가 설치되어 있지 않다
   → Ingress 리소스만으로는 아무 동작도 하지 않는다
+  → 실측 검증: kubectl get pods -n ingress-nginx (또는 해당 Controller Namespace)
 ```
 
 ---
@@ -472,16 +518,20 @@ Application Delivery       8%      ~4문항       3개 이상
 
 ### 9-1. 인증 로드맵
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  kcna(["KCNA (Associate)\n현재"])
+  kcsa["KCSA (Security Associate)\n보안 관심 시"]
+  cka["CKA (Administrator)\nK8s 관리 실무"]
+  ckad["CKAD (Developer)\nK8s 개발 실무"]
+  cks["CKS (Security Specialist)\nCKA 합격 후"]
+  kcna --> kcsa
+  kcna --> cka
+  kcna --> ckad
+  cka --> cks
 ```
-KCNA (Associate) ← 현재
-    │
-    ├── KCSA (Security Associate)  ← 보안 관심 시
-    │
-    ├── CKA (Administrator)        ← K8s 관리 실무
-    │   └── CKS (Security Specialist) ← CKA 합격 후
-    │
-    └── CKAD (Developer)           ← K8s 개발 실무
-```
+_그림 1. KCNA 이후 인증 로드맵(CKS 는 CKA 합격이 선수조건)._
 
 ### 9-2. 추천 학습 경로
 
@@ -493,32 +543,31 @@ KCNA (Associate) ← 현재
 | 4 | CKS | 보안 중심, CKA 필수 선수 | 4-6주 |
 | 5 | KCSA | 보안 이론, 객관식 | 2-3주 |
 
-### 8-3. tart-infra 실습 확장
+### 9-3. tart-infra 실습 확장
+
+KCNA 합격 후 CKA 실습 환경을 구축할 때는 이 저장소에 이미 있는 스크립트를 재사용한다. 무분별한 VM 증식을 피하고, 기존 dev/staging 클러스터를 초기화해서 사용하는 것이 원칙이다.
 
 ```bash
-# KCNA 합격 후 CKA 실습 환경 구축
-cd ~/sideproejct/tart-infra
+# 저장소 루트로 이동
+cd ~/sideproejct/IaC_apple_sillicon
 
-# tart VM으로 multi-node 클러스터 구성
-tart create k8s-master --from-ipsw latest
-tart create k8s-worker1 --from-ipsw latest
-tart create k8s-worker2 --from-ipsw latest
+# dev 클러스터를 초기화해 fresh 상태로 재생성 (VM째 삭제 후 재구축)
+./scripts/reset-cluster.sh dev
 
-# kubeadm으로 클러스터 부트스트랩
-kubeadm init --pod-network-cidr=10.244.0.0/16
-kubeadm join <master-ip>:6443 --token <token> --discovery-token-ca-cert-hash <hash>
+# 재생성 후 IP 드리프트 복구 (재부팅마다 실행 필요)
+./scripts/fix-cluster-ip-drift.sh dev
 
-# CKA 실습 시나리오 연습
-kubectl run nginx --image=nginx --dry-run=client -o yaml > pod.yaml
-kubectl create deployment web --image=nginx --replicas=3
-kubectl expose deployment web --port=80 --type=NodePort
+# CKA 실습 시나리오 연습 (kubeconfig 명시)
+kubectl --kubeconfig kubeconfig/dev.yaml run nginx --image=nginx --dry-run=client -o yaml > pod.yaml
+kubectl --kubeconfig kubeconfig/dev.yaml create deployment web --image=nginx --replicas=3
+kubectl --kubeconfig kubeconfig/dev.yaml expose deployment web --port=80 --type=NodePort
 ```
 
 ---
 
-## 9. 학습 완료 자가 평가
+## 10. 학습 완료 자가 평가
 
-### 9-1. 도메인별 준비도 체크
+### 10-1. 도메인별 준비도 체크
 
 각 항목에 대해 스스로 점수를 매겨본다 (1-5점).
 
@@ -550,7 +599,7 @@ Application Delivery (8%)
 [ ] 3대 배포 전략 비교 설명 가능                     ___/5
 ```
 
-### 9-2. 최종 판정
+### 10-2. 최종 판정
 
 ```
 총점 80점 만점 기준:
@@ -561,7 +610,7 @@ Application Delivery (8%)
 
 ---
 
-## 10. Day 1-10 전체 커리큘럼 요약
+## 11. Day 1-10 전체 커리큘럼 요약
 
 | Day | 주제 | 도메인 | 핵심 키워드 |
 |-----|------|--------|------------|

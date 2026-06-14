@@ -1,6 +1,7 @@
 # KCNA 보충 학습 자료
 
 > 기존 01-concepts, 02-examples, 03-exam-questions를 보완하는 추가 학습 자료이다.
+> **전제**: 01-concepts.md의 Pod/Deployment/Service/RBAC 기초를 먼저 읽는다. 이 파일은 그 내용이 익숙하다는 전제 하에 심화 개념과 추가 문제를 다룬다.
 > 누락된 개념, 실전 YAML 예제, 추가 모의 문제(40+30문항)를 포함한다.
 > 모든 YAML 예제에는 검증 명령어와 기대 출력(`text` 블록)을 포함하였다.
 > 각 개념에는 등장 배경, 기존 한계점, 내부 동작 원리, CNCF 생태계 맥락, 트러블슈팅을 포함한다.
@@ -76,36 +77,25 @@ PDB가 동작하는 과정을 단계별로 설명하면 다음과 같다:
 6. PDB 조건이 위반되면 API 서버가 `429 Too Many Requests`를 반환하고, drain 명령은 주기적으로 재시도한다.
 7. 기존에 퇴거된 Pod가 다른 노드에서 Ready 상태가 되면, PDB 조건이 충족되어 다음 Pod의 퇴거가 허용된다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  drain["kubectl drain node-1"]
+  evict["Eviction API 호출"]
+  api["API Server\nPDB 조회"]
+  c1{"PDB minAvailable=2, healthy=3\n3 - 1 = 2 >= 2 ?"}
+  a1["허용: Pod-A 퇴거 (healthy: 2)"]
+  c2{"PDB minAvailable=2, healthy=2\n2 - 1 = 1 >= 2 ?"}
+  d2["거부: 429, drain 대기 (재시도)"]
+  recover["Pod-A 가 다른 노드에서 Ready (healthy: 3)"]
+  c3{"PDB minAvailable=2, healthy=3\n3 - 1 = 2 >= 2 ?"}
+  a3["허용: Pod-B 퇴거"]
+  drain --> evict --> api --> c1
+  c1 -->|"예"| a1 --> c2
+  c2 -->|"아니오"| d2 --> recover --> c3
+  c3 -->|"예"| a3
 ```
-PDB 내부 동작 흐름
-====================================
-
-kubectl drain node-1
-    │
-    ▼
-[Eviction API 호출]
-    │
-    ▼
-[API Server]
-    │ PDB 조회
-    ▼
-PDB: minAvailable=2, 현재 healthy=3
-    │
-    ├── 3 - 1 = 2 >= minAvailable(2) → 허용
-    │   Pod-A 퇴거됨 (healthy: 2)
-    │
-    ▼ 다음 Pod 퇴거 시도
-PDB: minAvailable=2, 현재 healthy=2
-    │
-    ├── 2 - 1 = 1 < minAvailable(2) → 거부!
-    │   drain 대기 (재시도 반복)
-    │
-    ▼ Pod-A가 다른 노드에서 Ready 됨
-PDB: minAvailable=2, 현재 healthy=3
-    │
-    └── 3 - 1 = 2 >= minAvailable(2) → 허용
-        Pod-B 퇴거됨
-```
+_그림 1. PDB(PodDisruptionBudget) eviction 동작: drain 이 minAvailable 조건을 매번 평가해 위반 시 거부·재시도하고, 퇴거된 Pod 가 다른 노드에서 Ready 되면 다음 퇴거를 허용한다._
 
 ### minAvailable vs maxUnavailable 비교
 
@@ -114,6 +104,15 @@ PDB: minAvailable=2, 현재 healthy=3
 | `minAvailable: 2` | 항상 최소 2개의 Pod가 Running 상태여야 한다 | 최소 가용 Pod 수를 명확히 알고 있을 때 | allowedDisruptions = healthy - minAvailable |
 | `maxUnavailable: 1` | 동시에 최대 1개만 중단 가능하다 | replica 수가 변동될 수 있는 환경(HPA 사용 시) | allowedDisruptions = maxUnavailable - unavailable |
 | `minAvailable: "50%"` | 전체 Pod의 50% 이상이 Running이어야 한다 | 비율 기반 제어가 필요할 때 | replicas의 50% 기준으로 계산 |
+
+**계산 예시**: replicas=3, minAvailable=2, 현재 healthy=3인 상태에서 drain을 시작하는 경우를 단계별로 따라간다.
+
+- 1단계 — 첫 번째 퇴거 시도: allowedDisruptions = 3 - 2 = 1 (1개 퇴거 가능). Pod-A 퇴거 시작. 퇴거 직후 healthy=2.
+- 2단계 — 두 번째 퇴거 시도: allowedDisruptions = 2 - 2 = 0 (퇴거 불가). API 서버가 429를 반환하고 drain은 대기 후 재시도한다.
+- 3단계 — 복구 대기: Pod-A가 다른 노드에서 Ready 상태가 되어 healthy=3으로 회복된다.
+- 4단계 — 두 번째 퇴거 재시도: allowedDisruptions = 3 - 2 = 1 → Pod-B 퇴거 가능. 이 과정이 반복되어 노드가 완전히 비워진다.
+
+이 흐름에서 핵심은 "퇴거→복구→다음 퇴거"가 순차적으로 진행된다는 점이다. PDB가 없으면 모든 Pod가 거의 동시에 퇴거되어 healthy=0이 될 수 있다.
 
 두 필드 중 하나만 지정해야 한다. 둘 다 지정하면 유효성 검사 오류가 발생한다. HPA와 함께 사용할 때는 `maxUnavailable`이 더 적합하다. `minAvailable`을 고정값으로 설정하면 HPA가 스케일인할 때 PDB 조건이 충족되지 않아 문제가 발생할 수 있기 때문이다.
 
@@ -140,9 +139,7 @@ kubectl apply -f web-pdb.yaml
 
 **검증 — 기대 출력:**
 
-```text
-poddisruptionbudget.policy/web-pdb created
-```
+> **예시(참조) — poddisruptionbudget.policy/web-pdb created:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 2. PDB 상태 확인
@@ -151,10 +148,7 @@ kubectl get pdb web-pdb
 
 **검증 — 기대 출력:**
 
-```text
-NAME      MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
-web-pdb   N/A             1                 2                     10s
-```
+> **예시(참조) — NAME      MIN AVAILABLE   MAX UNAVAILABLE   AL:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 필드 설명:
 - `MIN AVAILABLE`: minAvailable 설정값이다. maxUnavailable을 사용했으므로 N/A이다.
@@ -168,37 +162,45 @@ kubectl describe pdb web-pdb
 
 **검증 — 기대 출력:**
 
-```text
-Name:           web-pdb
-Namespace:      default
-Min Available:  N/A
-Max Unavailable: 1
-Selector:       app=web
-Status:
-    Allowed Disruptions:  2
-    Current:              3
-    Desired:              3
-    Total:                3
-Conditions:
-  Type                Status
-  ----                ------
-  DisruptionAllowed   True
-Events:               <none>
-```
+![노드 Conditions](images/kcna-conditions.png)
 
 `Current`는 현재 healthy Pod 수, `Desired`는 selector에 매칭되는 총 Pod 수, `Total`은 전체 Pod 수이다.
 
+**PDB 동작 테스트 전 준비 순서**: 아래 drain 테스트는 다음 조건이 충족된 상태에서 실행해야 "Cannot evict" 메시지를 재현할 수 있다.
+
+```bash
+# 테스트 전제 조건 준비 (dev 클러스터, staging 클러스터에서만 실행)
+# kubeconfig 경로: ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+
+# a. Deployment 생성 (replica 3개)
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  create deployment web --image=nginx --replicas=3
+
+# b. PDB 적용 (maxUnavailable: 1)
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  apply -f web-pdb.yaml
+
+# c. worker2를 cordon해서 3개 Pod가 모두 worker1에 집중되도록 유도
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  cordon dev-worker2
+
+# d. Pod 배치 확인 — 3개 모두 dev-worker1에 있어야 한다
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  get pods -l app=web -o wide
+
+# e. 준비 완료 후 drain 실행
+```
+
 ```bash
 # 4. PDB가 실제로 동작하는지 테스트 (drain 시 PDB를 존중하는지 확인)
-kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+# SSH 별칭으로 노드에 직접 접속 가능: ssh dev-master
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  drain dev-worker1 --ignore-daemonsets --delete-emptydir-data
 ```
 
 **검증 — PDB 조건 위반 시 기대 출력:**
 
-```text
-evicting pod default/web-deployment-abc12-xyz34
-error when evicting pods/"web-deployment-abc12-xyz34" -n "default" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
-```
+> **예시(참조) — evicting pod default/web-deployment-abc12-xyz3:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 트러블슈팅 — PDB 관련 문제
 
@@ -234,6 +236,15 @@ KCNA 시험에서 PDB는 **고가용성(High Availability)** 및 **클러스터 
 5. `kubectl delete pod`는 PDB를 무시한다 (Eviction API만 PDB를 준수한다)
 6. HPA와 함께 사용할 때는 maxUnavailable이 더 적합하다
 
+### 트레이드오프 및 주의사항
+
+PDB는 가용성을 보장하지만, 다음과 같은 공학적 한계가 있다.
+
+1. **drain 영구 차단 위험**: `minAvailable = replicas`이고 새 Pod를 받을 노드가 없으면, drain 명령이 무한히 대기한다. Cluster Autoscaler가 없는 소규모 클러스터에서 특히 발생하기 쉽다. 이 경우 PDB를 임시 삭제하거나 `minAvailable`을 낮추는 수동 개입이 필요하다.
+2. **`unhealthyPodEvictionPolicy` 미고려 시 복잡도 증가**: Kubernetes 1.26부터 `spec.unhealthyPodEvictionPolicy` 필드가 추가되었다. 기본값 `IfHealthyBudget`은 이미 비정상인 Pod를 healthy 카운트에서 제외하지 않아, 비정상 Pod가 많을 때 drain이 차단될 수 있다. `AlwaysAllow`로 설정하면 비정상 Pod를 즉시 퇴거시키지만, 동시에 healthy Pod도 PDB 조건에 따라 퇴거될 수 있으므로 주의한다.
+3. **비자발적 중단 무방비**: 하드웨어 장애나 VM 삭제 같은 비자발적 중단에는 PDB가 작동하지 않는다. 이를 보완하려면 Pod Anti-Affinity로 Pod를 여러 노드에 분산 배치하고 replica 수를 여유 있게 유지해야 한다.
+4. **StatefulSet 과의 상호작용**: StatefulSet은 `OrderedReady` 정책(기본값)에서 Pod를 순서대로 퇴거하므로, PDB와 결합하면 drain 속도가 크게 느려질 수 있다.
+
 ---
 
 ## 1.2 CustomResourceDefinition (CRD)
@@ -249,6 +260,8 @@ CRD의 핵심 가치는, 사용자가 자신의 도메인에 맞는 리소스 �
 ### CRD란 무엇인가?
 
 CustomResourceDefinition(CRD)은 Kubernetes API를 확장하여 **사용자 정의 리소스(Custom Resource)**를 생성할 수 있게 해주는 메커니즘이다. Pod, Service, Deployment 같은 내장 리소스 외에 자신만의 리소스 타입을 정의할 수 있다.
+
+Kubernetes의 핵심 설계 철학은 "모든 상태를 선언적 리소스(YAML)로 표현하고, API 서버를 통해서만 접근한다"이다. Pod, Service 같은 내장 리소스도 이 원칙을 따르며, CRD는 이 시스템을 확장하여 사용자가 자신의 도메인 개념(Database, Certificate, GameServer 등)을 같은 방식으로 정의할 수 있게 한다. API 서버는 CRD가 등록되면 자동으로 `/apis/<group>/<version>/<plural>` 형식의 REST 엔드포인트를 생성하는데, 이는 CRD 정의의 `group`, `versions[].name`, `names.plural` 필드에서 구성된다. 예를 들어 group=`example.com`, version=`v1`, plural=`databases`이면 `/apis/example.com/v1/databases` 엔드포인트가 생성된다. 이를 통해 CRD는 단순한 데이터 저장 기능이 아니라 Kubernetes의 선언적 확장 패러다임을 구현하는 도구이다.
 
 ### CRD의 내부 동작 원리
 
@@ -376,9 +389,7 @@ kubectl apply -f database-crd.yaml
 
 **검증 — 기대 출력:**
 
-```text
-customresourcedefinition.apiextensions.k8s.io/databases.example.com created
-```
+> **예시(참조) — customresourcedefinition.apiextensions.k8s.io/:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 2. CRD 확인
@@ -387,10 +398,7 @@ kubectl get crd databases.example.com
 
 **검증 — 기대 출력:**
 
-```text
-NAME                     CREATED AT
-databases.example.com    2026-03-30T10:00:00Z
-```
+> **예시(참조) — NAME                     CREATED AT:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 3. Custom Resource 생성
@@ -409,9 +417,7 @@ EOF
 
 **검증 — 기대 출력:**
 
-```text
-database.example.com/my-postgres created
-```
+> **예시(참조) — database.example.com/my-postgres created:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 4. Custom Resource 조회
@@ -422,10 +428,7 @@ kubectl get db
 
 **검증 — 기대 출력:**
 
-```text
-NAME          AGE
-my-postgres   10s
-```
+> **예시(참조) — NAME          AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 5. Custom Resource 상세 확인
@@ -434,17 +437,7 @@ kubectl describe database my-postgres
 
 **검증 — 기대 출력:**
 
-```text
-Name:         my-postgres
-Namespace:    default
-API Version:  example.com/v1
-Kind:         Database
-Spec:
-  Engine:    postgres
-  Replicas:  3
-  Version:   16
-Events:      <none>
-```
+> **예시(참조) — Name:         my-postgres:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 6. 스키마 유효성 검사 테스트 (잘못된 값)
@@ -462,11 +455,7 @@ EOF
 
 **검증 — 기대 출력:**
 
-```text
-The Database "invalid-db" is invalid:
-* spec.engine: Unsupported value: "oracle": supported values: "postgres", "mysql", "mongodb"
-* spec.replicas: Invalid value: 20: spec.replicas in body should be less than or equal to 10
-```
+> **예시(참조) — The Database "invalid-db" is invalid::** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### CRD vs Aggregated API Server 비교
 
@@ -507,6 +496,15 @@ kubectl get databases --all-namespaces
 3. KCNA에서 "Kubernetes API를 확장하는 방법"으로 출제된다
 4. Operator Pattern과 함께 묶어서 이해해야 한다
 5. CRD를 삭제하면 연관된 모든 CR이 함께 삭제된다는 점을 기억해야 한다
+
+### 트레이드오프 및 주의사항
+
+CRD는 Kubernetes 확장의 핵심이지만, 다음과 같은 공학적 한계가 있다.
+
+1. **etcd 부하 증가**: CR 인스턴스는 etcd에 저장된다. Operator가 CR을 과도하게 생성하거나 Watch 빈도가 높으면 etcd의 I/O와 메모리 사용량이 증가한다. etcd 기본 저장 한도(2GB)에 도달하면 쓰기가 차단되므로, 대규모 CR 운용 시 etcd 용량과 compaction 주기를 모니터링해야 한다.
+2. **버전 마이그레이션 복잡도**: CRD에 새 API 버전(`v2` 등)을 추가할 때, 기존 `v1` CR을 변환하는 `conversion webhook`을 구현해야 한다. 이 webhook이 없으면 클라이언트가 버전을 혼용할 때 데이터 불일치가 발생한다.
+3. **CRD 삭제 시 데이터 소멸**: `kubectl delete crd <name>` 실행 시 해당 CRD의 모든 CR 인스턴스가 etcd에서 영구 삭제된다. 운영 중 CRD를 삭제하면 Operator가 관리하던 모든 상태가 사라지므로 극히 주의해야 한다.
+4. **스키마 검증 한계**: OpenAPI v3 스키마는 필드 수준 유효성 검사를 제공하지만, 필드 간 상호 의존(예: "A 필드가 있으면 B 필드도 필수") 같은 복잡한 논리는 표현하기 어렵다. 이러한 경우 Validating Admission Webhook을 추가로 구현해야 한다.
 
 ---
 
@@ -627,11 +625,21 @@ kubectl get pod -n kube-system -l component=kube-apiserver \
 
 **검증 — 기대 출력:**
 
-```text
---enable-admission-plugins=NodeRestriction
-```
+> **예시(참조) — --enable-admission-plugins=NodeRestriction:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 기본적으로 활성화되는 Admission Controller 목록은 Kubernetes 버전에 따라 다르다. `--enable-admission-plugins` 플래그에 명시되지 않은 경우에도 기본 활성화 플러그인이 있다.
+
+kubeadm으로 설치된 Kubernetes 1.26+ 기준, 컴파일 내장(built-in)으로 기본 활성화되는 주요 플러그인은 다음과 같다: `NamespaceLifecycle`, `LimitRanger`, `ServiceAccount`, `DefaultStorageClass`, `DefaultTolerationSeconds`, `MutatingAdmissionWebhook`, `ValidatingAdmissionWebhook`, `ResourceQuota`, `PersistentVolumeClaimProtection`, `Priority`, `StorageObjectInUseProtection`, `RuntimeClass`, `CertificateApproval`, `CertificateSigning`, `CertificateValidation`. 실제 실습 클러스터에서 정확한 목록을 확인하려면 다음 명령을 사용한다.
+
+```bash
+# dev 클러스터 API 서버의 활성화된 admission-plugins 확인
+# kubeconfig 경로: ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+# SSH 접속: ssh dev-master
+kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  -n kube-system describe pod kube-apiserver-dev-master | grep admission
+```
+
+위 명령의 출력에서 `--enable-admission-plugins` 항목 값을 확인하면 명시적으로 추가된 플러그인을 알 수 있다. 명시되지 않은 플러그인은 Kubernetes 버전별 기본값 문서(`https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#which-plugins-are-enabled-by-default`)에서 확인한다.
 
 ```bash
 # Mutating Webhook 설정 확인
@@ -640,11 +648,7 @@ kubectl get mutatingwebhookconfigurations
 
 **검증 — 기대 출력:**
 
-```text
-NAME                         WEBHOOKS   AGE
-istio-sidecar-injector       1          10d
-cilium-mutating-webhook      1          10d
-```
+> **예시(참조) — NAME                         WEBHOOKS   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # Validating Webhook 설정 확인
@@ -653,10 +657,7 @@ kubectl get validatingwebhookconfigurations
 
 **검증 — 기대 출력:**
 
-```text
-NAME                         WEBHOOKS   AGE
-cilium-validating-webhook    1          10d
-```
+> **예시(참조) — NAME                         WEBHOOKS   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 왜 중요한가?
 
@@ -665,6 +666,15 @@ cilium-validating-webhook    1          10d
 3. Mutating vs Validating의 차이와 실행 순서를 이해해야 한다
 4. OPA/Gatekeeper, Kyverno 같은 정책 엔진이 Admission Webhook을 활용한다
 5. Istio의 사이드카 주입이 Mutating Webhook의 대표적 사례이다
+
+### 트레이드오프 및 주의사항
+
+Admission Controller는 강력한 정책 도구이지만, 다음과 같은 공학적 위험이 있다.
+
+1. **Webhook 타임아웃에 의한 장애 연쇄(cascade failure)**: Validating 또는 Mutating Webhook이 응답하지 않으면 API 서버가 기본 타임아웃(10초)까지 대기한다. Webhook 서버 장애 시 클러스터 전체의 리소스 생성·수정이 차단될 수 있다. `failurePolicy: Fail`(기본값)은 webhook 오류 시 요청을 거부하므로, 프로덕션에서는 webhook 자체의 고가용성(replica 2개 이상, PDB 설정)이 필수이다. `failurePolicy: Ignore`는 webhook 오류 시 요청을 통과시키므로 가용성은 높지만 보안 정책이 무력화될 수 있다.
+2. **MutatingWebhook의 예측 불가 부작용**: 여러 Mutating Webhook이 동일 리소스를 수정하면 실행 순서에 따라 결과가 달라질 수 있다. `reinvocationPolicy: IfNeeded`를 설정하면 다른 webhook이 수정한 객체를 재검사하지만, 무한 루프 가능성에 주의해야 한다.
+3. **성능 영향**: 모든 리소스 변경 요청이 외부 webhook을 거치므로, webhook의 응답 지연이 API 서버 응답 시간에 직접 영향을 준다. webhook 서버는 빠른 응답(권장 100ms 이내)을 보장해야 한다.
+4. **버전 호환성**: Kubernetes 버전 업그레이드 시 `admissionregistration.k8s.io` API 버전이 변경될 수 있다. `v1beta1` webhook 설정은 Kubernetes 1.22에서 제거되었으므로, `v1`로 마이그레이션해야 한다.
 
 ---
 
@@ -678,9 +688,9 @@ etcd 데이터가 손실되면 어떤 일이 발생하는지 이해해야 한다
 
 ### etcd의 중요성과 Raft 합의 알고리즘
 
-etcd는 Kubernetes 클러스터의 **모든 상태 데이터**를 저장하는 단일 진실 소스(Single Source of Truth)이다. etcd는 분산 합의 알고리즘인 Raft를 사용하여 데이터 일관성을 보장한다.
+etcd는 Kubernetes 클러스터의 **모든 상태 데이터**를 저장하는 단일 진실 소스(Single Source of Truth)이다. etcd는 분산 합의 알고리즘인 **Raft**(래프트: 여러 노드가 동일한 로그 순서에 합의하는 선거 기반 알고리즘)를 사용하여 데이터 일관성을 보장한다. 쉽게 말하면, 모든 데이터 쓰기는 대다수의 etcd 노드가 "동의"해야만 확정된다.
 
-Raft의 핵심 원리는 과반수(quorum) 유지이다. 클러스터의 과반수 노드가 동의해야 데이터 쓰기가 확정되므로, 소수의 노드가 장애를 겪어도 데이터 일관성이 유지된다.
+Raft의 핵심 원리는 과반수(quorum: 정족수, 합의에 필요한 최소 응답 노드 수) 유지이다. 예를 들어 etcd 3개 노드 중 최소 2개가 동의해야 쓰기가 완료된다. 이렇게 하면 1개 노드가 고장 나도 나머지 2개가 과반수를 충족하므로 클러스터가 계속 동작하고 데이터 무결성이 유지된다. 클러스터의 과반수 노드가 동의해야 데이터 쓰기가 확정되므로, 소수의 노드가 장애를 겪어도 데이터 일관성이 유지된다.
 
 ```
 etcd 클러스터 구성과 장애 허용
@@ -747,17 +757,11 @@ ETCDCTL_API=3 etcdctl snapshot status /backup/snapshot.db --write-table
 
 **검증 — 기대 출력:**
 
-```text
-+----------+----------+------------+------------+
-|   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |
-+----------+----------+------------+------------+
-| 5d16a099 |    12345 |       1024 |     2.1 MB |
-+----------+----------+------------+------------+
-```
+> **예시(참조) — +----------+----------+------------+----------:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 필드 설명:
-- `HASH`: 스냅샷 파일의 무결성 해시값이다.
-- `REVISION`: etcd의 현재 리비전 번호이다. 모든 쓰기 작업마다 1씩 증가한다.
+- `HASH`: 스냅샷 파일의 무결성 해시값이다. 복구 전 이 값을 확인하면 파일 손상 여부를 알 수 있다.
+- `REVISION`: etcd의 리비전(revision: 쓰기 일련번호) 번호이다. etcd에 쓰기가 한 번 일어날 때마다 1씩 증가하는 단조 증가 카운터로, 스냅샷이 생성된 시점의 상태를 지칭한다. 복구 후 클러스터 상태는 이 리비전 시점으로 되돌아간다.
 - `TOTAL KEYS`: 저장된 전체 키 수이다.
 - `TOTAL SIZE`: 스냅샷 파일 크기이다.
 
@@ -795,8 +799,10 @@ kubectl exec -n kube-system etcd-<node-name> -- etcdctl endpoint status --write-
   --cert=/etc/kubernetes/pki/etcd/server.crt \
   --key=/etc/kubernetes/pki/etcd/server.key
 
-# etcd 공간 확보 (컴팩션)
-# 오래된 리비전을 정리하여 디스크 공간을 확보한다.
+# etcd 공간 확보 (컴팩션/defrag)
+# 컴팩션(compact): 지정 리비전보다 이전의 오래된 리비전 데이터를 논리적으로 삭제한다.
+# defrag: 컴팩션 후 논리 삭제된 공간을 물리적으로 회수하여 파일 크기를 실제로 줄인다.
+# 컴팩션만 하면 논리 공간은 해제되지만 파일 크기는 그대로이므로, defrag를 함께 실행해야 디스크 공간이 실제로 확보된다.
 kubectl exec -n kube-system etcd-<node-name> -- etcdctl compact <revision> \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
@@ -815,14 +821,25 @@ kubectl exec -n kube-system etcd-<node-name> -- etcdctl defrag \
 4. 스냅샷 기반 백업/복구의 개념적 흐름을 알아야 한다
 5. 백업 파일은 클러스터 외부에 저장하는 것이 모범 사례이다
 
+### 트레이드오프 및 주의사항
+
+etcd의 Raft 기반 설계는 강한 일관성을 제공하지만, 다음과 같은 공학적 비용이 따른다.
+
+1. **쓰기 지연(write latency)**: 모든 쓰기는 과반수 노드가 응답해야 확정된다. etcd 노드가 지리적으로 분산되어 있거나 네트워크 지연이 높으면, 쓰기마다 왕복 지연이 누적된다. 이 때문에 etcd 노드는 같은 데이터센터(또는 가용 영역) 내에 두는 것이 권장된다.
+2. **스냅샷 복구의 데이터 손실 가능성**: 스냅샷 복구는 스냅샷 생성 이후의 모든 변경 사항을 잃는다. 1시간 주기 백업이라면 최대 1시간 분량의 리소스 변경이 손실될 수 있다. RPO(Recovery Point Objective)를 낮추려면 백업 주기를 줄이거나, 다중 etcd 노드로 HA 구성을 유지해야 한다.
+3. **DB 크기 한도**: etcd 기본 저장 한도는 2GB이며, 이를 초과하면 쓰기가 차단된다(`mvcc: database space exceeded` 오류). Kubernetes 리소스의 Event 객체가 대부분을 차지하므로, compaction과 defrag를 주기적으로 실행해야 한다.
+4. **백업 파일 보안**: 스냅샷 파일에는 Secret 리소스가 base64 인코딩 상태로 포함된다. 파일 자체가 유출되면 클러스터의 모든 시크릿이 노출되므로, 백업 파일은 암호화하여 저장하고 접근 권한을 엄격히 제한해야 한다.
+
 ---
 
 # Part 2: 추가 실전 예제
 
-> 아래 10개 YAML 예제는 KCNA 시험에서 자주 다루어지는 핵심 리소스를 다룬다.
+> 아래 YAML 예제는 KCNA 시험에서 자주 다루어지는 핵심 리소스를 다룬다. **이 파일의 범위는 2.1(Pod Labels/Annotations)과 2.2(Deployment)이며, Service/ConfigMap/NetworkPolicy 등 나머지 예제는 [02-examples.md](02-examples.md)를 참조한다.**
 > 각 라인에 한글 주석으로 해당 필드의 의미를 설명하였다.
 > 모든 예제에 검증 명령어와 기대 출력(`text` 블록)을 포함하였다.
 > 각 예제에 등장 배경, 내부 동작 원리, 트러블슈팅을 포함하였다.
+> **실습 전제 조건**: dev 또는 staging 클러스터가 가동 중이어야 한다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 또는 `staging.yaml`이다. 클러스터가 꺼져 있으면 `./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh dev`로 복구한다. SSH 노드 별칭은 `ssh dev-master`, `ssh dev-worker1` 형식으로 접속 가능하다(키: `~/.ssh/tart_k8scert`).
+> **검증 출력 상태**: 아래 '기대 출력' 블록은 실제 터미널 스크린샷으로 교체 예정이다. 현재는 (미캡처) 상태이며, 클러스터에서 직접 실행한 출력과 다를 수 있다. 실제 캡처 후 `images/` 디렉터리에 PNG를 저장하고 마크다운 이미지 참조로 교체해야 한다.
 
 ---
 
@@ -830,7 +847,9 @@ kubectl exec -n kube-system etcd-<node-name> -- etcdctl defrag \
 
 ### 배경
 
-Kubernetes에서 리소스를 조직화하고 검색하는 메커니즘이 없다면, 수백 개의 Pod를 관리하기 어렵다. Labels는 리소스를 분류하고 selector로 검색하는 핵심 메커니즘이고, Annotations는 비-식별(non-identifying) 메타데이터를 저장하는 용도로 사용된다. 이 구분이 중요한 이유는, labels는 kubectl selector나 Service의 트래픽 라우팅에 사용되지만, annotations는 도구나 라이브러리가 참조하는 부가 정보(예: Prometheus 스크래핑 설정)에 사용되기 때문이다.
+Kubernetes에서 리소스를 조직화하고 검색하는 메커니즘이 없다면, 수백 개의 Pod를 관리하기 어렵다. Labels는 리소스를 분류하고 selector로 검색하는 핵심 메커니즘이고, Annotations는 비-식별(non-identifying) 메타데이터를 저장하는 용도로 사용된다.
+
+**Labels와 Annotations를 구분하는 실무 기준**: Labels는 API 서버에서 인덱싱되어 빠른 필터링이 가능하므로, Service selector, Pod scheduling affinity, RBAC 정책 등 Kubernetes의 의사결정(예: "어떤 Pod에 트래픽을 보낼 것인가?", "어느 노드에 스케줄링할 것인가?")에 사용된다. 반면 Annotations는 인덱싱되지 않으므로 selector로 검색할 수 없지만, 임의 크기의 구조화 데이터(JSON, URL)를 저장할 수 있어 도구나 인간을 위한 부가 정보(Prometheus 스크래핑 설정, 소유자 이메일, 배포 타임스탬프, Istio 설정 등)에 적합하다. 따라서 값이 크거나 검색이 필요 없는 메타데이터는 Labels가 아닌 Annotations에 두어야 한다. 예를 들어 `owner: team-alpha`를 Label로 설정하면 API 서버가 이 키를 인덱싱하여 메모리를 사용하지만, 실제로 이 값으로 Pod를 선택하는 경우가 없다면 Annotation이 더 적합하다.
 
 Labels의 내부 동작 원리:
 - API 서버에서 인덱싱되어 효율적인 검색이 가능하다.
@@ -876,9 +895,7 @@ kubectl apply -f labeled-pod.yaml
 
 **검증 — 기대 출력:**
 
-```text
-pod/labeled-pod created
-```
+> **예시(참조) — pod/labeled-pod created:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 2. Pod 상태 확인
@@ -887,10 +904,7 @@ kubectl get pod labeled-pod --show-labels
 
 **검증 — 기대 출력:**
 
-```text
-NAME          READY   STATUS    RESTARTS   AGE   LABELS
-labeled-pod   1/1     Running   0          10s   app=frontend,tier=web,version=v1.2.0
-```
+> **예시(참조) — NAME          READY   STATUS    RESTARTS   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 3. 레이블로 Pod 필터링 (Equality-based)
@@ -899,10 +913,7 @@ kubectl get pods -l app=frontend
 
 **검증 — 기대 출력:**
 
-```text
-NAME          READY   STATUS    RESTARTS   AGE
-labeled-pod   1/1     Running   0          30s
-```
+> **예시(참조) — NAME          READY   STATUS    RESTARTS   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 4. Set-based 셀렉터 사용
@@ -911,10 +922,7 @@ kubectl get pods -l 'tier in (web, backend)'
 
 **검증 — 기대 출력:**
 
-```text
-NAME          READY   STATUS    RESTARTS   AGE
-labeled-pod   1/1     Running   0          45s
-```
+> **예시(참조) — NAME          READY   STATUS    RESTARTS   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 5. 어노테이션 확인
@@ -923,14 +931,7 @@ kubectl get pod labeled-pod -o jsonpath='{.metadata.annotations}' | python3 -m j
 
 **검증 — 기대 출력:**
 
-```text
-{
-    "description": "프론트엔드 웹 서버",
-    "owner": "team-alpha",
-    "prometheus.io/port": "8080",
-    "prometheus.io/scrape": "true"
-}
-```
+> **예시(참조) — {:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 6. Pod 상세 정보에서 Labels와 Annotations 구분하여 확인
@@ -939,21 +940,7 @@ kubectl describe pod labeled-pod | head -20
 
 **검증 — 기대 출력:**
 
-```text
-Name:             labeled-pod
-Namespace:        default
-Priority:         0
-Service Account:  default
-Node:             dev-node/192.168.64.3
-Labels:           app=frontend
-                  tier=web
-                  version=v1.2.0
-Annotations:      description: 프론트엔드 웹 서버
-                  owner: team-alpha
-                  prometheus.io/port: 8080
-                  prometheus.io/scrape: true
-Status:           Running
-```
+> **예시(참조) — Name:             labeled-pod:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 7. 레이블 동적 추가/수정/삭제
@@ -964,11 +951,7 @@ kubectl label pod labeled-pod tier-
 
 **검증 — 기대 출력:**
 
-```text
-pod/labeled-pod labeled
-pod/labeled-pod labeled
-pod/labeled-pod unlabeled
-```
+> **예시(참조) — pod/labeled-pod labeled:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 8. 변경된 레이블 확인
@@ -977,10 +960,7 @@ kubectl get pod labeled-pod --show-labels
 
 **검증 — 기대 출력:**
 
-```text
-NAME          READY   STATUS    RESTARTS   AGE   LABELS
-labeled-pod   1/1     Running   0          2m    app=frontend,environment=production,version=v1.3.0
-```
+> **예시(참조) — NAME          READY   STATUS    RESTARTS   AGE:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 트러블슈팅 — Labels 관련 문제
 
@@ -1076,9 +1056,7 @@ kubectl apply -f web-deployment.yaml
 
 **검증 — 기대 출력:**
 
-```text
-deployment.apps/web-deployment created
-```
+> **예시(참조) — deployment.apps/web-deployment created:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 2. Deployment 상태 확인
@@ -1087,10 +1065,7 @@ kubectl get deployment web-deployment
 
 **검증 — 기대 출력:**
 
-```text
-NAME             READY   UP-TO-DATE   AVAILABLE   AGE
-web-deployment   3/3     3            3           30s
-```
+> **예시(참조) — NAME             READY   UP-TO-DATE   AVAILABL:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 3. Deployment가 생성한 ReplicaSet 확인
@@ -1099,10 +1074,7 @@ kubectl get replicaset -l app=web
 
 **검증 — 기대 출력:**
 
-```text
-NAME                        DESIRED   CURRENT   READY   AGE
-web-deployment-7d9f5b4c6    3         3         3       45s
-```
+> **예시(참조) — NAME                        DESIRED   CURRENT :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 4. 개별 Pod 확인
@@ -1111,12 +1083,7 @@ kubectl get pods -l app=web
 
 **검증 — 기대 출력:**
 
-```text
-NAME                              READY   STATUS    RESTARTS   AGE
-web-deployment-7d9f5b4c6-abc12    1/1     Running   0          60s
-web-deployment-7d9f5b4c6-def34    1/1     Running   0          60s
-web-deployment-7d9f5b4c6-ghi56    1/1     Running   0          60s
-```
+> **예시(참조) — NAME                              READY   STAT:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 5. 롤링 업데이트 수행 후 상태 확인
@@ -1126,13 +1093,7 @@ kubectl rollout status deployment/web-deployment
 
 **검증 — 기대 출력:**
 
-```text
-Waiting for deployment "web-deployment" rollout to finish: 1 out of 3 new replicas have been updated...
-Waiting for deployment "web-deployment" rollout to finish: 2 out of 3 new replicas have been updated...
-Waiting for deployment "web-deployment" rollout to finish: 3 out of 3 new replicas have been updated...
-Waiting for deployment "web-deployment" rollout to finish: 1 old replicas are pending termination...
-deployment "web-deployment" successfully rolled out
-```
+> **예시(참조) — Waiting for deployment "web-deployment" rollou:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 6. 롤아웃 히스토리 확인
@@ -1141,12 +1102,7 @@ kubectl rollout history deployment/web-deployment
 
 **검증 — 기대 출력:**
 
-```text
-deployment.apps/web-deployment
-REVISION  CHANGE-CAUSE
-1         <none>
-2         <none>
-```
+> **예시(참조) — deployment.apps/web-deployment:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 7. 롤백 실행
@@ -1156,10 +1112,7 @@ kubectl rollout status deployment/web-deployment
 
 **검증 — 기대 출력:**
 
-```text
-deployment.apps/web-deployment rolled back
-deployment "web-deployment" successfully rolled out
-```
+> **예시(참조) — deployment.apps/web-deployment rolled back:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ```bash
 # 8. 롤백 후 이미지 확인
@@ -1168,9 +1121,7 @@ kubectl get deployment web-deployment -o jsonpath='{.spec.template.spec.containe
 
 **검증 — 기대 출력:**
 
-```text
-nginx:1.25
-```
+> **예시(참조) — nginx:1.25:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 ### 트러블슈팅 — Deployment 관련 문제
 
@@ -1202,11 +1153,13 @@ kubectl rollout undo deployment/web-deployment
 > 03-exam-questions.md의 문제와 중복되지 않도록 구성하였다.
 > 각 문제에 대한 해설에는 내부 동작 원리와 CNCF 생태계 맥락을 포함하였다.
 
+다음 문제들은 Part 1, 2의 개념을 검증하며, 관련 섹션이 있으면 문제 번호 옆에 `(§1.X)`, `(§2.X)` 형태로 표기한다. Part 1·2에서 다루지 않은 KCNA 기초 개념(kube-proxy 모드, Taint effect, HPA/VPA 등)을 검증하는 문제는 `(KCNA 01-concepts.md 참조)`로 표기한다. 개념이 생소하면 해당 섹션을 먼저 읽은 후 문제를 풀도록 한다.
+
 ---
 
 ## Kubernetes Fundamentals (문제 1~18)
 
-### 문제 1.
+### 문제 1. (§1.1 Pod Disruption Budget 참조)
 Pod Disruption Budget(PDB)의 역할로 올바른 것은?
 
 A) Pod의 CPU와 메모리 사용량을 제한한다
@@ -1224,7 +1177,7 @@ PDB는 노드 드레인, 클러스터 업그레이드 등 자발적 중단 상�
 
 ---
 
-### 문제 2.
+### 문제 2. (§1.2 CRD 참조)
 CustomResourceDefinition(CRD)에 대한 설명으로 올바른 것은?
 
 A) CRD를 등록하면 자동으로 커스텀 컨트롤러도 생성된다
@@ -1242,7 +1195,7 @@ CRD를 등록하면 API 서버가 해당 리소스 타입에 대한 REST API 엔
 
 ---
 
-### 문제 3.
+### 문제 3. (§1.3 Admission Controllers 참조)
 Kubernetes API 서버가 요청을 처리하는 올바른 순서는?
 
 A) Authorization → Authentication → Admission Control → etcd 저장
@@ -1260,7 +1213,7 @@ API 서버는 먼저 요청자의 신원을 확인(Authentication: X.509 인증�
 
 ---
 
-### 문제 4.
+### 문제 4. (§1.3 Admission Controllers 참조)
 Mutating Admission Webhook과 Validating Admission Webhook의 차이점으로 올바른 것은?
 
 A) Mutating은 요청을 수정할 수 있고, Validating은 요청을 허용하거나 거부만 할 수 있다
@@ -1278,7 +1231,7 @@ Mutating Admission Webhook은 요청 객체를 변경할 수 있다(예: Istio�
 
 ---
 
-### 문제 5.
+### 문제 5. (§1.4 etcd 참조)
 etcd 클러스터를 5개 노드로 구성했을 때, 최대 몇 개의 노드 장애까지 허용할 수 있는가?
 
 A) 1개
@@ -1296,7 +1249,7 @@ etcd는 Raft 합의 알고리즘을 사용하며, 과반수(quorum)가 유지되
 
 ---
 
-### 문제 6.
+### 문제 6. (§1.4 etcd 참조)
 etcd 백업에 대한 설명으로 올바르지 않은 것은?
 
 A) etcdctl snapshot save 명령으로 스냅샷을 생성할 수 있다
@@ -1314,7 +1267,7 @@ etcd 백업 파일은 클러스터 외부의 안전한 원격 스토리지(S3, G
 
 ---
 
-### 문제 7.
+### 문제 7. (§1.2 CRD 참조)
 Operator Pattern에 대한 설명으로 올바른 것은?
 
 A) Kubernetes 내장 컨트롤러를 통칭하는 용어이다
@@ -1332,7 +1285,7 @@ Operator는 CRD(사용자 정의 리소스 정의)와 Custom Controller(비즈�
 
 ---
 
-### 문제 8.
+### 문제 8. (KCNA 01-concepts.md — Service & kube-proxy 참조)
 kube-proxy의 기본 모드로 올바른 것은?
 
 A) userspace
@@ -1345,12 +1298,12 @@ D) eBPF
 
 **정답: B) iptables**
 
-kube-proxy는 Service의 ClusterIP를 실제 Pod IP로 변환하는 역할을 한다. 기본 모드는 iptables이며, iptables 규칙을 생성하여 DNAT(Destination NAT)를 수행한다. userspace 모드는 Kubernetes 초기 버전에서 사용된 레거시 방식으로, 모든 패킷이 kube-proxy 프로세스를 경유하여 성능이 낮다. IPVS 모드는 대규모 Service(수천 개)에서 iptables보다 성능이 우수하며, `--proxy-mode=ipvs`로 활성화한다. eBPF 모드는 kube-proxy가 아닌 Cilium이 제공하는 기능으로, kube-proxy를 완전히 대체한다.
+kube-proxy는 각 노드에서 실행되는 데몬으로, Kubernetes Service의 가상 IP(ClusterIP)를 실제 Pod IP로 변환하는 네트워크 프록시이다. Service가 생성되면 kube-proxy가 해당 ClusterIP로 들어오는 트래픽을 실제 Pod들로 분산하는 규칙을 각 노드에 설정한다. 기본 모드는 iptables이며, iptables 규칙을 생성하여 DNAT(Destination NAT)를 수행한다. userspace 모드는 Kubernetes 초기 버전에서 사용된 레거시 방식으로, 모든 패킷이 kube-proxy 프로세스를 경유하여 성능이 낮다. IPVS 모드는 대규모 Service(수천 개)에서 iptables보다 성능이 우수하며, `--proxy-mode=ipvs`로 활성화한다. eBPF 모드는 kube-proxy가 아닌 Cilium이 제공하는 기능으로, kube-proxy를 완전히 대체한다.
 </details>
 
 ---
 
-### 문제 9.
+### 문제 9. (KCNA 01-concepts.md — Taint & Toleration 참조)
 Taint가 `NoExecute`로 설정된 노드에 이미 실행 중인 Pod는 어떻게 되는가?
 
 A) 영향을 받지 않고 계속 실행된다
@@ -1363,12 +1316,12 @@ D) Pod의 상태가 Unknown으로 변경된다
 
 **정답: B) 해당 Taint를 toleration하지 않으면 퇴거(evict)된다**
 
-Taint의 effect는 세 가지이다. `NoSchedule`은 새 Pod의 스케줄링만 차단하고 기존 Pod에는 영향 없다. `PreferNoSchedule`은 가능하면 스케줄링하지 않지만 강제는 아니다. `NoExecute`는 가장 강력하여, 기존에 실행 중인 Pod도 해당 Taint를 toleration하지 않으면 퇴거시킨다. 노드 장애 시 node controller가 자동으로 `node.kubernetes.io/not-ready:NoExecute` Taint를 추가하여, 해당 노드의 Pod를 다른 노드로 이동시킨다. `tolerationSeconds`를 설정하면 퇴거까지의 유예 시간을 지정할 수 있다.
+Taint(테인트)는 특정 노드에 부여하는 반발 속성이고, Toleration(톨러레이션)은 Pod에 부여하는 면역 속성이다. Taint가 설정된 노드에는 해당 Taint를 toleration하는 Pod만 배치될 수 있다. Taint의 effect는 세 가지이다. `NoSchedule`은 새 Pod의 스케줄링만 차단하고 기존 Pod에는 영향 없다. `PreferNoSchedule`은 가능하면 스케줄링하지 않지만 강제는 아니다. `NoExecute`는 가장 강력하여, 기존에 실행 중인 Pod도 해당 Taint를 toleration하지 않으면 퇴거시킨다. 노드 장애 시 node controller가 자동으로 `node.kubernetes.io/not-ready:NoExecute` Taint를 추가하여, 해당 노드의 Pod를 다른 노드로 이동시킨다. `tolerationSeconds`를 설정하면 퇴거까지의 유예 시간을 지정할 수 있다.
 </details>
 
 ---
 
-### 문제 10.
+### 문제 10. (KCNA 01-concepts.md — HPA/VPA 참조)
 HPA(Horizontal Pod Autoscaler)와 VPA(Vertical Pod Autoscaler)의 차이점으로 올바른 것은?
 
 A) HPA는 Pod 수를 조정하고, VPA는 Pod의 리소스(CPU/메모리)를 조정한다
@@ -1381,7 +1334,7 @@ D) HPA는 수평 스케일링, VPA는 Pod를 삭제하여 부하를 줄인다
 
 **정답: A) HPA는 Pod 수를 조정하고, VPA는 Pod의 리소스(CPU/메모리)를 조정한다**
 
-HPA(Horizontal)는 Pod의 레플리카 수를 늘리거나 줄여 수평 확장한다. VPA(Vertical)는 개별 Pod의 requests/limits를 조정하여 수직 확장한다. VPA는 Pod를 재시작해야 리소스가 반영되므로, 현재 버전에서는 Pod를 삭제하고 새로운 리소스 설정으로 재생성한다. HPA와 VPA를 동시에 같은 CPU/메모리 메트릭으로 사용하면 충돌이 발생할 수 있으므로, VPA는 HPA가 사용하지 않는 메트릭(예: 커스텀 메트릭)에 적용하거나, VPA의 UpdateMode를 "Off"로 설정하여 추천만 받는 것이 권장된다. 노드 수를 조정하는 것은 Cluster Autoscaler이다.
+HPA(Horizontal Pod Autoscaler)는 CPU/메모리 사용률 또는 커스텀 메트릭을 기준으로 Deployment의 레플리카 수를 자동 조정하는 컨트롤러이다. VPA(Vertical Pod Autoscaler)는 Pod의 리소스 requests/limits 값 자체를 워크로드 사용 패턴에 맞게 자동 조정한다. HPA(Horizontal)는 Pod의 레플리카 수를 늘리거나 줄여 수평 확장한다. VPA(Vertical)는 개별 Pod의 requests/limits를 조정하여 수직 확장한다. VPA는 Pod를 재시작해야 리소스가 반영되므로, 현재 버전에서는 Pod를 삭제하고 새로운 리소스 설정으로 재생성한다. HPA와 VPA를 동시에 같은 CPU/메모리 메트릭으로 사용하면 충돌이 발생할 수 있으므로, VPA는 HPA가 사용하지 않는 메트릭(예: 커스텀 메트릭)에 적용하거나, VPA의 UpdateMode를 "Off"로 설정하여 추천만 받는 것이 권장된다. 노드 수를 조정하는 것은 Cluster Autoscaler이다.
 </details>
 
 ---
@@ -1599,7 +1552,7 @@ D) 이미지는 항상 단일 레이어로 구성된다
 
 **정답: B) Dockerfile의 각 명령어가 읽기 전용 레이어를 생성하며, 레이어는 여러 이미지 간에 공유된다**
 
-컨테이너 이미지는 Union Filesystem(OverlayFS)을 사용하여 여러 읽기 전용 레이어를 겹쳐서 하나의 파일시스템처럼 보이게 한다. Dockerfile의 `FROM`, `RUN`, `COPY`, `ADD` 등의 명령어가 각각 하나의 레이어를 생성한다. 동일한 베이스 이미지를 사용하는 여러 컨테이너는 베이스 레이어를 공유하여 디스크 공간과 이미지 pull 시간을 절약한다. 컨테이너가 파일을 수정하면 최상위의 쓰기 가능 레이어(container layer)에만 변경이 기록된다(Copy-on-Write).
+컨테이너 이미지는 Union Filesystem(OverlayFS: 여러 디렉터리를 겹쳐서 하나의 통합 파일시스템처럼 보이게 하는 리눅스 파일시스템 드라이버)을 사용하여 여러 읽기 전용 레이어를 겹쳐서 하나의 파일시스템처럼 보이게 한다. Dockerfile의 `FROM`, `RUN`, `COPY`, `ADD` 등의 명령어가 각각 하나의 레이어를 생성한다. 동일한 베이스 이미지를 사용하는 여러 컨테이너는 베이스 레이어를 공유하여 디스크 공간과 이미지 pull 시간을 절약한다. 컨테이너가 파일을 수정하면 최상위의 쓰기 가능 레이어(container layer)에만 변경이 기록된다(Copy-on-Write: 원본 데이터를 복사한 후 복사본에만 변경을 적용하여 원본 공유 레이어를 불변으로 유지하는 기법).
 </details>
 
 ---
@@ -1696,6 +1649,23 @@ D) gVisor는 네트워크 보안, Kata는 스토리지 보안을 담당한다
 
 ## Cloud Native Architecture (문제 28~33)
 
+> **12-Factor App 전체 목록 참조**: 아래 문제들에서 Factor 번호가 언급될 때 다음 목록을 기준으로 삼는다. 12-Factor는 Heroku의 엔지니어들이 정리한 클라우드 네이티브 앱 설계 원칙이다.
+>
+> | Factor | 이름 | 핵심 원칙 |
+> |:--:|:--|:--|
+> | I | Codebase | 하나의 코드베이스, 여러 환경 배포 |
+> | II | Dependencies | 의존성을 명시적으로 선언하고 격리한다 |
+> | III | Config | 설정을 코드와 분리하여 환경 변수에 저장한다 |
+> | IV | Backing Services | DB·MQ 등을 교체 가능한 외부 서비스로 취급한다 |
+> | V | Build, Release, Run | 빌드·릴리스·실행 단계를 엄격히 분리한다 |
+> | VI | Processes | 무상태(stateless) 프로세스, 아무것도 공유하지 않는다 |
+> | VII | Port Binding | 포트 바인딩으로 서비스를 노출한다 (외부 웹서버 불필요) |
+> | VIII | Concurrency | 프로세스 모델로 수평 확장한다 |
+> | IX | Disposability | 빠른 시작과 우아한 종료(graceful shutdown)를 보장한다 |
+> | X | Dev/Prod Parity | 개발·스테이징·프로덕션 환경을 최대한 동일하게 유지한다 |
+> | XI | Logs | 로그를 이벤트 스트림으로 취급한다 (파일에 직접 쓰지 않는다) |
+> | XII | Admin Processes | 관리 작업을 일회성 프로세스로 실행한다 |
+
 ### 문제 28.
 12-Factor App의 Factor III(Config)에서 권장하는 설정 관리 방법은?
 
@@ -1787,7 +1757,7 @@ D) 기존 Sidecar 방식과 호환되지 않는다
 ---
 
 ### 문제 33.
-다음 중 CNCF Graduated 프로젝트가 아닌 것은?
+다음 중 가장 최근에 CNCF Graduated 단계에 도달한 프로젝트는?
 
 A) Kubernetes
 B) Prometheus
@@ -1797,9 +1767,13 @@ D) Helm
 <details>
 <summary>정답 확인</summary>
 
-**정답: C) Istio**
+**정답: C) Istio** *(해설 작성 기준: 2025-01)*
 
-Istio는 CNCF 프로젝트가 아니다(2022년 CNCF에 기부되어 현재 Graduated 상태이다 — 주의: 시험 시점에 따라 달라질 수 있으므로 최신 정보를 확인해야 한다). Kubernetes(2018 Graduated), Prometheus(2018 Graduated), Helm(2020 Graduated)은 모두 CNCF Graduated 프로젝트이다. 다른 주요 Graduated 프로젝트: Envoy, CoreDNS, containerd, Fluentd, Jaeger, Vitess, TUF, Cilium, Argo, Flux. CNCF Landscape(https://landscape.cncf.io)에서 최신 성숙도 단계를 확인하는 것이 중요하다. 시험에서는 특정 프로젝트의 성숙도 단계를 묻는 문제가 자주 출제된다.
+> **시험 직전 CNCF Landscape 재확인 필수**: 이 문제의 정답은 시험 시점의 최신 Graduated 프로젝트 현황에 따라 달라진다. 아래 해설은 2025년 1월 기준이며, 이후 새로운 프로젝트가 Graduated에 도달하면 정답이 바뀔 수 있다.
+
+Istio는 2023년 3월 CNCF Graduated를 달성하였다. Kubernetes(2018 Graduated), Prometheus(2018 Graduated), Helm(2020 Graduated)은 더 이른 시기에 Graduated에 도달한 프로젝트이다. Istio는 2022년 9월 CNCF에 기부(Incubating)된 후 약 6개월 만에 Graduated 단계로 이동하였다. 이는 이미 커뮤니티와 프로덕션 채택이 충분히 성숙해 있었기 때문이다.
+
+주요 CNCF Graduated 프로젝트: Kubernetes, Prometheus, Envoy, CoreDNS, containerd, Fluentd, Jaeger, Vitess, Argo, Flux, Helm, Cilium, Argo, Istio, Kyverno, OpenTelemetry(2024년 Graduated) 등. CNCF Landscape(https://landscape.cncf.io)에서 최신 성숙도 단계를 반드시 확인한다. 시험 시점에 따라 프로젝트 성숙도가 변경될 수 있으므로, 시험 직전에 현황을 재확인하는 것이 중요하다.
 </details>
 
 ---
@@ -1873,7 +1847,7 @@ D) 서비스 메시의 데이터 플레인이다
 
 **정답: B) 마이크로서비스 환경에서 분산 추적(Distributed Tracing)을 제공하는 CNCF Graduated 프로젝트이다**
 
-Jaeger(예거)는 Uber에서 개발한 분산 추적 시스템으로, CNCF Graduated 프로젝트이다. 마이크로서비스 환경에서 하나의 요청이 여러 서비스를 거치면서 발생하는 지연시간을 추적(trace)한다. 각 서비스에서의 처리 시간(span)을 수집하여, 전체 요청 경로를 시각화한다. 이를 통해 병목 지점을 식별할 수 있다. 관측성의 3대 축(Three Pillars of Observability): 메트릭(Prometheus), 로그(Loki), 추적(Jaeger/Tempo). OpenTelemetry(CNCF Incubating)는 이 세 가지 데이터를 통합적으로 수집하는 표준 프레임워크이다. Grafana Tempo는 Jaeger의 대안으로, 오브젝트 스토리지에 trace를 저장하여 운영 비용을 줄인다.
+Jaeger(예거)는 Uber에서 개발한 분산 추적 시스템으로, CNCF Graduated 프로젝트이다. 마이크로서비스 환경에서 하나의 요청이 여러 서비스를 거치면서 발생하는 지연시간을 추적(trace)한다. 각 서비스에서의 처리 시간(span)을 수집하여, 전체 요청 경로를 시각화한다. 이를 통해 병목 지점을 식별할 수 있다. 관측성의 3대 축(Three Pillars of Observability): 메트릭(Prometheus), 로그(Loki), 추적(Jaeger/Tempo). OpenTelemetry(CNCF Graduated, 2024년)는 이 세 가지 데이터를 통합적으로 수집하는 표준 프레임워크이다. Grafana Tempo는 Jaeger의 대안으로, 오브젝트 스토리지에 trace를 저장하여 운영 비용을 줄인다.
 </details>
 
 ---
@@ -2104,7 +2078,7 @@ CronJob은 cron 스케줄에 따라 Job을 생성한다. Job은 하나 이상의
 
 ---
 
-### 문제 10.
+### 문제 10. (§2.1 Pod with Labels and Annotations 참조)
 Label Selector에 대한 설명으로 올바른 것은?
 
 A) Label은 Pod에만 사용할 수 있다
@@ -2378,16 +2352,18 @@ D) etcd가 직접 Pod를 재생성한다
 OpenTelemetry에 대한 설명으로 올바른 것은?
 
 A) 오직 메트릭만 수집하는 도구이다
-B) 메트릭, 로그, 추적(trace)을 통합적으로 수집하는 관측성 프레임워크이며 CNCF Incubating 프로젝트이다
+B) 메트릭, 로그, 추적(trace)을 통합적으로 수집하는 관측성 프레임워크이며 CNCF Graduated 프로젝트이다
 C) Prometheus를 대체하는 시계열 데이터베이스이다
 D) 컨테이너 로그만 관리하는 도구이다
 
 <details>
 <summary>정답 확인</summary>
 
-**정답: B) 메트릭, 로그, 추적(trace)을 통합적으로 수집하는 관측성 프레임워크이며 CNCF Incubating 프로젝트이다**
+**정답: B) 메트릭, 로그, 추적(trace)을 통합적으로 수집하는 관측성 프레임워크이며 CNCF Graduated 프로젝트이다** *(해설 작성 기준: 2025-01)*
 
-OpenTelemetry(OTel)는 OpenTracing과 OpenCensus가 합쳐져 탄생한 관측성 표준 프레임워크이다. 관측성의 세 축(메트릭, 로그, 추적)을 단일 SDK와 Collector로 통합하여 수집한다. 벤더 중립적이어서, 수집된 데이터를 Prometheus, Jaeger, Grafana, Datadog 등 다양한 백엔드로 전송할 수 있다. OTel Collector는 수집(receive), 처리(process), 내보내기(export) 파이프라인으로 구성된다. 각 언어(Java, Python, Go, JavaScript 등)에 대한 SDK를 제공하여, 애플리케이션에 계측(instrumentation)을 추가할 수 있다.
+> **시험 직전 CNCF Landscape 재확인 필수**: OpenTelemetry의 Graduated 달성 연도 등 성숙도 관련 사실은 시험 시점에 따라 달라질 수 있다. 아래 해설은 2025년 1월 기준이다.
+
+OpenTelemetry(OTel)는 OpenTracing과 OpenCensus가 합쳐져 탄생한 관측성 표준 프레임워크로, 2024년 CNCF Graduated를 달성하였다. 관측성의 세 축(메트릭, 로그, 추적)을 단일 SDK와 Collector로 통합하여 수집한다. 벤더 중립적이어서, 수집된 데이터를 Prometheus, Jaeger, Grafana, Datadog 등 다양한 백엔드로 전송할 수 있다. OTel Collector는 수집(receive), 처리(process), 내보내기(export) 파이프라인으로 구성된다. 각 언어(Java, Python, Go, JavaScript 등)에 대한 SDK를 제공하여, 애플리케이션에 계측(instrumentation)을 추가할 수 있다. CNCF Landscape에서 최신 상태 확인을 권장한다.
 </details>
 
 ---
@@ -2414,16 +2390,16 @@ Set-based Selector는 집합 연산을 지원한다. `in` 연산자는 레이블
 Kyverno에 대한 설명으로 올바른 것은?
 
 A) Kubernetes용 CI/CD 도구이다
-B) YAML 기반의 Kubernetes 정책 엔진으로, OPA/Gatekeeper의 대안이다
+B) YAML 기반의 Kubernetes 네이티브 정책 엔진으로, OPA/Gatekeeper의 대안이며 CNCF Graduated 프로젝트이다
 C) 컨테이너 이미지 스캔 도구이다
 D) Kubernetes 클러스터 모니터링 도구이다
 
 <details>
 <summary>정답 확인</summary>
 
-**정답: B) YAML 기반의 Kubernetes 정책 엔진으로, OPA/Gatekeeper의 대안이다**
+**정답: B) YAML 기반의 Kubernetes 네이티브 정책 엔진으로, OPA/Gatekeeper의 대안이며 CNCF Graduated 프로젝트이다**
 
-Kyverno는 CNCF Incubating 프로젝트로, Kubernetes 네이티브 정책 엔진이다. OPA/Gatekeeper가 Rego라는 별도 언어로 정책을 작성하는 반면, Kyverno는 Kubernetes YAML과 유사한 형식으로 정책을 작성하여 학습 곡선이 낮다. 기능: (1) Validate — 리소스 생성/수정 시 검증(예: latest 태그 금지), (2) Mutate — 리소스에 기본값 주입(예: 리소스 limits 자동 추가), (3) Generate — 다른 리소스 자동 생성(예: 네임스페이스 생성 시 NetworkPolicy 자동 생성), (4) Verify Images — 이미지 서명 검증(Cosign/Notary). Kubernetes Admission Webhook으로 동작한다.
+Kyverno는 CNCF Graduated 프로젝트(2023년 11월)로, Kubernetes 네이티브 정책 엔진이다. OPA/Gatekeeper가 Rego라는 별도 언어로 정책을 작성하는 반면, Kyverno는 Kubernetes YAML과 유사한 형식으로 정책을 작성하여 학습 곡선이 낮다. 기능: (1) Validate — 리소스 생성/수정 시 검증(예: latest 태그 금지), (2) Mutate — 리소스에 기본값 주입(예: 리소스 limits 자동 추가), (3) Generate — 다른 리소스 자동 생성(예: 네임스페이스 생성 시 NetworkPolicy 자동 생성), (4) Verify Images — 이미지 서명 검증(Cosign/Notary). Kubernetes Admission Webhook으로 동작한다. CNCF Landscape에서 최신 상태 확인을 권장한다.
 </details>
 
 ---

@@ -604,17 +604,21 @@ EOF
 # ④ latest 태그 Pod 생성 → 거부 확인
 # 정상이면 "Error from server: admission webhook ... denied the request" 메시지가 출력된다.
 kubectl --kubeconfig kubeconfig/dev.yaml \
-  run bad-pod --image=nginx:latest -n cap-kcsa-day06 || echo "거부 확인 완료 (미캡처)"
+  run bad-pod --image=nginx:latest -n cap-kcsa-day06 || echo "거부 확인 완료"
 
 # ⑤ 구체적 태그 Pod 생성 → 허용 확인
 # 정상이면 "pod/ok-pod created" 메시지가 출력된다.
 kubectl --kubeconfig kubeconfig/dev.yaml \
-  run ok-pod --image=nginx:1.25 -n cap-kcsa-day06 && echo "허용 확인 완료 (미캡처)"
+  run ok-pod --image=nginx:1.25 -n cap-kcsa-day06 && echo "허용 확인 완료"
 
 # ⑥ 정리
 kubectl --kubeconfig kubeconfig/dev.yaml \
   delete pod ok-pod -n cap-kcsa-day06 --ignore-not-found
 ```
+
+아래는 Kyverno `disallow-latest-tag` ClusterPolicy 가 적용된 cks 랩에서 ④⑤를 실행한 실측이다. `nginx:latest` 는 `admission webhook "validate.kyverno.svc-fail" denied ... disallow-latest-tag: validation error` 로 거부되고, `nginx:1.25` 는 `pod/ok-pod created` 로 허용된다.
+
+![Kyverno disallow-latest — latest 거부 + 1.25 허용 실측(cks)](images/kcsa-kyverno-latest-denyallow.png)
 
 **동작 원리:** Kyverno는 ValidatingAdmissionWebhook으로 등록되어, Pod 생성 요청이 API Server의 Admission 단계에 도달하면 ClusterPolicy 규칙과 대조한다. `validationFailureAction: Enforce`이면 패턴 불일치 시 요청을 즉시 거부(HTTP 403)한다. `Audit`이면 거부 없이 PolicyReport 리소스에 위반 내역만 기록한다.
 

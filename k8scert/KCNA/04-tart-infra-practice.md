@@ -4191,22 +4191,27 @@ echo "Kafka topic 기반 제어"
 
 ArgoCD는 Pull-based 모델로 이 문제를 해결한다. ArgoCD가 Git 저장소를 주기적으로 감시(3분 간격)하고, Git의 원하는 상태와 클러스터의 현재 상태를 비교하여 차이가 있으면 동기화한다.
 
-```
-Push-based vs Pull-based CD
-====================================
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph PUSH["Push-based (전통적)"]
+    direction LR
+    pdev[Developer] -->|git push| pci[CI Server]
+    pci -->|kubectl apply| pcl[(Cluster)]
+  end
+  subgraph PULL["Pull-based (GitOps / ArgoCD)"]
+    direction LR
+    udev[Developer] -->|git push| grepo[(Git Repository)]
+    argo[ArgoCD] -.->|3분 간격 감시| grepo
+    argo -->|원하는 상태 vs 현재 상태 비교| ucl[(Cluster)]
+    argo -->|차이 발견 시 동기화\nauto-sync| ucl
+    argo -->|수동 변경 감지 시 복구\nselfHeal| ucl
+  end
 
-Push-based (전통적):
-  Developer → Git Push → CI Server → kubectl apply → Cluster
-  문제: CI Server에 클러스터 권한 필요, drift 감지 불가
-
-Pull-based (GitOps / ArgoCD):
-  Developer → Git Push → Git Repository
-                              ↑ (감시)
-  ArgoCD ←── 비교 ──→ Cluster
-    │
-    └── 차이 발견 시 동기화 (auto-sync)
-    └── 수동 변경 감지 시 복구 (selfHeal)
+  PUSH -.->|"한계: CI 서버에 클러스터 권한 필요·drift 감지 불가"| PULL
 ```
+
+_그림. Push-based CD 는 CI 서버가 클러스터에 직접 쓰기(권한·drift 문제). Pull-based(GitOps)는 ArgoCD 가 Git 을 감시하며 클러스터를 Git 상태로 수렴시킨다._
 
 **Step 1: ArgoCD Pod 확인**
 

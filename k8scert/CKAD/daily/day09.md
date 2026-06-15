@@ -618,7 +618,7 @@ kubectl get deploy nginx -n demo -o jsonpath='{.spec.template.spec.containers[0]
 kubectl get deploy nginx -n demo -o jsonpath='{.spec.template.spec.containers[0].readinessProbe}' | python3 -m json.tool 2>/dev/null || echo "readinessProbe 미설정"
 ```
 
-기대 출력: (미캡처) — dev 클러스터에서 위 명령을 실행한 터미널 화면을 직접 확인한다.
+기대 출력: dev 클러스터의 demo 워크로드(nginx-web·httpbin 등)는 Probe 가 정의돼 있지 않아 위 명령은 `livenessProbe 미설정`/`readinessProbe 미설정` 을 출력한다. Probe 가 실제로 설정된 형태는 바로 아래 실습 2에서 만든 `probe-demo` 의 실측(실습 3 캡처)을 참고한다.
 
 **동작 원리:** 프로덕션 워크로드에서 Probe 누락은 장애 시 자동 복구 불가(Liveness) 또는 준비 안 된 Pod에 트래픽 유입(Readiness)을 의미한다. 기존 서비스의 Probe 설정을 분석하여 개선점을 파악하는 것이 중요하다.
 
@@ -698,7 +698,9 @@ kubectl logs probe-demo -n demo --previous 2>/dev/null || echo "이전 컨테이
 kubectl describe pod probe-demo -n demo | tail -20
 ```
 
-기대 출력: (미캡처) — `kubectl logs --previous` 결과와 `kubectl describe` Events 섹션을 dev 클러스터에서 직접 실행해 확인한다.
+아래는 dev 클러스터에 띄운 `probe-demo` Pod 의 실측이다. `readinessProbe` 설정(JSON)과 `kubectl describe` 의 Liveness/Readiness 라인(`http-get http://:80/ delay=.. period=.. #failure=3`)·State/Ready·Events 가 보인다. 재시작이 일어난 경우 `kubectl logs --previous` 로 이전 컨테이너 로그를 확인한다.
+
+![probe-demo readinessProbe 설정 + describe(Liveness/Readiness/Events) 실측](images/ckad-probe-demo.png)
 
 **동작 원리:** `--previous` 플래그는 재시작 이전 컨테이너의 로그를 조회한다. CrashLoopBackOff 상태의 Pod를 디버깅할 때 핵심 명령이다. `kubectl describe`의 Events 섹션에서 Probe 실패 메시지와 재시작 기록을 확인할 수 있다.
 

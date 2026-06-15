@@ -1107,7 +1107,7 @@ kubectl delete job count-job -n demo
 
 ```bash
 # dev 클러스터 접속 (HPA, PDB, Taint 등이 설정된 환경)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config use-context dev
 ```
 

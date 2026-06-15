@@ -862,11 +862,11 @@ kubectl auth can-i delete secrets --as=alex -n demo        # no
 
 ### 실습 환경 설정
 
-전제: tart 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 로 기동, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh dev` 로 IP 드리프트를 복구해 노드가 Ready 인지 확인한다). kubeconfig는 클러스터 가동 시 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml` 에 자동 생성된다. 아래 실습은 파괴 실습이 허용된 dev 클러스터의 `demo` 네임스페이스를 대상으로 한다(platform/prod 에서는 하지 않는다).
+전제: tart 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 로 기동, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh dev` 로 IP 드리프트를 복구해 노드가 Ready 인지 확인한다). kubeconfig는 클러스터 가동 시 `kubeconfig/<클러스터>.yaml` 에 자동 생성된다. 아래 실습은 파괴 실습이 허용된 dev 클러스터의 `demo` 네임스페이스를 대상으로 한다(platform/prod 에서는 하지 않는다).
 
 ```bash
 # dev 클러스터 접속 (demo 네임스페이스에서 RBAC 실습)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config use-context dev
 ```
 
@@ -932,7 +932,7 @@ kubectl delete role pod-reader -n demo
 ### 실습 3: platform 클러스터의 ServiceAccount 확인
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # Prometheus, Grafana 등 플랫폼 도구의 ServiceAccount 확인
 kubectl get serviceaccounts -A | grep -E '(prometheus|grafana|jenkins|argocd)'

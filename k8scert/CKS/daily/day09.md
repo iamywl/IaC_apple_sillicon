@@ -815,7 +815,7 @@ skopeo inspect docker://docker.io/library/nginx:1.25 | jq -r '.Digest'
 
 ### 실습 환경 설정
 
-전제: (1) tart 클러스터가 가동 중이어야 한다(꺼져 있으면 `./scripts/boot.sh`, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트를 복구한다). (2) 아래 실습은 모두 dev 클러스터(파괴 실습 허용)에서 수행하며 kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`이다. (3) Trivy가 로컬에 설치돼 있어야 한다(`trivy --version`으로 확인). (4) 검증 대상인 `demo` 네임스페이스의 Pod들이 떠 있어야 한다.
+전제: (1) tart 클러스터가 가동 중이어야 한다(꺼져 있으면 `./scripts/boot.sh`, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트를 복구한다). (2) 아래 실습은 모두 dev 클러스터(파괴 실습 허용)에서 수행하며 kubeconfig는 `kubeconfig/dev.yaml`이다. (3) Trivy가 로컬에 설치돼 있어야 한다(`trivy --version`으로 확인). (4) 검증 대상인 `demo` 네임스페이스의 Pod들이 떠 있어야 한다.
 
 각 실습을 시작하기 전, 컨텍스트와 대상 리소스를 먼저 확인한다(선수 검증). 아래 두 명령의 출력이 기대대로 나오지 않으면(컨텍스트가 dev가 아니거나 demo Pod가 없으면) 실습을 진행하지 말고 환경부터 복구한다.
 
@@ -831,7 +831,7 @@ kubectl -n demo get pods              # 모든 Pod 가 Running/Ready 여야 함
 
 ```bash
 # dev 클러스터 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config current-context
 # dev
 
@@ -936,13 +936,13 @@ platform 클러스터의 Jenkins 파이프라인에서 사용할 이미지 빌�
 
 ```bash
 # platform 클러스터에서 Jenkins 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 kubectl get pods -n jenkins -o wide
 # Jenkins가 CI/CD 파이프라인에서 이미지 빌드를 수행
 
 # dev 클러스터로 복귀
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # demo 네임스페이스 이미지의 USER 설정 확인 (non-root 여부)
 for img in $(kubectl get pods -n demo -o jsonpath='{range .items[*]}{.spec.containers[0].image}{"\n"}{end}' | sort -u); do
@@ -979,7 +979,7 @@ ImagePolicyWebhook을 staging-master에 직접 적용하고, `defaultAllow: fals
 
 ```bash
 # ─── 선수 검증: staging 클러스터 정상 여부 확인 ───
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml
+export KUBECONFIG=kubeconfig/staging.yaml
 kubectl get nodes        # staging-master · staging-worker 모두 Ready 여야 함
 kubectl get pods -A | grep -v Running | grep -v Completed  # 비정상 Pod 없어야 함
 ```
@@ -1055,7 +1055,7 @@ sudo vim /etc/kubernetes/manifests/kube-apiserver.yaml
 ```bash
 # ─── Step 6: API Server 재기동 대기 ───
 # static Pod는 kubelet이 자동 재시작한다(30~60초 소요)
-until kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml \
+until kubectl --kubeconfig kubeconfig/staging.yaml \
   get nodes 2>/dev/null | grep -q Ready; do
   echo "API Server 재기동 중..."; sleep 5
 done
@@ -1064,7 +1064,7 @@ echo "API Server 정상 기동"
 
 ```bash
 # ─── Step 7: 미서명 이미지 Pod 생성 거부 검증 ───
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml \
+kubectl --kubeconfig kubeconfig/staging.yaml \
   run test-reject --image=nginx:latest
 # 웹훅 서비스가 없는 상태이므로 defaultAllow:false 에 의해
 # "forbidden: image policy webhook backend denied the request" 류 에러가 반환되어야 한다

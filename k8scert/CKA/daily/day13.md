@@ -1067,7 +1067,7 @@ spec:
 alias k=kubectl
 complete -F __start_kubectl k          # k 명령에도 탭 자동완성 적용
 export do='--dry-run=client -o yaml'   # 예: k create deploy web --image=nginx $do > web.yaml
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # dev 클러스터로 컨텍스트 전환 (CiliumNetworkPolicy 11개가 적용된 환경)
 kubectl config use-context dev

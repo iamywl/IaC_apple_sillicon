@@ -1204,13 +1204,13 @@ D) 둘 다 이미지 빌드 도구이다
 |----------|----------|
 | 4개 tart VM이 모두 가동 중 | `./scripts/status.sh` 출력에서 모든 노드 `Ready` 확인 |
 | IP 드리프트 복구 완료(재부팅 후) | `./scripts/fix-cluster-ip-drift.sh dev` 실행 후 `kubectl get nodes` 전부 Ready |
-| kubeconfig 파일 4개 존재 | `ls ~/sideproejct/IaC_apple_sillicon/kubeconfig/` |
+| kubeconfig 파일 4개 존재 | `ls kubeconfig/` |
 | SSH 별칭 동작 | `ssh dev-master hostname` 이 응답하면 정상 |
 
-kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`이며, 실습 3의 dev 클러스터에는 아래 선행 명령으로 demo 네임스페이스와 기본 리소스를 준비한다.
+kubeconfig 경로는 `kubeconfig/<클러스터>.yaml`이며, 실습 3의 dev 클러스터에는 아래 선행 명령으로 demo 네임스페이스와 기본 리소스를 준비한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get namespace demo 2>/dev/null || kubectl create namespace demo
 ```
 
@@ -1218,7 +1218,7 @@ kubectl get namespace demo 2>/dev/null || kubectl create namespace demo
 
 ```bash
 # 4개 클러스터 kubeconfig 경로 확인
-ls ~/sideproejct/IaC_apple_sillicon/kubeconfig/
+ls kubeconfig/
 # platform.yaml  dev.yaml  staging.yaml  prod.yaml
 ```
 
@@ -1230,7 +1230,7 @@ Day 1~2에서 학습한 컨테이너 런타임(runc·containerd)과 K8s 버전 �
 # 각 클러스터 노드/버전 확인
 for cluster in platform dev staging prod; do
   echo "=== $cluster ==="
-  KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/${cluster}.yaml kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion
+  KUBECONFIG=kubeconfig/${cluster}.yaml kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion
   echo ""
 done
 
@@ -1255,7 +1255,7 @@ Day 7에서 학습한 Prometheus Pull 방식·Loki·OpenTelemetry 개념이 실�
 
 ```bash
 # platform 클러스터: 관측성 스택 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # Prometheus(Graduated) + Grafana + Loki 확인
 kubectl get pods -n monitoring --no-headers | awk '{print $1}' | head -10
@@ -1264,7 +1264,7 @@ kubectl get pods -n monitoring --no-headers | awk '{print $1}' | head -10
 # → Prometheus 메트릭(Metrics), Loki 로그(Logs) 데이터소스 확인 가능
 
 # dev 클러스터: Hubble(Cilium 관측성) 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get pods -n kube-system -l k8s-app=hubble-relay
 ```
 
@@ -1280,7 +1280,7 @@ Day 8에서 학습한 Helm v3(Tiller 제거)·ArgoCD·GitOps 원칙이 실제 �
 
 ```bash
 # ArgoCD + Helm + 배포 전략 종합 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # ArgoCD Application 상태 요약
 kubectl get applications -n argocd -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status 2>/dev/null || echo "ArgoCD applications not found"
@@ -1289,7 +1289,7 @@ kubectl get applications -n argocd -o custom-columns=NAME:.metadata.name,SYNC:.s
 helm list -A --output table 2>/dev/null | head -10
 
 # dev 클러스터의 워크로드 종합 현황
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 echo "--- Deployments ---"
 kubectl get deploy -n demo
 echo "--- StatefulSets ---"

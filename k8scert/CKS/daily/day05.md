@@ -1130,7 +1130,7 @@ appArmorProfile은 컨테이너별 `securityContext`에 각각 지정해야 한�
 
 ```bash
 # dev 클러스터 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 클러스터 및 demo 네임스페이스 확인
 kubectl get nodes
@@ -1204,14 +1204,14 @@ kubectl exec -n demo deploy/frontend -- ping -c 1 127.0.0.1 2>&1
 
 ```bash
 # dev 클러스터: seccomp 적용 Pod 비율
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 echo "=== dev 클러스터 ==="
 TOTAL=$(kubectl get pods -A --no-headers --field-selector=metadata.namespace!=kube-system 2>/dev/null | wc -l)
 SECCOMP=$(kubectl get pods -A -o json --field-selector=metadata.namespace!=kube-system 2>/dev/null | jq '[.items[] | select(.spec.securityContext.seccompProfile.type != null)] | length')
 echo "전체 Pod: $TOTAL, seccomp 적용: $SECCOMP"
 
 # prod 클러스터
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
+export KUBECONFIG=kubeconfig/prod.yaml
 echo "=== prod 클러스터 ==="
 TOTAL=$(kubectl get pods -A --no-headers --field-selector=metadata.namespace!=kube-system 2>/dev/null | wc -l)
 SECCOMP=$(kubectl get pods -A -o json --field-selector=metadata.namespace!=kube-system 2>/dev/null | jq '[.items[] | select(.spec.securityContext.seccompProfile.type != null)] | length')

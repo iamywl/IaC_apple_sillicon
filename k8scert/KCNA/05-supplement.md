@@ -171,22 +171,22 @@ kubectl describe pdb web-pdb
 
 ```bash
 # 테스트 전제 조건 준비 (dev 클러스터, staging 클러스터에서만 실행)
-# kubeconfig 경로: ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+# kubeconfig 경로: kubeconfig/dev.yaml
 
 # a. Deployment 생성 (replica 3개)
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   create deployment web --image=nginx --replicas=3
 
 # b. PDB 적용 (maxUnavailable: 1)
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   apply -f web-pdb.yaml
 
 # c. worker2를 cordon해서 3개 Pod가 모두 worker1에 집중되도록 유도
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   cordon dev-worker2
 
 # d. Pod 배치 확인 — 3개 모두 dev-worker1에 있어야 한다
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get pods -l app=web -o wide
 
 # e. 준비 완료 후 drain 실행
@@ -195,7 +195,7 @@ kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
 ```bash
 # 4. PDB가 실제로 동작하는지 테스트 (drain 시 PDB를 존중하는지 확인)
 # SSH 별칭으로 노드에 직접 접속 가능: ssh dev-master
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   drain dev-worker1 --ignore-daemonsets --delete-emptydir-data
 ```
 
@@ -634,9 +634,9 @@ kubeadm으로 설치된 Kubernetes 1.26+ 기준, 컴파일 내장(built-in)으�
 
 ```bash
 # dev 클러스터 API 서버의 활성화된 admission-plugins 확인
-# kubeconfig 경로: ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+# kubeconfig 경로: kubeconfig/dev.yaml
 # SSH 접속: ssh dev-master
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   -n kube-system describe pod kube-apiserver-dev-master | grep admission
 ```
 
@@ -839,7 +839,7 @@ etcd의 Raft 기반 설계는 강한 일관성을 제공하지만, 다음과 같
 > 각 라인에 한글 주석으로 해당 필드의 의미를 설명하였다.
 > 모든 예제에 검증 명령어와 기대 출력(`text` 블록)을 포함하였다.
 > 각 예제에 등장 배경, 내부 동작 원리, 트러블슈팅을 포함하였다.
-> **실습 전제 조건**: dev 또는 staging 클러스터가 가동 중이어야 한다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 또는 `staging.yaml`이다. 클러스터가 꺼져 있으면 `./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh dev`로 복구한다. SSH 노드 별칭은 `ssh dev-master`, `ssh dev-worker1` 형식으로 접속 가능하다(키: `~/.ssh/tart_k8scert`).
+> **실습 전제 조건**: dev 또는 staging 클러스터가 가동 중이어야 한다. kubeconfig 경로는 `kubeconfig/dev.yaml` 또는 `staging.yaml`이다. 클러스터가 꺼져 있으면 `./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh dev`로 복구한다. SSH 노드 별칭은 `ssh dev-master`, `ssh dev-worker1` 형식으로 접속 가능하다(키: `~/.ssh/tart_k8scert`).
 > **검증 출력 상태**: 아래 '기대 출력' 블록은 실제 터미널 스크린샷으로 교체 예정이다. 현재는 (미캡처) 상태이며, 클러스터에서 직접 실행한 출력과 다를 수 있다. 실제 캡처 후 `images/` 디렉터리에 PNG를 저장하고 마크다운 이미지 참조로 교체해야 한다.
 
 ---

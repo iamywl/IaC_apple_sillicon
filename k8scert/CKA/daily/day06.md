@@ -550,11 +550,11 @@ contexts:
 
 ### 실습 환경 설정
 
-**전제:** tart 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh` 로 IP 드리프트 복구). kubeconfig 는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml` 에 클러스터별로 있다. 아래 분석·테스트(실습 1~2)는 읽기 위주라 상주 서비스가 있는 platform 에서 해도 무방하나, 네임스페이스·Role 을 만드는 실습 3 처럼 변경이 따르는 작업은 파괴 실습이 허용된 dev/staging 에서 한다(platform/prod 금지). 아래 `kubectl get nodes` 가 모든 노드 Ready 로 나오면 준비가 된 것이다.
+**전제:** tart 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh` 로 IP 드리프트 복구). kubeconfig 는 `kubeconfig/<클러스터>.yaml` 에 클러스터별로 있다. 아래 분석·테스트(실습 1~2)는 읽기 위주라 상주 서비스가 있는 platform 에서 해도 무방하나, 네임스페이스·Role 을 만드는 실습 3 처럼 변경이 따르는 작업은 파괴 실습이 허용된 dev/staging 에서 한다(platform/prod 금지). 아래 `kubectl get nodes` 가 모든 노드 Ready 로 나오면 준비가 된 것이다.
 
 ```bash
 # platform 클러스터에서 RBAC 구성 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get nodes
 ```
 

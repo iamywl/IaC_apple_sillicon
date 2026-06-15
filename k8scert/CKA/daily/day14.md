@@ -42,7 +42,7 @@ TLS 종료(복호화)는 컨트롤러에서 일어나고, 이후 컨트롤러 �
 ### 실측 검증
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 1. 클러스터에 등록된 IngressClass 확인
 kubectl get ingressclass
@@ -61,7 +61,7 @@ kubectl get ingress -A
 > 목표: 10분 이내에 경로 기반 Ingress를 생성하고 spec을 검증한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 
 # 명령형으로 빠르게 Ingress 생성
@@ -94,7 +94,7 @@ NetworkPolicy는 "이 Pod에는 이런 출처에서만 들어올 수 있다"를 
 ### 실측 검증
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 현재 적용된 NetworkPolicy 목록
 kubectl get networkpolicy -A
@@ -110,7 +110,7 @@ kubectl describe networkpolicy -n demo 2>/dev/null || echo "(demo ns 에 Network
 > 목표: 8분 이내에 Default Deny 후 특정 허용 조합을 완성한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 
 # Step 1: Default Deny
@@ -1301,13 +1301,13 @@ Egress 정책이 적용된 Pod는 명시적으로 허용된 트래픽만 내보�
 
 ## tart-infra 실습
 
-**전제.** 이 실습은 dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 이후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트를 복구해 둔다). kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`에 있고, 이를 `KUBECONFIG`에 지정해 사용한다. dev 클러스터의 CNI는 Cilium(eBPF 기반 CNI)이므로 NetworkPolicy의 확장형인 CiliumNetworkPolicy(CRD)도 함께 쓸 수 있다. 아래 출력 예시 중 일부는 demo 네임스페이스·앱이 미리 떠 있는 환경 기준이며, fresh dev 클러스터에는 없을 수 있다(각 캡션에 명시).
+**전제.** 이 실습은 dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 이후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트를 복구해 둔다). kubeconfig는 `kubeconfig/dev.yaml`에 있고, 이를 `KUBECONFIG`에 지정해 사용한다. dev 클러스터의 CNI는 Cilium(eBPF 기반 CNI)이므로 NetworkPolicy의 확장형인 CiliumNetworkPolicy(CRD)도 함께 쓸 수 있다. 아래 출력 예시 중 일부는 demo 네임스페이스·앱이 미리 떠 있는 환경 기준이며, fresh dev 클러스터에는 없을 수 있다(각 캡션에 명시).
 
 ### 실습 환경 설정
 
 ```bash
 # dev 클러스터에 접속 (CiliumNetworkPolicy가 적용된 클러스터)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -1329,7 +1329,7 @@ kubectl expose pod httpbin --port=8000 --name=httpbin -n demo
 실습 1·2가 재현되지 않는 fresh 클러스터에서 NetworkPolicy의 실제 차단·허용 동작을 다음 절차로 직접 확인한다. 위 "최소 실습 환경 생성" 명령을 먼저 실행한 뒤 아래를 따른다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 문제 1-12 에서 이미 다룬 NetworkPolicy를 직접 apply -> describe -> delete 하여 동작을 검증한다
 # 예시: Default Deny + 특정 허용 조합
@@ -1431,7 +1431,7 @@ dev 클러스터에는 nginx Ingress 컨트롤러가 설치돼 있지 않아 Ing
 > **참고:** Istio Gateway/VirtualService는 이 day14의 표준 K8s Ingress와 별개인 서비스 메시(service mesh) 도구다. dev 클러스터에는 Istio가 설치돼 있지 않으므로 관련 CRD가 없다. Istio 카나리 라우팅은 CKS·CKAD 심화 범위이며, CKA 시험 범위에 포함되지 않는다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 방법 1: Service NodePort로 직접 curl
 # (Service를 NodePort 타입으로 노출한 경우)

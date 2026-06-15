@@ -276,17 +276,17 @@ Role(네임스페이스 범위)과 ClusterRole(클러스터 전체 범위)의 �
 ```bash
 # 권한 부여 후 실제로 jane이 dev 네임스페이스의 Pod를 조회할 수 있는지 확인
 # --as 플래그는 특정 사용자로 API 요청을 위장(impersonate)해 권한을 테스트한다
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   auth can-i get pods --namespace dev --as=jane
 # 기대 출력: yes
 
 # 삭제 권한은 없어야 함
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   auth can-i delete pods --namespace dev --as=jane
 # 기대 출력: no
 
 # 다른 네임스페이스(default)에서는 Role이 적용되지 않으므로 no
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   auth can-i get pods --namespace default --as=jane
 # 기대 출력: no
 ```
@@ -731,7 +731,7 @@ kubelet 보안: anonymous-auth=false, authorization-mode=Webhook, read-only-port
 > 이 실습은 아래 조건이 모두 충족된 상태에서 진행한다.
 >
 > 1. **클러스터 가동 확인**: `./scripts/boot.sh` 실행 후 `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트 복구 완료.
-> 2. **kubeconfig 경로**: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> 2. **kubeconfig 경로**: `kubeconfig/dev.yaml`
 > 3. **노드 SSH 접속**: `ssh dev-master` (별칭 방식, `~/.ssh/config`의 ProxyCommand가 `tart ip`로 실시간 IP 조회)
 > 4. **선행 리소스**: 특별한 사전 배포 없이 kubeadm 기본 설치 상태(kube-system 컴포넌트만)로 충분하다.
 > 5. **파괴 실습 범위**: dev/staging 클러스터에서만 수행한다. platform/prod는 읽기 전용.
@@ -740,7 +740,7 @@ kubelet 보안: anonymous-auth=false, authorization-mode=Webhook, read-only-port
 
 ```bash
 # dev 클러스터에 접속 (API Server, etcd, kubelet 보안 확인)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

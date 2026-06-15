@@ -47,7 +47,7 @@ PVC가 PV에 바인딩되려면 다음 4가지가 모두 충족돼야 한다(Day
 
 ### 실습 환경 설정
 
-> 전제: tart 멀티클러스터(dev·staging·platform)가 가동 중이어야 한다. 꺼져 있으면 `./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh <클러스터>`로 정상화한다(CLAUDE.md §3). kubeconfig는 가동 시 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`에 생성된다.
+> 전제: tart 멀티클러스터(dev·staging·platform)가 가동 중이어야 한다. 꺼져 있으면 `./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh <클러스터>`로 정상화한다(CLAUDE.md §3). kubeconfig는 가동 시 `kubeconfig/<클러스터>.yaml`에 생성된다.
 
 문제마다 `kubectl config use-context <ctx>`로 클러스터를 바꾸므로, 먼저 세 클러스터의 kubeconfig를 한 번에 로드해 컨텍스트 전환이 가능하게 한다.
 
@@ -58,7 +58,7 @@ export do='--dry-run=client -o yaml'
 complete -F __start_kubectl k   # k 에도 자동완성 활성화
 
 # 세 클러스터 kubeconfig를 동시에 로드 (콜론으로 연결)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/platform.yaml
 
 # 사용 가능한 컨텍스트 확인
 kubectl config get-contexts
@@ -1258,7 +1258,7 @@ PVC가 삭제되면 PV 상태가 Released로 바뀐다. Released 상태에서는
 
 ```bash
 # dev 클러스터에 접속 (PostgreSQL, Redis 등 스토리지를 사용하는 앱)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

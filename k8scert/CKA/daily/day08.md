@@ -2,7 +2,7 @@
 
 > CKA 도메인: Workloads & Scheduling (15%) - Part 1 실전 | 예상 소요 시간: 2시간
 
-> **전제(실습 시작 전 확인)**: Day 7 에서 다룬 Deployment·ReplicaSet·Pod 3계층 관계를 이해하고 있어야 한다. 모든 문제는 컨텍스트(`dev`/`prod`)와 `demo` 네임스페이스를 사용한다. kubeconfig 는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/` 아래에 있으며, 문제마다 `kubectl config use-context <ctx>` 로 대상 클러스터를 바꾼다. `demo` 네임스페이스가 없으면 `kubectl create namespace demo` 로 먼저 만든다.
+> **전제(실습 시작 전 확인)**: Day 7 에서 다룬 Deployment·ReplicaSet·Pod 3계층 관계를 이해하고 있어야 한다. 모든 문제는 컨텍스트(`dev`/`prod`)와 `demo` 네임스페이스를 사용한다. kubeconfig 는 `kubeconfig/` 아래에 있으며, 문제마다 `kubectl config use-context <ctx>` 로 대상 클러스터를 바꾼다. `demo` 네임스페이스가 없으면 `kubectl create namespace demo` 로 먼저 만든다.
 
 ---
 
@@ -966,7 +966,7 @@ kubectl explain deployment.spec.template.spec.containers.resources
 
 ```bash
 # dev 클러스터에 접속 (demo 앱이 배포된 클러스터)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

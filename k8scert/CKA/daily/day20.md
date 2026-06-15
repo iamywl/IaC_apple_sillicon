@@ -395,7 +395,7 @@ kubectl logs $POD -n demo --previous
 <details>
 <summary>풀이</summary>
 
-**전제:** 이 문제는 `platform` 클러스터 control-plane 노드에 SSH 로 들어가 작업한다. kubeconfig 는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 이고, `/opt/etcd-backup-exam.db` 스냅샷이 master 노드에 미리 놓여 있다고 가정한다(없으면 Day 1 의 `etcdctl snapshot save` 로 먼저 생성). 복원은 로컬 파일 작업이라 etcd 클러스터가 떠 있을 필요는 없지만, 작업 후 검증을 위해 클러스터가 가동 상태여야 한다.
+**전제:** 이 문제는 `platform` 클러스터 control-plane 노드에 SSH 로 들어가 작업한다. kubeconfig 는 `kubeconfig/platform.yaml` 이고, `/opt/etcd-backup-exam.db` 스냅샷이 master 노드에 미리 놓여 있다고 가정한다(없으면 Day 1 의 `etcdctl snapshot save` 로 먼저 생성). 복원은 로컬 파일 작업이라 etcd 클러스터가 떠 있을 필요는 없지만, 작업 후 검증을 위해 클러스터가 가동 상태여야 한다.
 
 **Static Pod 메커니즘(이 문제의 핵심):** etcd·apiserver 같은 control-plane 구성요소는 일반 Pod 가 아니라 *Static Pod* 다. 일반 Pod 는 사용자가 apiserver 에 요청하면 scheduler 가 노드를 정하고 kubelet 이 실행하지만, Static Pod 는 그 경로를 쓰지 않는다. 각 노드의 kubelet 이 `--pod-manifest-path`(기본 `/etc/kubernetes/manifests/`) 디렉터리를 직접 감시하다가, 그 안의 YAML 파일이 생기거나 바뀌면 *apiserver·scheduler 를 거치지 않고* kubelet 이 곧바로 컨테이너를 (재)생성한다. 즉 etcd 자신이 아직 안 떠서 apiserver 가 동작하지 않는 상황에서도 kubelet 단독으로 etcd 를 띄울 수 있다(부트스트랩 문제 해결). 그래서 etcd 복원은 "etcd.yaml 의 데이터 디렉터리(hostPath)를 새 경로로 바꿔 파일을 저장"하기만 하면, kubelet 이 변경을 감지해 옛 etcd 컨테이너를 죽이고 새 데이터 디렉터리로 etcd 를 재기동한다. 별도의 `kubectl delete pod` 나 systemd 재시작이 필요 없다. apiserver 에는 이 Static Pod 의 읽기 전용 거울(mirror Pod)이 보이지만, 그 거울을 지워도 실제 컨테이너는 manifests 디렉터리 파일이 기준이라 되살아난다.
 
@@ -954,7 +954,7 @@ Day 1~20 학습을 모두 완료했다. CKA 시험의 모든 도메인을 tart-i
 
 ```bash
 # 전체 클러스터 kubeconfig 로드
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
+export KUBECONFIG=kubeconfig/platform.yaml:kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/prod.yaml
 alias k=kubectl
 ```
 
@@ -967,9 +967,9 @@ alias k=kubectl
 # 클러스터별 kubeconfig 파일을 --kubeconfig 로 직접 지정해 접근한다.
 for ctx in platform dev staging prod; do
   echo "=== $ctx ==="
-  echo "Nodes: $(kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/${ctx}.yaml get nodes --no-headers | wc -l)"
-  echo "Namespaces: $(kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/${ctx}.yaml get ns --no-headers | wc -l)"
-  echo "Total Pods: $(kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/${ctx}.yaml get pods -A --no-headers | wc -l)"
+  echo "Nodes: $(kubectl --kubeconfig kubeconfig/${ctx}.yaml get nodes --no-headers | wc -l)"
+  echo "Namespaces: $(kubectl --kubeconfig kubeconfig/${ctx}.yaml get ns --no-headers | wc -l)"
+  echo "Total Pods: $(kubectl --kubeconfig kubeconfig/${ctx}.yaml get pods -A --no-headers | wc -l)"
   echo ""
 done
 ```

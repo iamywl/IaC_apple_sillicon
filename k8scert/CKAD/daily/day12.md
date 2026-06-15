@@ -20,7 +20,7 @@ CKAD 실기 시험은 속도전이다. 세션 시작 직후 아래 alias·export
 ```bash
 alias k=kubectl
 export do='--dry-run=client -o yaml'
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 ```
 
 단축 사용 예시:
@@ -551,7 +551,7 @@ kubectl get pod monitored-app -o jsonpath='{.status.containerStatuses[0].lastSta
 
 ### 장애 시나리오 1: kubectl top에서 메트릭이 안 보임
 
-**실습 전제**: dev 클러스터 가동 상태, `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`, metrics-server가 미설치된 상태에서 재현 가능. 노드 접근이 필요한 경우 `ssh dev-master`.
+**실습 전제**: dev 클러스터 가동 상태, `export KUBECONFIG=kubeconfig/dev.yaml`, metrics-server가 미설치된 상태에서 재현 가능. 노드 접근이 필요한 경우 `ssh dev-master`.
 
 > (미캡처) 아래 각 명령의 실제 출력은 dev 클러스터에서 직접 실행한 터미널 스크린샷으로 대체해야 한다.
 
@@ -694,10 +694,10 @@ helm install metrics-server metrics-server/metrics-server -n kube-system
 
 ### 실습 환경 설정
 
-**전제**: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 및 `./scripts/fix-cluster-ip-drift.sh dev` 실행 후). kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`. 노드 접근이 필요한 경우 `ssh dev-master` 또는 `ssh dev-worker1` 별칭을 사용한다.
+**전제**: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 및 `./scripts/fix-cluster-ip-drift.sh dev` 실행 후). kubeconfig 경로는 `kubeconfig/dev.yaml`. 노드 접근이 필요한 경우 `ssh dev-master` 또는 `ssh dev-worker1` 별칭을 사용한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

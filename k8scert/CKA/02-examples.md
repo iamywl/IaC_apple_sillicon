@@ -4,7 +4,7 @@
 
 #### 실습 전제
 
-아래 실습은 동작 중인 Kubernetes 클러스터를 전제로 한다. 이 저장소에서는 tart로 띄운 dev/staging 클러스터를 실습장으로 쓰며(파괴 실습 허용 클러스터), kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`에 있다. 따라서 문서의 `kubectl ...` 명령은 실제로는 대상 클러스터를 명시해 실행한다.
+아래 실습은 동작 중인 Kubernetes 클러스터를 전제로 한다. 이 저장소에서는 tart로 띄운 dev/staging 클러스터를 실습장으로 쓰며(파괴 실습 허용 클러스터), kubeconfig는 `kubeconfig/<클러스터>.yaml`에 있다. 따라서 문서의 `kubectl ...` 명령은 실제로는 대상 클러스터를 명시해 실행한다.
 
 ```bash
 # 클러스터 기동 + 재부팅 후 IP 드리프트 복구
@@ -245,7 +245,7 @@ Worker Node의 ROLES이 `<none>`으로 표시된다. 역할 레이블을 부여�
 
 #### Control Plane 노드 업그레이드
 
-> **실습 클러스터 기준:** 아래 절차는 **staging 클러스터**에서 수행한다(`ssh staging-master`로 접속). 명령의 `<control-plane-node>`에 실제 노드명을 대입해야 한다. 노드명은 `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml get nodes`로 확인한다. 이 저장소 staging 기준 예시: `<control-plane-node>=staging-master`, `<worker-node>=staging-worker1`.
+> **실습 클러스터 기준:** 아래 절차는 **staging 클러스터**에서 수행한다(`ssh staging-master`로 접속). 명령의 `<control-plane-node>`에 실제 노드명을 대입해야 한다. 노드명은 `kubectl --kubeconfig kubeconfig/staging.yaml get nodes`로 확인한다. 이 저장소 staging 기준 예시: `<control-plane-node>=staging-master`, `<worker-node>=staging-worker1`.
 
 ```bash
 # 1단계: kubeadm 업그레이드

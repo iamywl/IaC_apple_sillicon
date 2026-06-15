@@ -293,7 +293,7 @@ spec:
 
 ### 1.5.1 직접 해보기 — restricted-ns 위반/준수 Pod 통과·거부 확인 (3분 목표)
 
-> 전제: dev 클러스터 가동 중. `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> 전제: dev 클러스터 가동 중. `export KUBECONFIG=kubeconfig/dev.yaml`
 
 ```bash
 # 1단계: Restricted enforce 네임스페이스 생성
@@ -324,7 +324,7 @@ kubectl delete namespace restricted-ns
 ### 1.6 PSA 실습 검증
 
 > 전제: dev 또는 staging 클러스터가 가동 중이어야 한다(CKS 파괴 실습은 dev/staging에서만).
-> `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> `export KUBECONFIG=kubeconfig/dev.yaml`
 > dev 클러스터에는 `production` 네임스페이스가 없으므로, 아래 예제의 `production`은
 > 실습용으로 직접 만든 네임스페이스로 대체해 따라 한다. 시험 환경에는 보통
 > production/staging이 미리 있으니 그대로 쓰면 된다.
@@ -480,7 +480,7 @@ spec:
 fsGroup이 실제로 볼륨 소유 그룹을 바꾸는지는 컨테이너 안에서 `stat`으로 확인한다.
 
 > 전제: dev 또는 staging 클러스터가 가동 중이어야 한다.
-> `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> `export KUBECONFIG=kubeconfig/dev.yaml`
 > 위 `security-context-demo` Pod를 먼저 생성한다(`kubectl apply -f sc-demo.yaml`).
 > emptyDir 마운트를 하나 추가한 뒤(예: `/data`) 다음을 실행한다.
 
@@ -578,7 +578,7 @@ spec:
 
 ### 2.2.1 직접 해보기 — readOnlyRootFilesystem 동작 확인 (3분 목표)
 
-> 전제: dev 클러스터 가동 중. `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> 전제: dev 클러스터 가동 중. `export KUBECONFIG=kubeconfig/dev.yaml`
 
 ```bash
 # 1단계: readOnlyRootFilesystem: true인 Pod 배포 (2.2절 immutable-pod.yaml 사용)
@@ -704,7 +704,7 @@ PSS(Pod Security Admission)와 Gatekeeper는 둘 다 Admission 단계 정책이�
 ConstraintTemplate/Constraint를 apply하려면 클러스터에 Gatekeeper가 먼저 설치되어 있어야 한다. Gatekeeper가 ValidatingWebhook과 ConstraintTemplate/Constraint CRD를 등록하기 전에는 아래 YAML들의 `apiVersion: templates.gatekeeper.sh/...` 자체를 알지 못해 apply가 실패한다.
 
 > 전제: dev 또는 staging 클러스터가 가동 중이어야 한다(파괴 실습은 dev/staging에서만).
-> `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> `export KUBECONFIG=kubeconfig/dev.yaml`
 
 ```bash
 # Gatekeeper 설치 (Helm) — 미설치 시 1회만 실행
@@ -1101,7 +1101,7 @@ kubectl delete secret enc-test -n default
 ### 4.3.1 직접 해보기 — staging-master에 EncryptionConfiguration 적용 후 etcdctl 암호화 확인 (5분 목표)
 
 > 전제: staging 클러스터 가동 중. CKS 파괴 실습은 dev/staging에서만.
-> `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml`
+> `export KUBECONFIG=kubeconfig/staging.yaml`
 > staging-master에 SSH 접속 필요 (`ssh staging-master` — `~/.ssh/config` 별칭으로 접속).
 
 ```bash
@@ -1342,7 +1342,7 @@ spec:
 
 ### 5.3.1 직접 해보기 — RuntimeClass 적용 후 핸들러 확인 (3분 목표)
 
-> 전제: staging 클러스터 가동 중. `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml`
+> 전제: staging 클러스터 가동 중. `export KUBECONFIG=kubeconfig/staging.yaml`
 > staging-master에 runsc 바이너리가 설치되어 있어야 한다(없으면 다음 단계 5단계까지 스킵하고 스케줄 실패 동작을 확인하는 것으로 대체한다).
 
 ```bash
@@ -1573,7 +1573,7 @@ Minimize Microservice Vulnerabilities 장애 시나리오
 
 ```bash
 # dev 클러스터 접속 (Istio mTLS STRICT + CiliumNetworkPolicy 적용)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config current-context
 # dev
 

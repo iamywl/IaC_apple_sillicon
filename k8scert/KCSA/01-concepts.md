@@ -1303,11 +1303,11 @@ spec:
 
 ```bash
 # 클러스터에 적용된 Constraint 목록 조회 (dev 클러스터)
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get constraint
 
 # 특정 Constraint의 상세와 위반(violations) 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   describe k8sdisallowedtags disallow-latest-tag
 ```
 
@@ -1342,11 +1342,11 @@ spec:
 
 ```bash
 # 적용된 Kyverno 정책 조회 (dev 클러스터)
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get clusterpolicy
 
 # 정책 적용 결과(위반 리소스) 조회
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get policyreport -A
 ```
 

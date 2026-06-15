@@ -20,7 +20,7 @@ source <(kubectl completion bash)
 complete -o default -F __start_kubectl k
 ```
 
-이 문서의 실습 명령은 이 저장소의 tart 클러스터에서 검증한다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`이며, CKS 파괴 실습은 dev/staging 클러스터에서만 한다(platform/prod 금지). 노드에 SSH로 들어가는 실습(AppArmor·seccomp·Falco 등)은 VM 별칭(예: `ssh dev-master`)으로 접속한다(`~/.ssh/config`에 등록된 별칭, 비밀번호 없이 접속).
+이 문서의 실습 명령은 이 저장소의 tart 클러스터에서 검증한다. kubeconfig 경로는 `kubeconfig/<클러스터>.yaml`이며, CKS 파괴 실습은 dev/staging 클러스터에서만 한다(platform/prod 금지). 노드에 SSH로 들어가는 실습(AppArmor·seccomp·Falco 등)은 VM 별칭(예: `ssh dev-master`)으로 접속한다(`~/.ssh/config`에 등록된 별칭, 비밀번호 없이 접속).
 
 ---
 
@@ -102,13 +102,13 @@ spec:
 
 **실습 검증: NetworkPolicy의 누적(AND) 효과 단계별 확인**
 
-전제 조건: CKS 파괴 실습은 dev/staging 클러스터에서만 수행한다(§3 표). NetworkPolicy를 실제로 강제하는 CNI(Calico/Cilium)가 깔린 클러스터여야 하며, 이 저장소의 dev/staging은 Cilium을 사용하므로 적합하다. 명령에는 항상 대상 클러스터의 kubeconfig(`~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`)와 네임스페이스를 명시한다.
+전제 조건: CKS 파괴 실습은 dev/staging 클러스터에서만 수행한다(§3 표). NetworkPolicy를 실제로 강제하는 CNI(Calico/Cilium)가 깔린 클러스터여야 하며, 이 저장소의 dev/staging은 Cilium을 사용하므로 적합하다. 명령에는 항상 대상 클러스터의 kubeconfig(`kubeconfig/dev.yaml`)와 네임스페이스를 명시한다.
 
 NetworkPolicy는 "여러 정책의 허용 규칙이 합집합(OR)으로 누적되지만, 한 Pod에 Egress 정책이 하나라도 걸리면 명시되지 않은 모든 아웃바운드는 차단(default deny)"되는 구조이다. 이 때문에 default deny를 건 뒤에는 DNS와 목적지 포트를 각각 허용해 줘야 통신이 복구된다. 아래 흐름으로 이 누적 효과를 단계적으로 검증한다.
 
 ```bash
 # 별칭 가정: k=kubectl, 모든 명령에 --kubeconfig 와 -n netpol-test 명시
-KC=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+KC=kubeconfig/dev.yaml
 
 # 1. 테스트 네임스페이스와 server Pod 생성 (선행 리소스)
 kubectl --kubeconfig=$KC create namespace netpol-test
@@ -312,7 +312,7 @@ spec:
 
 ```bash
 # kubeconfig 별칭 (dev 클러스터, 파괴 실습은 dev/staging 에서만 — §3 표)
-KC=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+KC=kubeconfig/dev.yaml
 
 # 1. TLS Secret 이 생성됐고 타입이 kubernetes.io/tls 인지 확인
 kubectl --kubeconfig=$KC get secret myapp-tls -o jsonpath='{.type}'; echo

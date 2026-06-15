@@ -10,7 +10,7 @@
 > - **이 alias는 기본 제공되지 않는다.** 현재 CKA는 PSI Bridge 환경에서 치러지며 `alias k=kubectl`이 미리 설정되어 있지 않으므로, 시험 시작 직후 첫 명령으로 `alias k=kubectl && export do="--dry-run=client -o yaml"`을 직접 입력해야 한다. 입력하지 않으면 매번 `kubectl`을 전부 타이핑하게 되어 시간을 잃는다.
 > - `kubectl config use-context`를 빠뜨리면 다른 클러스터에 작업하게 되므로 반드시 먼저 실행한다.
 
-> **실습 전제 (이 저장소에서 풀어 볼 때).** 아래 문제의 컨텍스트 이름(`k8s-cluster1` 등)은 실제 CKA 시험 환경의 가상 이름이다. 이 저장소의 tart 클러스터로 재현하려면 컨텍스트 대신 kubeconfig 경로를 명시한다: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml ...`. 클러스터는 `./scripts/boot.sh`로 기동하고, 재부팅 후라면 `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트를 복구한 뒤 모든 노드가 Ready인지 확인하고 시작한다. 파괴적 실습(노드 drain·etcd 복구·kubelet 수정 등)은 `dev`/`staging`에서만 하고 `platform`/`prod`는 건드리지 않는다. 노드 SSH가 필요한 문제(Static Pod·etcd·kubelet)는 `ssh dev-master`/`ssh dev-worker1`처럼 VM 이름 별칭으로 접속한다. 인증서 경로(`/etc/kubernetes/pki/etcd/`의 `ca.crt`·`server.crt`·`server.key`)는 각각 etcd CA, etcd 서버 인증서, 그 개인키를 뜻하며 etcd가 mTLS로 보호되므로 3개가 모두 필요하다.
+> **실습 전제 (이 저장소에서 풀어 볼 때).** 아래 문제의 컨텍스트 이름(`k8s-cluster1` 등)은 실제 CKA 시험 환경의 가상 이름이다. 이 저장소의 tart 클러스터로 재현하려면 컨텍스트 대신 kubeconfig 경로를 명시한다: `kubectl --kubeconfig kubeconfig/dev.yaml ...`. 클러스터는 `./scripts/boot.sh`로 기동하고, 재부팅 후라면 `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트를 복구한 뒤 모든 노드가 Ready인지 확인하고 시작한다. 파괴적 실습(노드 drain·etcd 복구·kubelet 수정 등)은 `dev`/`staging`에서만 하고 `platform`/`prod`는 건드리지 않는다. 노드 SSH가 필요한 문제(Static Pod·etcd·kubelet)는 `ssh dev-master`/`ssh dev-worker1`처럼 VM 이름 별칭으로 접속한다. 인증서 경로(`/etc/kubernetes/pki/etcd/`의 `ca.crt`·`server.crt`·`server.key`)는 각각 etcd CA, etcd 서버 인증서, 그 개인키를 뜻하며 etcd가 mTLS로 보호되므로 3개가 모두 필요하다.
 
 ---
 

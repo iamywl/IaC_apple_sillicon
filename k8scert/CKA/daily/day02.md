@@ -1060,7 +1060,7 @@ kubeadm token create --print-join-command
 
 ```bash
 # platform 클러스터에 접속 (Control Plane 구성요소 확인용)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # 노드 확인
 kubectl get nodes -o wide
@@ -1099,7 +1099,7 @@ kubectl get pods -n kube-system -o wide
 # 4개 클러스터의 kubeconfig를 순회하며 노드 확인
 for cluster in platform dev staging prod; do
   echo "=== $cluster cluster ==="
-  KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/${cluster}.yaml kubectl get nodes
+  KUBECONFIG=kubeconfig/${cluster}.yaml kubectl get nodes
   echo ""
 done
 ```

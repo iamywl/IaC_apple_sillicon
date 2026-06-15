@@ -245,7 +245,7 @@ impersonate       | --as=jane            | 다른 사용자로 가장
 
 ```bash
 # 전제: kubeconfig 경로 지정 후 실습 네임스페이스 생성
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace cap-cks-d03
 
 # §1.5의 GOOD Role을 cap-cks-d03에 생성 (pods/services 읽기, deployments 읽기+update, configmaps 읽기)
@@ -782,7 +782,7 @@ Cluster Hardening 보안 설정 장애 시나리오
 
 ```bash
 # dev 클러스터 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 클러스터 상태 확인
 kubectl get nodes
@@ -879,15 +879,15 @@ dev/staging/prod 클러스터 간 RBAC 설정 차이를 비교하여 환경별 �
 
 ```bash
 # dev 클러스터의 ClusterRoleBinding 수
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 echo "=== dev ===" && kubectl get clusterrolebindings --no-headers | wc -l
 
 # staging 클러스터
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml
+export KUBECONFIG=kubeconfig/staging.yaml
 echo "=== staging ===" && kubectl get clusterrolebindings --no-headers | wc -l
 
 # prod 클러스터
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
+export KUBECONFIG=kubeconfig/prod.yaml
 echo "=== prod ===" && kubectl get clusterrolebindings --no-headers | wc -l
 
 # 예상: prod가 가장 적은 바인딩을 가져야 한다 (최소 권한 원칙)

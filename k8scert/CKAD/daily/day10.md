@@ -39,7 +39,7 @@ Day 9(Part 1a)에서 Probe의 세 가지 종류와 내부 동작 원리를 다�
 
 ```bash
 # 1. dev 클러스터 kubeconfig 설정 (tart-infra 기준)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 2. CKAD 속도전 셋업 — 매 세션 시작 시 실행
 alias k=kubectl
@@ -781,7 +781,7 @@ kubectl create deployment -n demo nginx-web --image=nginx --replicas=2
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 k get nodes
 ```
 

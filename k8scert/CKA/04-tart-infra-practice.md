@@ -374,7 +374,7 @@ done
 
 #### 실습 전제
 
-- platform 클러스터가 가동 중이어야 하며, kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 에 있다(`--context=platform` 은 이 kubeconfig 로드 시의 컨텍스트 이름).
+- platform 클러스터가 가동 중이어야 하며, kubeconfig는 `kubeconfig/platform.yaml` 에 있다(`--context=platform` 은 이 kubeconfig 로드 시의 컨텍스트 이름).
 - master 노드 SSH는 `ssh platform-master` 별칭으로 비밀번호 없이 접속된다(키 `~/.ssh/tart_k8scert`). 아래의 `ssh admin@<platform-master-ip>` 는 이 별칭으로 대체 가능하다.
 
 #### 등장 배경
@@ -501,7 +501,7 @@ kubectl --context=platform -n kube-system get pod etcd-platform-master -o yaml |
 
 #### 실습 전제
 
-- platform 클러스터가 가동 중이고, kubeconfig가 `~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 에 있다(`--context=platform`).
+- platform 클러스터가 가동 중이고, kubeconfig가 `kubeconfig/platform.yaml` 에 있다(`--context=platform`).
 - master 노드 SSH는 `ssh platform-master` 별칭으로 접속된다(아래 `ssh admin@<platform-master-ip>` 대체 가능).
 - 인증서 경로의 의미: `/etc/kubernetes/pki/etcd/ca.crt` 는 etcd 서버 인증서를 검증하는 **CA 인증서**, `server.crt`/`server.key` 는 etcdctl이 etcd에 자신을 mTLS(양방향 TLS — 서버와 클라이언트가 서로 인증서로 신원을 증명하는 방식)로 증명하는 **클라이언트 인증서/키**다. 백업 명령에서 이 세 파일을 `--cacert`/`--cert`/`--key` 로 넘기는 이유다.
 
@@ -777,7 +777,7 @@ etcd 스냅샷 복구의 내부 동작은 다음과 같다:
 
 #### 실습 전제
 
-이 저장소에서 클러스터별 kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/{platform,dev,staging,prod}.yaml` 에 가동 시 자동 생성된다(gitignore). 아래처럼 네 파일을 한꺼번에 로드하면 `kubectl config get-contexts` 에 네 컨텍스트가 함께 보인다.
+이 저장소에서 클러스터별 kubeconfig는 `kubeconfig/{platform,dev,staging,prod}.yaml` 에 가동 시 자동 생성된다(gitignore). 아래처럼 네 파일을 한꺼번에 로드하면 `kubectl config get-contexts` 에 네 컨텍스트가 함께 보인다.
 
 ```bash
 export KUBECONFIG=kubeconfig/platform.yaml:kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/prod.yaml
@@ -4936,7 +4936,7 @@ CPU throttling과의 차이: CPU 제한 초과 시에는 cgroup의 CPU bandwidth
 #### 실습 전제
 
 - 대상 클러스터(여기서는 platform)가 가동 중이어야 한다. `./scripts/boot.sh` 로 VM을 띄우고, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh platform` 으로 IP 드리프트를 복구한 상태여야 한다.
-- kubectl 검증 명령은 kubeconfig가 `~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 에 있다고 가정한다. 문서의 `--context=platform` 은 이 kubeconfig를 `KUBECONFIG`로 로드했을 때의 컨텍스트 이름이다(`export KUBECONFIG=kubeconfig/platform.yaml` 또는 `--kubeconfig kubeconfig/platform.yaml` 로 대체 가능).
+- kubectl 검증 명령은 kubeconfig가 `kubeconfig/platform.yaml` 에 있다고 가정한다. 문서의 `--context=platform` 은 이 kubeconfig를 `KUBECONFIG`로 로드했을 때의 컨텍스트 이름이다(`export KUBECONFIG=kubeconfig/platform.yaml` 또는 `--kubeconfig kubeconfig/platform.yaml` 로 대체 가능).
 - 노드 SSH는 전용 키가 전 노드에 배포돼 있어 `ssh platform-worker1` 처럼 **VM 이름 별칭으로 비밀번호 없이** 접속된다(키 `~/.ssh/tart_k8scert`, 키 미배포 시 `./scripts/setup-ssh-keys.sh platform` 으로 배포). 아래 예시의 `ssh admin@<platform-worker1-ip>` 는 이 별칭(`ssh platform-worker1`)으로 대체해도 동일하게 동작한다. IP는 재부팅마다 바뀌므로 별칭 접속을 권장한다.
 - 노드 내부에서 다루는 인증서 경로의 의미: `/var/lib/kubelet/pki/kubelet-client-current.pem` 은 kubelet이 API Server에 자신을 증명하는 **클라이언트 인증서**(만료되면 노드가 NotReady), `/etc/kubernetes/kubelet.conf` 는 그 인증서와 API Server 주소를 담은 **kubeconfig**다. 이 둘이 SSH 진단의 핵심 파일이다.
 

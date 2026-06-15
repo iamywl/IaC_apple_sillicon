@@ -112,7 +112,7 @@ Troubleshooting 도메인 = 전체의 30% (최대 비중!)
 ./scripts/fix-cluster-ip-drift.sh staging
 
 # 2) kubeconfig 등록 — 컨텍스트 이름으로 전환할 수 있게 한다
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/platform.yaml
 kubectl config get-contexts        # dev / staging / platform 이 보여야 한다
 
 # 3) 노드가 전부 Ready 인지 확인 (NotReady 면 장애 재현이 깨진다)
@@ -1069,7 +1069,7 @@ kubectl delete svc web-svc -n demo
 
 ```bash
 # dev 클러스터에 접속 (실제 앱이 동작 중인 환경에서 트러블슈팅 연습)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

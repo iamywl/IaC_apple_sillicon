@@ -16,7 +16,7 @@
 
 ---
 
-> **실습 선행 준비:** 아래 이론 섹션을 읽기 전에 dev 클러스터 접속 확인이 필요하다. 클러스터 기동 및 네임스페이스·Deployment 준비 절차는 문서 하단 **"실습 환경설정 - dev 클러스터 접속 (day05)"** 섹션을 먼저 수행한다. `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 설정해 두면 이하 모든 `kubectl` 명령을 그대로 쓸 수 있다.
+> **실습 선행 준비:** 아래 이론 섹션을 읽기 전에 dev 클러스터 접속 확인이 필요하다. 클러스터 기동 및 네임스페이스·Deployment 준비 절차는 문서 하단 **"실습 환경설정 - dev 클러스터 접속 (day05)"** 섹션을 먼저 수행한다. `export KUBECONFIG=kubeconfig/dev.yaml`을 설정해 두면 이하 모든 `kubectl` 명령을 그대로 쓸 수 있다.
 
 ---
 
@@ -337,7 +337,7 @@ Application Deployment 도메인은 CKAD의 **20%**를 차지한다:
 3. **RollingUpdate 파라미터**: maxSurge, maxUnavailable 설정
 4. **Rollback**: kubectl rollout undo --to-revision
 
-> **실행 환경:** 아래 명령은 dev 클러스터의 `demo` 네임스페이스에서 실행한다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`이다. `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 먼저 설정하거나 각 명령에 `--kubeconfig kubeconfig/dev.yaml`을 붙인다. 네임스페이스는 `-n demo`로 명시한다.
+> **실행 환경:** 아래 명령은 dev 클러스터의 `demo` 네임스페이스에서 실행한다. kubeconfig 경로는 `kubeconfig/dev.yaml`이다. `export KUBECONFIG=kubeconfig/dev.yaml`을 먼저 설정하거나 각 명령에 `--kubeconfig kubeconfig/dev.yaml`을 붙인다. 네임스페이스는 `-n demo`로 명시한다.
 
 ```bash
 # Deployment 빠른 생성
@@ -479,18 +479,18 @@ kubectl get rs -n demo
 
 ```bash
 # demo 네임스페이스 생성 (이미 있으면 무시)
-kubectl create namespace demo --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+kubectl create namespace demo --kubeconfig kubeconfig/dev.yaml
 
 # nginx-web Deployment 생성 (nginx:1.25, replicas=1)
 kubectl create deployment nginx-web --image=nginx:1.25 --replicas=1 \
-  -n demo --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+  -n demo --kubeconfig kubeconfig/dev.yaml
 
 # 생성 확인
 kubectl get deployment nginx-web -n demo \
-  --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+  --kubeconfig kubeconfig/dev.yaml
 ```
 
-- kubeconfig 경로: 이 저장소의 `kubeconfig/dev.yaml` (절대 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`)
+- kubeconfig 경로: 이 저장소의 `kubeconfig/dev.yaml` (절대 경로: `kubeconfig/dev.yaml`)
 - 노드 SSH: `ssh dev-master`, `ssh dev-worker1` (ProxyCommand 방식, 재부팅 후 IP 변경에도 동작)
 - 클러스터 재부팅 후 IP 드리프트가 발생한 경우: `./scripts/fix-cluster-ip-drift.sh dev` 먼저 실행
 
@@ -498,7 +498,7 @@ kubectl get deployment nginx-web -n demo \
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

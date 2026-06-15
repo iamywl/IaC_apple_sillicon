@@ -750,16 +750,16 @@ D) 노드에서 퇴거(evict)된다
 
 > **실습 전제 조건**
 > - dev 클러스터가 가동 중이어야 한다. 가동: `./scripts/boot.sh` → IP 드리프트 복구: `./scripts/fix-cluster-ip-drift.sh dev`
-> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> - kubeconfig 경로: `kubeconfig/dev.yaml`
 > - 노드 SSH: `ssh dev-master`, `ssh dev-worker1` (비밀번호 없이 접속 가능, `~/.ssh/config` 설정 전제)
-> - 실습 네임스페이스 미리 생성: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml create ns demo`
+> - 실습 네임스페이스 미리 생성: `kubectl --kubeconfig kubeconfig/dev.yaml create ns demo`
 > - CLAUDE.md §4① 준수: 명령 출력은 실제 터미널 스크린샷 이미지로 제공해야 한다. 아래 텍스트 블록은 실측값이나 이미지 미캡처 상태이다. 클러스터 기동 후 각 명령을 직접 실행하여 결과를 확인한다.
 
 ### 실습 환경 설정
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

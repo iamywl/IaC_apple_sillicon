@@ -619,7 +619,7 @@ Cluster Hardening 도메인 출제 패턴 (15%)
 
 ### 7.2 실전 문제 (10개 이상)
 
-실습 클러스터 — 아래 문제들은 RBAC·SA·매니페스트를 직접 수정·삭제하는 파괴적 작업을 포함하므로 모두 **dev 클러스터**(파괴 실험 허용)를 기준으로 푼다. 단, apiserver 정적 파드 매니페스트를 건드리는 문제(문제 3 API Server 보안 설정, 문제 4·문제 8 Audit Policy 적용)는 잘못 적용 시 apiserver 가 기동에 실패할 수 있으므로 **staging 클러스터**에서 수행하고, 작업 전 `cp /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/` 로 백업한다. platform/prod 에서는 절대 풀지 않는다. 각 문제 시작 시 `kubectl config use-context <대상>` 으로 컨텍스트를 맞추고, kubeconfig 는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml` 을 사용한다(노드 직접 작업은 `ssh dev-master`·`ssh staging-master`).
+실습 클러스터 — 아래 문제들은 RBAC·SA·매니페스트를 직접 수정·삭제하는 파괴적 작업을 포함하므로 모두 **dev 클러스터**(파괴 실험 허용)를 기준으로 푼다. 단, apiserver 정적 파드 매니페스트를 건드리는 문제(문제 3 API Server 보안 설정, 문제 4·문제 8 Audit Policy 적용)는 잘못 적용 시 apiserver 가 기동에 실패할 수 있으므로 **staging 클러스터**에서 수행하고, 작업 전 `cp /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/` 로 백업한다. platform/prod 에서는 절대 풀지 않는다. 각 문제 시작 시 `kubectl config use-context <대상>` 으로 컨텍스트를 맞추고, kubeconfig 는 `kubeconfig/<클러스터>.yaml` 을 사용한다(노드 직접 작업은 `ssh dev-master`·`ssh staging-master`).
 
 ### 문제 1. RBAC 과도한 권한 축소  (dev 클러스터)
 
@@ -1176,7 +1176,7 @@ complete -F __start_kubectl k
 
 ```bash
 # platform 클러스터에서 RBAC, SA, API Server 보안 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get nodes
 ```
 

@@ -126,7 +126,7 @@ spec:
 
 ### 검증
 
-> 실습 전제: dev 또는 staging 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh dev`). 모든 `kubectl`에는 대상 클러스터를 명시한다(예: `kubectl --kubeconfig kubeconfig/dev.yaml ...`, kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/`). 아래 예시는 가독성을 위해 `--kubeconfig`를 생략했다. `production` 네임스페이스가 없으면 `kubectl create namespace production`으로 먼저 만든다. capabilities 비활성화는 파괴적 실습이 아니므로 dev에서 진행한다.
+> 실습 전제: dev 또는 staging 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh dev`). 모든 `kubectl`에는 대상 클러스터를 명시한다(예: `kubectl --kubeconfig kubeconfig/dev.yaml ...`, kubeconfig 경로는 `kubeconfig/`). 아래 예시는 가독성을 위해 `--kubeconfig`를 생략했다. `production` 네임스페이스가 없으면 `kubectl create namespace production`으로 먼저 만든다. capabilities 비활성화는 파괴적 실습이 아니므로 dev에서 진행한다.
 
 ```bash
 # 검증 1: Pod 배포 후 상태 확인
@@ -1202,7 +1202,7 @@ kubectl logs kube-apiserver-master -n kube-system | grep -i kms | tail -5
 
 > **실습 전제 (Part 2 전체 공통)**
 > - dev 또는 staging 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh dev`).
-> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/`. 명령 예시: `kubectl --kubeconfig kubeconfig/dev.yaml ...`.
+> - kubeconfig 경로: `kubeconfig/`. 명령 예시: `kubectl --kubeconfig kubeconfig/dev.yaml ...`.
 > - 노드 SSH: `ssh dev-master`(별칭), 키 `~/.ssh/tart_k8scert`.
 > - 네임스페이스가 없으면 `kubectl create namespace <ns>`로 먼저 생성한다.
 > - **CKS 파괴 실습(AppArmor 로드, seccomp 프로파일, etcd 암호화, kube-apiserver manifest 수정 등)은 dev/staging에서만 수행한다**. platform/prod 클러스터는 건드리지 않는다.

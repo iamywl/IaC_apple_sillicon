@@ -3143,13 +3143,13 @@ Readiness Probe 실패
 >
 > ```bash
 > # platform 클러스터로 전환 (분석 전용)
-> export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+> export KUBECONFIG=kubeconfig/platform.yaml
 > kubectl config current-context
 > # 실습 완료 후 dev 클러스터로 복귀
-> # export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+> # export KUBECONFIG=kubeconfig/dev.yaml
 > ```
 
-> **[전제 조건 — keycloak 위치]** 이 Lab은 platform 클러스터의 `platform` 네임스페이스에 배포된 keycloak Deployment를 분석 대상으로 사용한다. `kubectl get deployment keycloak -n platform`으로 존재 여부를 먼저 확인한다. platform 클러스터에 keycloak이 없으면 dev 클러스터의 demo 네임스페이스(`kubectl get deployment keycloak -n demo --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`)로 대체한다. keycloak은 HTTP `/health/live` 및 `/health/ready` 엔드포인트를 제공하는 대표적인 HTTP Probe 예제 애플리케이션이다.
+> **[전제 조건 — keycloak 위치]** 이 Lab은 platform 클러스터의 `platform` 네임스페이스에 배포된 keycloak Deployment를 분석 대상으로 사용한다. `kubectl get deployment keycloak -n platform`으로 존재 여부를 먼저 확인한다. platform 클러스터에 keycloak이 없으면 dev 클러스터의 demo 네임스페이스(`kubectl get deployment keycloak -n demo --kubeconfig kubeconfig/dev.yaml`)로 대체한다. keycloak은 HTTP `/health/live` 및 `/health/ready` 엔드포인트를 제공하는 대표적인 HTTP Probe 예제 애플리케이션이다.
 
 **Step 1: keycloak Deployment의 Probe 확인**
 
@@ -3185,7 +3185,7 @@ kubectl get events -n platform --field-selector reason=Unhealthy --sort-by=.meta
 
 ```bash
 # platform 분석 완료 — dev 클러스터로 복귀
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config current-context
 ```
 

@@ -773,7 +773,7 @@ PSS/PSA:
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -799,7 +799,7 @@ kubectl get clusterrolebinding cluster-admin -o yaml | grep -A 5 subjects
 각 RoleBinding이 속한 NS 안에서만 권한이 적용된다. 이를 직접 확인한다.
 
 ```bash
-# 전제: export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+# 전제: export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace ns-a 2>/dev/null || true
 kubectl create namespace ns-b 2>/dev/null || true
 kubectl create serviceaccount sa-a -n ns-a
@@ -848,7 +848,7 @@ kubectl get pods -n demo -o jsonpath='{range .items[0]}{.spec.serviceAccountName
 SA 수준보다 Pod 수준 설정이 우선한다는 점을 실제로 확인하려면 다음 명령을 사용한다.
 
 ```bash
-# 전제: export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+# 전제: export KUBECONFIG=kubeconfig/dev.yaml
 # demo 네임스페이스 생성 (없으면 생성, 이미 있으면 무시)
 kubectl create namespace demo 2>/dev/null || true
 
@@ -908,7 +908,7 @@ kubectl get namespace kube-system --show-labels
 PSA 3모드 중 enforce와 warn의 차이를 직접 손으로 확인한다. 이론으로만 보면 "enforce는 거부, warn은 경고"가 추상적이지만, 실제 403 Forbidden 메시지와 Warning 메시지를 눈으로 보면 차이가 몸에 남는다.
 
 ```bash
-# 전제: export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+# 전제: export KUBECONFIG=kubeconfig/dev.yaml
 # 테스트용 네임스페이스 생성
 kubectl create namespace psa-test 2>/dev/null || true
 

@@ -1148,14 +1148,14 @@ kubectl create service externalname ext-svc --external-name=db.example.com
 
 1. **클러스터 기동**: dev 클러스터 VM이 떠 있어야 한다. 꺼져 있으면 저장소 루트에서 `./scripts/boot.sh dev`로 기동한다. `boot.sh`는 VM을 부팅하고 apiserver advertise 인증서까지 복구한다.
 2. **재부팅 후 IP 드리프트 복구**: tart는 재부팅마다 VM IP를 재할당하므로, 부팅 직후에는 노드가 Ready로 보여도 파드 네트워킹/DNS가 깨져 있을 수 있다. `./scripts/fix-cluster-ip-drift.sh dev`를 실행해 apiserver 인증서 SAN·control-plane 정적 파드·worker kubelet.conf·Cilium의 `KUBERNETES_SERVICE_HOST`를 새 IP로 정렬한다. 이 단계를 건너뛰면 아래 CoreDNS 조회 실습이 실패한다.
-3. **kubeconfig 경로**: 클러스터별 kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`에 클러스터 기동 시 생성된다(gitignore 대상). dev 클러스터는 `dev.yaml`이다.
-4. **복구 확인**: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes`가 전부 Ready이고, kube-system의 cilium/coredns 파드가 Running/Ready이며, 파드에서 `nslookup kubernetes.default.svc.cluster.local`이 Service IP(dev는 10.97.0.1)로 해석되면 정상이다.
+3. **kubeconfig 경로**: 클러스터별 kubeconfig는 `kubeconfig/<클러스터>.yaml`에 클러스터 기동 시 생성된다(gitignore 대상). dev 클러스터는 `dev.yaml`이다.
+4. **복구 확인**: `kubectl --kubeconfig kubeconfig/dev.yaml get nodes`가 전부 Ready이고, kube-system의 cilium/coredns 파드가 Running/Ready이며, 파드에서 `nslookup kubernetes.default.svc.cluster.local`이 Service IP(dev는 10.97.0.1)로 해석되면 정상이다.
 
 전제가 충족되면 다음으로 컨텍스트를 전환한다.
 
 ```bash
 # dev 클러스터 접속 (다양한 Service 타입이 배포된 환경)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config use-context dev
 ```
 

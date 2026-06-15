@@ -588,7 +588,7 @@ kubectl exec myapp-pod -- cat /var/log/app.log
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get pods -n demo
 ```
 
@@ -597,7 +597,7 @@ kubectl get pods -n demo
 **선결조건:**
 ```bash
 # kubeconfig 설정
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # demo 네임스페이스에 nginx Deployment가 없으면 먼저 생성한다
 kubectl get deploy nginx -n demo 2>/dev/null || \

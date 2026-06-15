@@ -589,7 +589,7 @@ CKAD 실기는 속도전이다. 아래 문제를 시간 제한 내에 alias·dry
 ```bash
 alias k=kubectl
 export do='--dry-run=client -o yaml'
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 ```
 
 ---
@@ -700,7 +700,7 @@ k delete namespace minilab
 실습 전 `demo` 네임스페이스와 postgresql 서비스가 클러스터에 존재해야 한다. Day 1 이후 이미 생성되어 있다면 아래 create 명령은 건너뛴다(`kubectl get ns demo`로 확인).
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # demo 네임스페이스 생성 (이미 있으면 오류 무시)
 kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -

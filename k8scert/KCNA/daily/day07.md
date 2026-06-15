@@ -229,7 +229,7 @@ spec:
 **Step 1.** platform 클러스터에서 ServiceMonitor 목록을 확인한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get servicemonitor -n monitoring
 ```
 
@@ -357,7 +357,7 @@ Loki (라벨 인덱싱):
 **Step 1.** Promtail DaemonSet 상태를 확인한다. DESIRED 수가 노드 수와 일치해야 한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get daemonset -n monitoring | grep promtail
 ```
 
@@ -498,7 +498,7 @@ OpenTelemetry 구성
 **Step 1.** platform 클러스터에서 Jaeger 관련 파드를 조회한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get pods -n monitoring | grep jaeger
 kubectl get pods -n tracing 2>/dev/null | grep jaeger
 ```
@@ -508,7 +508,7 @@ kubectl get pods -n tracing 2>/dev/null | grep jaeger
 **Step 2 (참고 — dev 클러스터에서 실습할 경우).** Jaeger All-in-One을 dev 클러스터에 설치하려면 아래 명령을 사용한다. platform에는 실행하지 않는다(§3 읽기 전용).
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace tracing
 kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.52.0/jaeger-operator.yaml -n tracing
 ```
@@ -516,7 +516,7 @@ kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/downl
 **Step 3.** OTel Collector가 배포되어 있는지 확인한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get pods -A | grep otel
 ```
 
@@ -865,7 +865,7 @@ Jaeger·Zipkin·Tempo는 모두 이 W3C TraceContext 표준(`traceparent` 헤더
 
 ```bash
 # platform 클러스터에 접속 (모니터링 + GitOps 도구가 설치된 환경)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get nodes
 ```
 

@@ -984,7 +984,7 @@ cat /tmp/prod-server.txt
 
 ```bash
 # 4개 클러스터 kubeconfig를 모두 로드
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
+export KUBECONFIG=kubeconfig/platform.yaml:kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/prod.yaml
 
 # 사용 가능한 컨텍스트 확인
 kubectl config get-contexts

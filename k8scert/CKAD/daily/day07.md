@@ -479,7 +479,7 @@ CKAD 실기는 120분 안에 15~20문제를 풀어야 하는 속도전이다. �
 **성공 기준:** `helm history mq-nginx -n demo` 출력에서 revision 1(install)·2(upgrade)·3(rollback) 세 줄이 보이고, `helm get values mq-nginx -n demo`의 `replicaCount`가 `2`(revision 1 값)로 복구된 것을 확인한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace demo 2>/dev/null || true
 helm install mq-nginx bitnami/nginx -n demo --set replicaCount=2
 helm upgrade mq-nginx bitnami/nginx -n demo --set replicaCount=3
@@ -579,7 +579,7 @@ kubectl get all -n demo -l app.kubernetes.io/instance=my-release
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get nodes
 ```
 
@@ -590,7 +590,7 @@ kubectl get nodes
 
 platform 클러스터에 설치된 Helm Release를 확인하고 관리한다.
 
-> **사전 조건:** `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml` 이 설정된 상태에서 실행한다(위 환경 설정 블록 참고). Helm CLI는 `KUBECONFIG` 환경 변수를 그대로 사용하므로 별도 `--kubeconfig` 플래그가 없어도 platform 클러스터를 대상으로 동작한다.
+> **사전 조건:** `export KUBECONFIG=kubeconfig/platform.yaml` 이 설정된 상태에서 실행한다(위 환경 설정 블록 참고). Helm CLI는 `KUBECONFIG` 환경 변수를 그대로 사용하므로 별도 `--kubeconfig` 플래그가 없어도 platform 클러스터를 대상으로 동작한다.
 
 ```bash
 # 전체 네임스페이스의 Helm Release 확인
@@ -613,11 +613,11 @@ helm get values prometheus -n monitoring 2>/dev/null || helm list -A | head -10
 
 > **사전 조건:**
 > 1. dev 클러스터가 가동 중이어야 한다(`ssh dev-master`로 접속 가능, `kubectl get nodes` Ready 상태).
-> 2. kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> 2. kubeconfig 경로: `kubeconfig/dev.yaml`
 > 3. demo 네임스페이스가 없으면 아래에서 직접 생성한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 사전 조건: demo 네임스페이스 생성 (이미 있으면 무시)
 kubectl create namespace demo 2>/dev/null || true

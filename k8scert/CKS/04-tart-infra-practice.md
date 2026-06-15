@@ -25,7 +25,7 @@
 
 > **실습 전제 조건**: 이 문서의 모든 실습은 다음 환경이 갖춰진 상태를 기준으로 한다.
 > - **클러스터 가동**: `./scripts/boot.sh && ./scripts/fix-cluster-ip-drift.sh dev` 실행 후 모든 노드가 Ready 상태
-> - **kubeconfig 경로**: `~/sideproejct/IaC_apple_sillicon/kubeconfig/` (아래 명령에서 `kubeconfig/dev.yaml` 등으로 지정)
+> - **kubeconfig 경로**: `kubeconfig/` (아래 명령에서 `kubeconfig/dev.yaml` 등으로 지정)
 > - **SSH 노드 접근**: `ssh dev-master`, `ssh dev-worker1` 형태로 비밀번호 없이 접속 가능 (ProxyCommand 방식, `~/.ssh/config` 필요; `<vm이름>` 플레이스홀더 없이 실제 별칭을 그대로 사용한다)
 > - **선행 리소스**: demo 네임스페이스에 httpbin, nginx-web, postgres, redis Pod가 Running 상태여야 한다. 아래 검증 블록으로 확인한다. demo ns가 비어 있거나 Pod가 없으면 아래 명령으로 선행 리소스를 먼저 적용한다. ArgoCD auto-sync가 활성화된 경우에는 ArgoCD가 자동 배포하므로 아래 명령은 ArgoCD가 없는 환경에서만 실행한다.
 >

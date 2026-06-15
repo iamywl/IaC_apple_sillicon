@@ -869,7 +869,7 @@ spec:
 
 ```bash
 # dev 클러스터 접속 (다양한 워크로드 오브젝트 확인용)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # demo 네임스페이스의 전체 리소스 확인
 kubectl get all -n demo
@@ -922,11 +922,11 @@ kubectl get endpoints -n demo nginx-web
 
 ```bash
 # platform 클러스터에서 DaemonSet 확인 (모든 노드에 하나씩)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get daemonset -A
 
 # dev 클러스터에서 StatefulSet 확인 (순서 보장, 고유 이름)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get statefulset -n demo
 
 # StatefulSet Pod 이름 패턴 확인 (pod-0, pod-1 순서)
@@ -1029,7 +1029,7 @@ KCNA는 객관식이지만, 손으로 직접 오브젝트를 만들어 보면 YA
 
 ```bash
 # 1. dev 클러스터 kubeconfig 설정
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 2. demo 네임스페이스의 nginx Pod 확인 (라벨 확인)
 kubectl get pods -n demo --show-labels

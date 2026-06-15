@@ -1127,14 +1127,14 @@ K8s 구현: RBAC + default-deny NetworkPolicy + mTLS + Audit Log
 | 항목 | 값 |
 |:-----|:---|
 | 클러스터 | tart dev 클러스터 (파괴 실습 허용) |
-| kubeconfig 경로 | `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` |
+| kubeconfig 경로 | `kubeconfig/dev.yaml` |
 | 노드 SSH 별칭 | `ssh dev-master`, `ssh dev-worker1` |
 | CNI | **Cilium** — 이 실습의 `kubectl get ciliumnetworkpolicies` 명령은 Cilium CNI 전용이다. Flannel·Calico 환경에서는 `kubectl get networkpolicies`를 사용한다 |
 | 실습 네임스페이스 | `demo` — 아래 명령으로 미리 생성한다 |
 
 ```bash
 # 실습 시작 전 — dev 클러스터 접속 및 네임스페이스 생성
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 클러스터 정상 여부 확인
 kubectl get nodes

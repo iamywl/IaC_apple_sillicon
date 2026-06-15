@@ -325,9 +325,9 @@ kubectl get events -n <ns> --sort-by=.metadata.creationTimestamp
 
 **실습 전제(시작 전 1회 확인):**
 - 4개 클러스터가 가동 중이어야 한다. 꺼져 있으면 `./scripts/boot.sh` 로 기동하고, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh` 로 IP 드리프트를 복구한다(미복구 시 DNS·CNI가 깨져 NetworkPolicy 문제가 오작동한다).
-- kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml` 에 있다. 각 문제의 `kubectl config use-context <ctx>` 는 다음과 같이 KUBECONFIG를 합쳐 두면 컨텍스트 전환으로 동작한다.
+- kubeconfig는 `kubeconfig/<클러스터>.yaml` 에 있다. 각 문제의 `kubectl config use-context <ctx>` 는 다음과 같이 KUBECONFIG를 합쳐 두면 컨텍스트 전환으로 동작한다.
   ```bash
-  export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
+  export KUBECONFIG=kubeconfig/platform.yaml:kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/prod.yaml
   kubectl config get-contexts   # dev/staging/prod 컨텍스트 확인
   ```
 - 노드 직접 작업(kube-bench·Audit Policy·AppArmor·SUID 등)은 SSH 별칭으로 접속한다. 예: `ssh staging-master`, `ssh dev-worker`(전용 키가 배포돼 비밀번호 없이 접속). 문제 본문의 `ssh admin@staging-master` 는 설치 자동화용 표기이며, 평소에는 별칭 접속이 빠르다.
@@ -1730,11 +1730,11 @@ API Server가 재시작되지 않는 경우:
 
 ```bash
 # 4개 클러스터 kubeconfig 확인
-ls ~/sideproejct/IaC_apple_sillicon/kubeconfig/
+ls kubeconfig/
 # dev.yaml  platform.yaml  prod.yaml  staging.yaml
 
 # 모의시험과 동일하게 컨텍스트 전환 연습
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config current-context
 # dev
 
@@ -1750,7 +1750,7 @@ export do="--dry-run=client -o yaml"
 모의시험 문제 풀이에 앞서 dev 클러스터의 보안 구성 요소(CiliumNetworkPolicy, Istio mTLS, SecurityContext, ServiceAccount)를 빠르게 점검하는 연습을 한다. 시험에서 클러스터 상태를 파악하는 데 5분 이내로 완료해야 한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 1. NetworkPolicy/CiliumNetworkPolicy 확인 (Cluster Setup 도메인)
 echo "=== NetworkPolicy ==="
@@ -1792,7 +1792,7 @@ k get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}: automount={.s
 
 ```bash
 # dev 클러스터에서 RBAC 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 echo "--- dev cluster ---"
 k auth can-i create pods --as=system:serviceaccount:demo:default -n demo
 # yes 또는 no
@@ -1801,7 +1801,7 @@ k auth can-i delete secrets --as=system:serviceaccount:demo:default -n demo
 # no (최소 권한 원칙 적용 시)
 
 # prod 클러스터로 전환
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
+export KUBECONFIG=kubeconfig/prod.yaml
 echo "--- prod cluster ---"
 k config current-context
 # prod
@@ -1809,13 +1809,13 @@ k get ns
 # default, kube-system, ...
 
 # staging 클러스터로 전환
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml
+export KUBECONFIG=kubeconfig/staging.yaml
 echo "--- staging cluster ---"
 k config current-context
 # staging
 
 # platform 클러스터로 전환 (모니터링 도구 확인)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 echo "--- platform cluster ---"
 k get pods -n monitoring
 # prometheus, grafana, alertmanager 등
@@ -1837,7 +1837,7 @@ k get pods -n monitoring
 모의시험 문제 1(Default Deny), 문제 5(SA 토큰 비활성화), 문제 8(seccomp + SecurityContext), 문제 10(PSA)을 dev 클러스터의 demo 네임스페이스를 대상으로 종합 연습한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 1. PSA 라벨 확인 (문제 10 유형)
 k get ns demo --show-labels | grep pod-security

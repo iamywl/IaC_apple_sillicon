@@ -90,7 +90,7 @@ _그림 1. 공급망 보안 방어 체계 단계 (SBOM 생성에서 검증/배�
 
 > **실습 전제 (1.2~1.3 공통):** dev 클러스터가 가동 중이어야 한다.
 > 클러스터 미가동 시: `./scripts/boot.sh && ./scripts/fix-cluster-ip-drift.sh dev`
-> 정상 확인: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes` → 모두 Ready
+> 정상 확인: `kubectl --kubeconfig kubeconfig/dev.yaml get nodes` → 모두 Ready
 > 아래 예시 이미지가 없으면 dev 클러스터에 이미 배포된 `nginx:1.25`를 사용한다.
 > (`syft nginx:1.25 -o spdx-json > sbom.json` / `trivy image --format spdx nginx:1.25`)
 > 직접 빌드 테스트를 원하면 `docker build -t myapp:v1.0 .` (간단한 Dockerfile 필요)으로 로컬 이미지를 만든다.
@@ -801,7 +801,7 @@ Shift Left:
 # dev 클러스터에 접속 (Zero Trust + mTLS가 적용된 보안 환경)
 # $(pwd)는 ~/sideproejct/IaC_apple_sillicon 디렉터리에서 실행해야 절대경로가 맞다.
 export KUBECONFIG=$(pwd)/kubeconfig/dev.yaml
-# 또는 절대경로 직접 지정: export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+# 또는 절대경로 직접 지정: export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

@@ -344,7 +344,7 @@ SBOM 표준 형식이다. SPDX와 함께 가장 널리 쓰이는 두 가지 표�
 > **실습 환경 확인:** KCSA는 이론 시험이므로 Falco 실행 자체보다 동작 원리와 탐지 범위를 이해하는 것이 목표다. 아래 명령으로 dev 클러스터에 Falco가 설치돼 있는지 먼저 확인한다. 없는 경우 이 절은 개념 이해 목적으로만 진행하면 된다.
 >
 > ```bash
-> export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+> export KUBECONFIG=kubeconfig/dev.yaml
 > # Falco 파드 존재 여부 확인 (namespace는 설치 방법에 따라 다를 수 있다)
 > kubectl get pods -n falco 2>/dev/null || kubectl get pods -n kube-system -l app=falco 2>/dev/null || echo "Falco 미설치 — 개념 이해 목적으로 진행"
 > # Helm으로 설치된 경우
@@ -543,7 +543,7 @@ spec:
 **목표:** dev 클러스터에서 파드의 seccomp 프로파일 설정 상태를 조회한다. 제한 시간 3분.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # kube-system 파드들의 seccomp 프로파일 확인
 kubectl get pods -n kube-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.securityContext.seccompProfile.type}{"\n"}{end}' | head -10
@@ -896,7 +896,7 @@ Falco 탐지 가능/불가:
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

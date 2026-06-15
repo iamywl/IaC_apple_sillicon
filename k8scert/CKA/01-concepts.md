@@ -37,7 +37,7 @@ export now="--force --grace-period=0"
 
 ```bash
 # 로컬 tart dev 클러스터로 연습할 때 (kubeconfig 경로는 이 저장소 기준)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 ```
 
 ---
@@ -976,7 +976,7 @@ spec:
 
 해당 레이블이 있는 노드에만 Pod가 스케줄링된다. 매칭되는 노드가 없으면 Pod는 Pending 상태가 된다.
 
-실습 전제: 클러스터가 가동 중이고 kubeconfig(`~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 등)가 설정되어 있어야 한다. 아래는 노드에 레이블을 부여하고, 그 레이블을 nodeSelector로 매칭하는 흐름이다. 명령과 기대 출력을 단계별로 분리해 둔다.
+실습 전제: 클러스터가 가동 중이고 kubeconfig(`kubeconfig/dev.yaml` 등)가 설정되어 있어야 한다. 아래는 노드에 레이블을 부여하고, 그 레이블을 nodeSelector로 매칭하는 흐름이다. 명령과 기대 출력을 단계별로 분리해 둔다.
 
 먼저 노드에 레이블을 부여한다.
 
@@ -2494,7 +2494,7 @@ openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | grep -E "Issue
 
 ```bash
 # (로컬에서) 현재 노드 상태 — 모두 Ready 인지 먼저 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes
+kubectl --kubeconfig kubeconfig/dev.yaml get nodes
 
 # (worker 노드에 접속) dev-worker1 은 ~/.ssh/config 에 등록된 VM 별칭
 ssh dev-worker1
@@ -2504,13 +2504,13 @@ sudo systemctl stop kubelet
 exit
 
 # 2. (로컬) NotReady 확인 — node-monitor-grace-period(기본 40초) 후 반영된다
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes -w
+kubectl --kubeconfig kubeconfig/dev.yaml get nodes -w
 
 # 3. (worker) 복구 — kubelet 재시작
 ssh dev-worker1 'sudo systemctl start kubelet'
 
 # 4. (로컬) 다시 Ready 가 될 때까지 대기
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml wait --for=condition=Ready node --all --timeout=120s
+kubectl --kubeconfig kubeconfig/dev.yaml wait --for=condition=Ready node --all --timeout=120s
 ```
 
 검증 포인트: 2단계에서 STATUS가 `NotReady`로 바뀌면 노드 진단 절차(`systemctl status kubelet` → `journalctl -u kubelet`)가 의미를 갖는다. 4단계가 통과하면 복구가 완료된 것이다. 출력 캡처는 미캡처(클러스터 가동 시 day 본문에서 교체).
@@ -2824,7 +2824,7 @@ sudo cp /tmp/kube-apiserver.yaml.bak /etc/kubernetes/manifests/kube-apiserver.ya
 exit
 
 # 4. (로컬) apiserver 정상화 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml get --raw='/healthz'
+kubectl --kubeconfig kubeconfig/staging.yaml get --raw='/healthz'
 ```
 
 검증 포인트: 2단계에서 `kubectl`이 `connection refused`로 막히고 crictl에서만 apiserver 상태가 보이는 것을 직접 확인한다. 4단계에서 `ok`가 반환되면 복구가 완료된 것이다. Static Pod는 kubectl로 삭제할 수 없고 매니페스트 파일이 단일 진실원(source of truth)이라는 점이 이 실습의 핵심이다. 출력 캡처는 미캡처(클러스터 가동 시 day 본문에서 교체).

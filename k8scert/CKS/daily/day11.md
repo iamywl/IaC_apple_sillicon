@@ -130,12 +130,12 @@ Falco를 노드에 올리는 방식은 두 가지다. (1) 노드의 systemd 서�
 
 > **전제**: dev 또는 staging 클러스터가 가동 중이어야 한다. CKS 파괴·설치
 > 실습은 platform/prod가 아닌 dev/staging에서만 한다(CLAUDE.md §3·§4③).
-> kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 쓰고,
+> kubeconfig는 `kubeconfig/dev.yaml`을 쓰고,
 > 노드 직접 작업은 `ssh dev-master` 별칭으로 접속한다.
 
 ```bash
 # 방식 A) Helm으로 Falco DaemonSet 배포 (전 노드에 1개씩 자동 배치)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 helm repo add falcosecurity https://falcosecurity.github.io/charts
 helm repo update
 helm install falco falcosecurity/falco \
@@ -1202,7 +1202,7 @@ spec:
 
 ```bash
 # dev 클러스터 접속 (demo 네임스페이스의 앱들로 런타임 보안 실습)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config current-context
 # dev
 
@@ -1222,7 +1222,7 @@ kubectl get pods -n demo
 시도해 정말 차단되는지, (3) emptyDir 마운트 경로에서만 쓰기가 허용되는지 확인한다.
 
 > **전제**: dev 클러스터 가동 중, kubeconfig는
-> `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`, demo 네임스페이스에
+> `kubeconfig/dev.yaml`, demo 네임스페이스에
 > 대상 Pod(nginx 등)가 배포되어 있어야 한다. 파괴적 시험이므로 dev/staging에서만
 > 한다.
 
@@ -1272,7 +1272,7 @@ dev 클러스터의 API Server Audit Log를 분석하여 demo 네임스페이스
 
 ```bash
 # dev 클러스터로 전환 (Audit Log를 분석할 클러스터와 kubeconfig를 일치시킨다)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # dev 클러스터 master에 SSH 접속하여 audit log 분석
 # (audit log 경로: /var/log/kubernetes/audit/audit.log)
@@ -1335,7 +1335,7 @@ demo 네임스페이스에서 의심 Pod를 식별하고, CiliumNetworkPolicy로
 
 ```bash
 # dev 클러스터로 복귀
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 1. 증거 수집: 의심 Pod(예: nginx)의 상태 기록
 kubectl logs -n demo deploy/nginx --tail=50 > /tmp/nginx-logs.txt

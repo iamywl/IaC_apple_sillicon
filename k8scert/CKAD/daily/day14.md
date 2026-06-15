@@ -429,7 +429,7 @@ kubectl exec projected-pod -- cat /etc/config/token | cut -d'.' -f2 | base64 -d 
 
 ## 3. 실전 시험 문제 (12문제)
 
-> **실습 전제**: `exam` 네임스페이스가 존재해야 한다. `kubectl create namespace exam --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> **실습 전제**: `exam` 네임스페이스가 존재해야 한다. `kubectl create namespace exam --kubeconfig kubeconfig/dev.yaml`
 > 이 섹션의 `기대 출력:` 블록은 예상 결과 텍스트다. CLAUDE.md §4① 규약에 따라 실제 터미널 스크린샷으로 교체가 필요하다(미캡처). 직접 실습 시 dev 클러스터에서 명령을 실행하고 출력을 눈으로 대조한다.
 
 ### 시험 환경 설정
@@ -1260,7 +1260,7 @@ CKAD 시험 기준으로 ConfigMap/Secret 문제는 각 2~3분 내에 풀어야 
 이 실습은 다음 환경이 갖춰진 상태에서 실행한다.
 
 - **클러스터 가동**: `dev` 클러스터가 실행 중이어야 한다. 가동 명령: `./scripts/boot.sh dev`
-- **kubeconfig 경로**: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+- **kubeconfig 경로**: `kubeconfig/dev.yaml`
 - **IP 드리프트 복구**: 재부팅 후 처음 실습하는 경우 `./scripts/fix-cluster-ip-drift.sh dev`를 실행한 뒤 진행한다.
 - **SSH 노드 접근**: `ssh dev-master`(또는 `ssh staging-master`)로 노드에 직접 접속 가능해야 한다.
 - **선행 네임스페이스**: 실습 1~3은 `demo` 네임스페이스를 사용한다. 없으면 `kubectl create namespace demo --kubeconfig kubeconfig/dev.yaml`으로 미리 생성한다.
@@ -1269,7 +1269,7 @@ CKAD 시험 기준으로 ConfigMap/Secret 문제는 각 2~3분 내에 풀어야 
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

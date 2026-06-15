@@ -229,7 +229,7 @@ DNS가 차단되면 1단계에서 실패한다.
 
 ```bash
 # 전제: dev 클러스터가 가동 중이고 kubeconfig가 준비됨
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace secure-ns
 
 # frontend Pod 생성 (app=frontend 라벨)
@@ -441,7 +441,7 @@ Pod가 169.254.169.254에 접근하면:
 
 > **맥락 연결:** 1.7절에서 frontend/backend Pod를 이미 만들었지만, 이 절의 검증 시나리오는 "공격자(attacker)가 web 서비스를 향해 요청을 보내는 흐름"을 재현하기 위해 별도의 attacker/web/web-svc를 사용한다. 1.7절 Pod와 이름이 다르므로 아래 초기화 블록에서 먼저 생성한다.
 
-**전제:** dev/staging 클러스터가 가동 중이고, `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`이 설정된 상태다. 아래 검증은 `secure-ns`에 `web`/`attacker` Pod가 있고 **다른 정책 없이 `default-deny-all`만 적용된 상태**를 가정한다. 기존 정책이 남아 결과가 오염되지 않도록 먼저 비운다.
+**전제:** dev/staging 클러스터가 가동 중이고, `export KUBECONFIG=kubeconfig/dev.yaml`이 설정된 상태다. 아래 검증은 `secure-ns`에 `web`/`attacker` Pod가 있고 **다른 정책 없이 `default-deny-all`만 적용된 상태**를 가정한다. 기존 정책이 남아 결과가 오염되지 않도록 먼저 비운다.
 
 ```bash
 # 전제 초기화: secure-ns의 기존 NetworkPolicy를 모두 제거한 뒤 default-deny만 적용
@@ -956,7 +956,7 @@ spec:
 **목표:** staging 클러스터에서 자체 서명 인증서를 만들고, TLS Secret을 생성해 Ingress에 적용한 뒤 `curl -k`로 HTTPS 응답을 확인한다.
 
 **작업 절차:**
-1. `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml`로 staging 클러스터를 선택한다.
+1. `export KUBECONFIG=kubeconfig/staging.yaml`로 staging 클러스터를 선택한다.
 2. `kubectl create namespace tls-lab`으로 실습용 네임스페이스를 만든다.
 3. openssl로 자체 서명 인증서를 생성한다(`-subj "/CN=lab.example.com"`).
 4. `kubectl create secret tls lab-tls --cert=tls.crt --key=tls.key -n tls-lab`으로 TLS Secret을 만든다.
@@ -1080,7 +1080,7 @@ echo "$(cat kubectl.sha512)  /usr/bin/kubectl" | sha512sum --check
 
 ```bash
 # dev 클러스터 접속 (Cilium CNI + Istio mTLS 환경)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 클러스터 및 네임스페이스 확인
 kubectl get nodes

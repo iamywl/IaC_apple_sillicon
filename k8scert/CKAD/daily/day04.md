@@ -721,12 +721,12 @@ kubectl logs <failed-pod-name>
 
 **전제 조건**: 아래 실습을 시작하기 전에 다음을 확인한다.
 - dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 `./scripts/fix-cluster-ip-drift.sh dev`).
-- kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+- kubeconfig 경로: `kubeconfig/dev.yaml`
 - 노드 SSH: `ssh dev-master`(별칭, `~/.ssh/config` ProxyCommand 방식)
 - 실습 1~2는 `demo` 네임스페이스에 PostgreSQL·Redis·RabbitMQ 서비스가 있어야 한다. 실습 전 먼저 확인한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 # 클러스터 정상 여부 확인
 kubectl get nodes
 # demo 네임스페이스 서비스 확인

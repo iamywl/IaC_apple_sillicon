@@ -313,11 +313,11 @@ _그림 3. 컨테이너 워크로드 전용 최소 OS 세 가지._
 
 #### 현재 dev 클러스터에서의 대체 실습
 
-> **전제**: dev 클러스터가 실행 중이어야 한다. kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`. SSH: `ssh staging-master` (또는 `ssh dev-master`).
+> **전제**: dev 클러스터가 실행 중이어야 한다. kubeconfig 경로: `kubeconfig/dev.yaml`. SSH: `ssh staging-master` (또는 `ssh dev-master`).
 
 ```bash
 # 실습 환경
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 1. 현재 노드 OS 확인 (컨테이너 최적화 OS vs 일반 OS 비교 기준)
 ssh dev-master 'cat /etc/os-release | grep -E "(NAME|VERSION)"'
@@ -419,7 +419,7 @@ sudo systemctl status kubelet
 
 #### 현재 클러스터 kubelet 설정 확인 실습
 
-> **전제**: `ssh staging-master` 또는 `ssh dev-master` 접속 가능. kubeconfig: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`.
+> **전제**: `ssh staging-master` 또는 `ssh dev-master` 접속 가능. kubeconfig: `kubeconfig/dev.yaml`.
 
 ```bash
 # kubelet 설정 파일 확인 (kind: KubeletConfiguration 형식)
@@ -1005,7 +1005,7 @@ D) Trivy=런타임, Falco=빌드 타임
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

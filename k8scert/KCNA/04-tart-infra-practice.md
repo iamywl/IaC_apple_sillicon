@@ -122,7 +122,7 @@ KCNA 시험은 총 60문항, 90분으로 구성된다. 합격 기준은 75%(45/6
 
 > **실습 전 필수 확인 사항**
 > - tart-infra 클러스터 4개(platform, dev, staging, prod)가 모두 가동 중이어야 한다. `./scripts/boot.sh` 로 기동하고 재부팅 후에는 `./scripts/fix-cluster-ip-drift.sh` 를 실행한다.
-> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/` (예: `kubeconfig/dev.yaml`)
+> - kubeconfig 경로: `kubeconfig/` (예: `kubeconfig/dev.yaml`)
 > - 노드 SSH 접속은 `ssh dev-master` 또는 `ssh staging-master` 형식의 VM 이름 별칭을 사용한다(비밀번호 없음, `~/.ssh/config` 관리 블록).
 > - demo 네임스페이스의 선행 리소스가 없으면 실습 전에 `kubectl --context=dev get all -n demo` 로 확인하고, 리소스가 없다면 tart-infra의 데모 앱 매니페스트를 먼저 배포한다.
 > - CKS 보안 파괴 실습이 포함된 경우 dev 또는 staging 클러스터에서만 수행한다. platform/prod는 건드리지 않는다.

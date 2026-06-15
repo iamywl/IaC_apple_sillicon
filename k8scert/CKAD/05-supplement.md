@@ -3386,7 +3386,7 @@ AND 조건의 경우:
 > 실제 CKAD 시험과 유사한 환경을 가정한다. 각 문제는 특정 context를 사용하며, 풀이는 step-by-step으로 제공한다. 모든 풀이에 검증 명령어와 기대 출력이 포함되어 있다.
 > 각 문제에 등장 배경, 내부 동작 원리, 트러블슈팅 시나리오를 추가하였다.
 
-**로컬 실습 시 context 매핑:** 이 문서의 Q1~Q20은 실제 시험의 멀티 context 환경을 시뮬레이션한다. 시험에서는 각 문제마다 `kubectl config use-context k8s-ckad-q1` 형태로 클러스터를 전환한다. 로컬 tart 클러스터에서는 이 context가 존재하지 않으므로, `kubectl config use-context dev` 또는 `kubectl config use-context staging`으로 대체하여 실습한다. 실습 전 `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`으로 kubeconfig를 설정한다. Part 3(확인 문제)에서 기본 동작을 이미 학습하였으므로, Part 4는 시험 직전 시간 제약을 의식한 속도 연습용으로 활용한다.
+**로컬 실습 시 context 매핑:** 이 문서의 Q1~Q20은 실제 시험의 멀티 context 환경을 시뮬레이션한다. 시험에서는 각 문제마다 `kubectl config use-context k8s-ckad-q1` 형태로 클러스터를 전환한다. 로컬 tart 클러스터에서는 이 context가 존재하지 않으므로, `kubectl config use-context dev` 또는 `kubectl config use-context staging`으로 대체하여 실습한다. 실습 전 `export KUBECONFIG=kubeconfig/dev.yaml`으로 kubeconfig를 설정한다. Part 3(확인 문제)에서 기본 동작을 이미 학습하였으므로, Part 4는 시험 직전 시간 제약을 의식한 속도 연습용으로 활용한다.
 
 ---
 

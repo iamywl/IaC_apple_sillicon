@@ -380,7 +380,7 @@ crictl info | grep -A3 '"runsc"'
 
 ```bash
 # 2. RuntimeClass 생성 및 Pod apply
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl apply -f sandboxed-pod.yaml
 ```
 
@@ -655,7 +655,7 @@ hexdump 출력 해석 기준은 다음과 같다. etcd에 저장된 Secret의 �
 
 ```bash
 # staging 클러스터 마스터 노드에 SSH 접속하여 etcdctl 실행
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml
+export KUBECONFIG=kubeconfig/staging.yaml
 
 # 테스트 Secret 생성
 kubectl create secret generic test-encryption --from-literal=password=mysecretpassword
@@ -750,7 +750,7 @@ spec:
 **검증:**
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 네임스페이스 PSA 라벨 확인
 kubectl get ns high-security --show-labels | grep pod-security
@@ -871,7 +871,7 @@ kubectl get validatingwebhookconfiguration | grep gatekeeper
 
 ```bash
 # dev 클러스터에 접속 (Istio mTLS, SecurityContext가 적용된 환경)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -907,7 +907,7 @@ kubectl get peerauthentication -n demo -o yaml 2>/dev/null
 
 ```bash
 # 선행 확인: demo 네임스페이스의 Pod과 사이드카 주입 여부
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get pods -n demo
 # READY 컬럼이 2/2 이면 istio-proxy 사이드카가 주입된 상태다
 ```

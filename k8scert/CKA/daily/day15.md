@@ -264,7 +264,7 @@ PVC가 PV에 바인딩되려면 다음 4가지 조건을 모두 만족해야 한
 
 ### 3.4 바인딩 문제 진단 (트러블슈팅)
 
-**실습 전제:** dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh dev`). 명령은 `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 로 dev 를 가리킨 상태를 가정한다. 아래 절차는 ⓐ 매칭되는 PV 가 없거나 storageClassName 이 어긋난 PVC 를 일부러 만들어 Pending 으로 두고 진단한 뒤, ⓑ 조건을 맞춘 PV 를 만들어 Bound 로 전환하는 흐름이다. 각 이미지는 이 절차를 dev 클러스터에서 실제로 실행한 터미널 화면이며, 학생이 자기 환경에서 같은 명령을 쳤을 때 나와야 하는 참고 화면이다(컬럼·STATUS·이벤트 문구가 일치해야 정상).
+**실습 전제:** dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh dev`). 명령은 `export KUBECONFIG=kubeconfig/dev.yaml` 로 dev 를 가리킨 상태를 가정한다. 아래 절차는 ⓐ 매칭되는 PV 가 없거나 storageClassName 이 어긋난 PVC 를 일부러 만들어 Pending 으로 두고 진단한 뒤, ⓑ 조건을 맞춘 PV 를 만들어 Bound 로 전환하는 흐름이다. 각 이미지는 이 절차를 dev 클러스터에서 실제로 실행한 터미널 화면이며, 학생이 자기 환경에서 같은 명령을 쳤을 때 나와야 하는 참고 화면이다(컬럼·STATUS·이벤트 문구가 일치해야 정상).
 
 ```bash
 # PVC가 Pending인 원인 찾기
@@ -1124,7 +1124,7 @@ spec:
 ```bash
 # dev 클러스터 접속
 # 저장소를 둔 위치에 맞춰 경로를 조정한다 (예: $(git rev-parse --show-toplevel)/kubeconfig/dev.yaml)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config use-context dev
 
 # CKA 실기 필수 단축 설정 (시험장에서도 동일하게 적용한다)

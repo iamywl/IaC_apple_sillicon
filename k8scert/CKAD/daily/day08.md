@@ -232,7 +232,7 @@ kubectl rollout history deployment/app-deploy --revision=2
 ## 3. 실전 시험 문제 (12문제)
 
 > **실습 전제 조건 (문제 1~5, 11 공통)**
-> - 클러스터가 가동 중이어야 한다. 가동 확인: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes`
+> - 클러스터가 가동 중이어야 한다. 가동 확인: `kubectl --kubeconfig kubeconfig/dev.yaml get nodes`
 > - Helm bitnami 리포지토리를 미리 등록한다:
 >   ```bash
 >   helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -240,7 +240,7 @@ kubectl rollout history deployment/app-deploy --revision=2
 >   ```
 > - 문제 1~5는 순서대로 실행해야 한다. 각 문제는 이전 문제의 결과를 전제로 한다.
 > - 로컬에 `./mychart` 디렉터리를 직접 만들 필요 없다. 공식 bitnami/nginx Chart를 원격 리포지토리에서 바로 받아 쓴다.
-> - 노드 SSH 접근이 필요하면 `ssh dev-master` 별칭을 쓴다(kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`).
+> - 노드 SSH 접근이 필요하면 `ssh dev-master` 별칭을 쓴다(kubeconfig 경로: `kubeconfig/dev.yaml`).
 
 ### 문제 1. Helm 설치 및 값 오버라이드
 
@@ -882,7 +882,7 @@ helm install myapp ./mychart -n production
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -905,13 +905,13 @@ helm list -A
 > **전제 조건**: `demo` 네임스페이스에 `nginx-web` Deployment가 없으면 먼저 생성한다. 이 리소스는 이전 day에서 생성했을 수 있으나, 없으면 아래 명령으로 초기화한다.
 >
 > ```bash
-> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+> kubectl --kubeconfig kubeconfig/dev.yaml \
 >   create namespace demo --dry-run=client -o yaml | \
->   kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml apply -f -
-> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+>   kubectl --kubeconfig kubeconfig/dev.yaml apply -f -
+> kubectl --kubeconfig kubeconfig/dev.yaml \
 >   create deployment nginx-web --image=nginx:1.24 --replicas=2 -n demo
 > # 이미지 업데이트 1회로 revision 2 생성 (rollout history 확인을 위해)
-> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+> kubectl --kubeconfig kubeconfig/dev.yaml \
 >   set image deployment/nginx-web nginx=nginx:1.25 -n demo
 > ```
 

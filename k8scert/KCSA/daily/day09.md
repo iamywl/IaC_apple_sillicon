@@ -582,8 +582,8 @@ Compliance:
 ### 실습 환경 설정
 
 ```bash
-alias kp='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml'
-alias kd='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml'
+alias kp='export KUBECONFIG=kubeconfig/platform.yaml'
+alias kd='export KUBECONFIG=kubeconfig/dev.yaml'
 ```
 
 ### 실습 1: Audit Logging 확인
@@ -648,7 +648,7 @@ kubectl get pod kube-apiserver-dev-master -n kube-system -o yaml | grep encrypti
 모든 실습은 다음 환경을 전제로 한다.
 
 - 클러스터 가동 상태: `./scripts/boot.sh && ./scripts/fix-cluster-ip-drift.sh dev` 실행 완료, 전 노드 Ready
-- kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` (dev 클러스터) 또는 `platform.yaml`
+- kubeconfig 경로: `kubeconfig/dev.yaml` (dev 클러스터) 또는 `platform.yaml`
 - 노드 SSH 접속: `ssh dev-master`(SSH 별칭, `~/.ssh/config` 관리 블록 기준)
 - dev/staging 클러스터에서만 파괴 실습을 진행한다. platform/prod는 읽기 위주.
 
@@ -700,10 +700,10 @@ sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
 
 ```bash
 # Secret 생성 및 get
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   create secret generic test-audit --from-literal=password=supersecret -n default
 
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get secret test-audit -n default
 
 # 로그에서 secret 접근 항목 확인 (requestObject/responseObject 필드가 없어야 함)
@@ -716,7 +716,7 @@ sudo grep "test-audit" /var/log/kubernetes/audit.log | python3 -m json.tool | gr
 
 ```bash
 sudo cp /etc/kubernetes/kube-apiserver.yaml.bak /etc/kubernetes/manifests/kube-apiserver.yaml
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   delete secret test-audit -n default
 ```
 

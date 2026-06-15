@@ -738,7 +738,7 @@ D) 서비스 메시 도구이다
 
 **실습 전제 조건:**
 - tart 클러스터 4개(platform, dev, staging, prod)가 가동 중이어야 한다. `./scripts/boot.sh`로 기동 후 `./scripts/fix-cluster-ip-drift.sh platform`과 `./scripts/fix-cluster-ip-drift.sh dev`를 실행하여 IP 드리프트를 복구한다.
-- kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/` (platform.yaml, dev.yaml)
+- kubeconfig 경로: `kubeconfig/` (platform.yaml, dev.yaml)
 - 노드 SSH 접속 별칭: `ssh platform-master`, `ssh dev-master` (비밀번호 없이 접속 가능, `~/.ssh/config` 관리 블록 등록 상태)
 - 실습 1·2는 platform/dev 클러스터를 **읽기 전용**으로 사용한다. 배포 변경 실습은 dev에서만 수행한다.
 
@@ -746,7 +746,7 @@ D) 서비스 메시 도구이다
 
 ```bash
 # platform 클러스터 접속 (ArgoCD, Jenkins 확인용)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # 클러스터 상태 확인
 kubectl get nodes
@@ -783,7 +783,7 @@ kubectl get applications -n argocd -o custom-columns=NAME:.metadata.name,SYNC:.s
 
 ```bash
 # dev 클러스터로 전환
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 설치된 Helm Release 목록 확인
 helm list -A
@@ -805,7 +805,7 @@ helm get values cilium -n kube-system
 
 ```bash
 # platform 클러스터의 Jenkins 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get pods -n jenkins
 
 # Jenkins 웹 UI: http://localhost:30900
@@ -813,7 +813,7 @@ kubectl get pods -n jenkins
 # CI(Jenkins: 빌드/테스트) → CD(ArgoCD: 배포) 파이프라인 구조 확인
 
 # dev 클러스터 데모 스택(nginx-web)의 배포 전략 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get deployment nginx-web -n demo -o jsonpath='{.spec.strategy}' | python3 -m json.tool
 
 # 예상 출력:
@@ -846,7 +846,7 @@ dev 클러스터의 `demo` 네임스페이스에 `nginx` Deployment를 생성하
 <details><summary>정답 명령</summary>
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 kubectl create deployment nginx --image=nginx:1.25 --replicas=4 -n demo --dry-run=client -o yaml > /tmp/nginx-deploy.yaml
 ```
@@ -887,7 +887,7 @@ Sync 상태를 `kubectl get applications -n argocd` 로 확인하라.
 <details><summary>정답 명령</summary>
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 ```
 
 아래 내용으로 `/tmp/test-app.yaml` 파일을 생성한다:

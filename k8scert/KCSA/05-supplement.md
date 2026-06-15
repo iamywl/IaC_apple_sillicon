@@ -979,8 +979,8 @@ chmod +x audit-rbac.sh && ./audit-rbac.sh
 
 > **실습 전제 조건**
 > - 클러스터 가동: `./scripts/boot.sh && ./scripts/fix-cluster-ip-drift.sh dev`
-> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` (또는 `staging.yaml`)
-> - 환경 변수 설정: `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> - kubeconfig 경로: `kubeconfig/dev.yaml` (또는 `staging.yaml`)
+> - 환경 변수 설정: `export KUBECONFIG=kubeconfig/dev.yaml`
 > - 노드 SSH 접근: `ssh dev-master`, `ssh staging-master` (전용 키 배포 완료 전제)
 > - OPA Gatekeeper 실습은 `kubectl apply -f manifests/gatekeeper/` 로 사전 배포
 > - Kyverno 실습은 `helm install kyverno kyverno/kyverno -n kyverno --create-namespace` 로 사전 배포

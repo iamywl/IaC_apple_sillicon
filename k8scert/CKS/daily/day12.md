@@ -600,7 +600,7 @@ cat /etc/kubernetes/audit-policy.yaml | grep -A3 secrets
 
 ```bash
 # platform 클러스터에 접속 (모니터링 스택이 설치된 클러스터)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get nodes
 ```
 
@@ -638,7 +638,7 @@ kubectl get prometheusrules -n monitoring 2>/dev/null || kubectl get prometheusr
 
 ```bash
 # dev 클러스터에서 이상 행위 시뮬레이션
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 사전 준비: demo 네임스페이스와 nginx-web Deployment가 없으면 먼저 생성한다
 kubectl get namespace demo 2>/dev/null || kubectl create namespace demo

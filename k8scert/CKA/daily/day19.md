@@ -1087,7 +1087,7 @@ kubectl get pod broken-app -n demo
 
 ```bash
 # 모의시험과 동일하게 4개 클러스터 kubeconfig 로드
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml:~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml
+export KUBECONFIG=kubeconfig/platform.yaml:kubeconfig/dev.yaml:kubeconfig/staging.yaml:kubeconfig/prod.yaml
 
 # 시험용 alias 설정
 alias k=kubectl
@@ -1116,7 +1116,7 @@ time (
 
 ```bash
 for c in platform dev staging prod; do
-  echo "$c: $(kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/${c}.yaml get nodes --no-headers | wc -l) nodes"
+  echo "$c: $(kubectl --kubeconfig kubeconfig/${c}.yaml get nodes --no-headers | wc -l) nodes"
 done
 ```
 
@@ -1125,7 +1125,7 @@ done
 ```bash
 # 각 kubeconfig 의 컨텍스트를 클러스터명으로 rename
 for c in platform dev staging prod; do
-  kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/${c}.yaml \
+  kubectl --kubeconfig kubeconfig/${c}.yaml \
     config rename-context kubernetes-admin@kubernetes $c 2>/dev/null || true
 done
 

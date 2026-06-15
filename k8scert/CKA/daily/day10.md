@@ -1025,11 +1025,11 @@ A. `Never` 는 컨테이너가 실패(비정상 종료)해도 같은 Pod 를 재
 
 ### 실습 환경 설정
 
-**전제:** 이 저장소의 tart dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 로 기동, 재부팅 후라면 `./scripts/fix-cluster-ip-drift.sh dev` 로 IP 드리프트 복구). kubeconfig 는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 에 가동 시 자동 생성된다(gitignore 대상이라 직접 만들지 않는다). 아래 실습은 노드 2 개(master + worker1) 구성을 가정하며, 클러스터 네트워킹은 kube-proxy 대신 Cilium 이 담당한다.
+**전제:** 이 저장소의 tart dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 로 기동, 재부팅 후라면 `./scripts/fix-cluster-ip-drift.sh dev` 로 IP 드리프트 복구). kubeconfig 는 `kubeconfig/dev.yaml` 에 가동 시 자동 생성된다(gitignore 대상이라 직접 만들지 않는다). 아래 실습은 노드 2 개(master + worker1) 구성을 가정하며, 클러스터 네트워킹은 kube-proxy 대신 Cilium 이 담당한다.
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

@@ -11,7 +11,7 @@ CKS 실습은 노드의 API server 매니페스트·kubelet 설정·AppArmor/sec
 실습 시작 전 다음을 확인한다.
 
 - **클러스터 가동·정상화**: `./scripts/boot.sh` 로 VM 을 기동하고, 재부팅 후라면 `./scripts/fix-cluster-ip-drift.sh staging` 으로 IP 드리프트를 복구한다. `kubectl --kubeconfig kubeconfig/staging.yaml get nodes` 가 전부 `Ready` 인지 확인한다.
-- **kubeconfig 경로**: kubeconfig 는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml` 에 클러스터 가동 시 생성된다(gitignore). 이 문서의 명령에 나오는 `kubectl config use-context cluster1` 은 실제 CKS 시험 환경의 컨텍스트 전환 흉내이다. 이 저장소에서는 `--kubeconfig kubeconfig/staging.yaml` 또는 `export KUBECONFIG=kubeconfig/staging.yaml` 로 대체해 실행한다. 모든 명령에 대상 클러스터와 `-n <namespace>` 를 항상 명시한다.
+- **kubeconfig 경로**: kubeconfig 는 `kubeconfig/<클러스터>.yaml` 에 클러스터 가동 시 생성된다(gitignore). 이 문서의 명령에 나오는 `kubectl config use-context cluster1` 은 실제 CKS 시험 환경의 컨텍스트 전환 흉내이다. 이 저장소에서는 `--kubeconfig kubeconfig/staging.yaml` 또는 `export KUBECONFIG=kubeconfig/staging.yaml` 로 대체해 실행한다. 모든 명령에 대상 클러스터와 `-n <namespace>` 를 항상 명시한다.
 - **노드 SSH 접근**: 노드 직접 조작 문제(매니페스트 수정·kubelet·AppArmor·seccomp·Falco)는 SSH 로 노드에 들어가야 한다. 전용 키가 배포돼 있어 `ssh staging-master`, `ssh staging-worker1` 처럼 **VM 이름 별칭으로 비밀번호 없이** 접속된다. 키·config 갱신은 `./scripts/setup-ssh-keys.sh staging`. 문제 본문의 `ssh node01` 은 CKS 시험의 워커 노드 이름이며, 이 저장소에서는 `ssh staging-worker1` 로 읽는다.
 - **선행 리소스**: 각 문제는 대상 네임스페이스·Pod·Deployment 가 미리 존재한다고 가정한다. 없으면 `kubectl create namespace <ns>`, `kubectl run`/`kubectl create deployment` 로 먼저 만들고 실습한다. 풀이 머리의 매니페스트가 곧 선행 리소스 생성 명령이다.
 

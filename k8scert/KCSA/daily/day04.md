@@ -156,7 +156,7 @@ kube-bench가 `[FAIL] 1.2.6 Ensure that the --profiling argument is set to false
 ssh staging-master
 grep profiling /etc/kubernetes/manifests/kube-apiserver.yaml
 # 또는 kubectl로 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml \
+kubectl --kubeconfig kubeconfig/staging.yaml \
   get pod kube-apiserver-staging-master -n kube-system -o yaml | grep profiling
 ```
 
@@ -304,7 +304,7 @@ spec:
 
 ```bash
 # dev 클러스터에서 현재 API Server 플래그 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get pod kube-apiserver-dev-master -n kube-system -o yaml | grep -A5 command
 ```
 
@@ -368,7 +368,7 @@ rules:
 
 ```bash
 # dry-run으로 YAML 유효성 먼저 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   apply --dry-run=server -f audit-policy.yaml
 ```
 
@@ -398,9 +398,9 @@ spec:
 **검증 명령 (예제 3 적용 시):**
 
 ```bash
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   apply -f resource-quota.yaml -n production
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get quota -n production
 ```
 
@@ -436,7 +436,7 @@ spec:
 **검증 명령 (예제 4 적용 시):**
 
 ```bash
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get quota,limitrange -n production
 ```
 
@@ -880,7 +880,7 @@ D) Metadata 레벨이 가장 상세한 레벨이라서
 > **실습 전제 조건**
 >
 > - dev 또는 staging 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 실행 후 `./scripts/fix-cluster-ip-drift.sh dev` 로 IP 드리프트 복구 완료 상태).
-> - kubeconfig 위치: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> - kubeconfig 위치: `kubeconfig/dev.yaml`
 > - 노드 SSH 별칭: `ssh dev-master` (비밀번호 없이 접속 가능, `~/.ssh/config` ProxyCommand 방식)
 > - 네임스페이스 `cap-kcsa-d04`가 없으면 `kubectl --kubeconfig .../kubeconfig/dev.yaml create namespace cap-kcsa-d04`로 먼저 생성한다.
 > - CIS Benchmark 파괴 실습은 **dev/staging에서만** 수행한다(platform/prod 금지, CLAUDE.md §3).
@@ -946,12 +946,12 @@ grep -- '--profiling' /etc/kubernetes/manifests/kube-apiserver.yaml
 
 # 3단계: kubelet이 변경을 감지해 자동 재기동 대기 (약 30~60초)
 # 로컬 터미널로 돌아와 실행
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   wait pod kube-apiserver-dev-master -n kube-system \
   --for=condition=Ready --timeout=120s
 
 # 4단계: PASS 전환 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   get pod kube-apiserver-dev-master -n kube-system -o yaml | grep profiling
 ```
 
@@ -964,15 +964,15 @@ FAIL → PASS 전환 여부를 kube-bench 자체로 검증하려면 섹션 1.2�
 ```bash
 # kube-bench-job.yaml 파일이 없는 경우 섹션 1.2의 YAML을 먼저 저장한다
 # (이미 파일이 있으면 이 단계 생략)
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   apply -f kube-bench-job.yaml
 
 # Job 완료 대기 (최대 120초)
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   wait --for=condition=complete job/kube-bench -n kube-system --timeout=120s
 
 # 결과 로그 확인 — 1.2.6 항목이 [PASS]로 바뀌었는지 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   logs job/kube-bench -n kube-system | grep -E "(PASS|FAIL|1\.2\.6)"
 ```
 
@@ -1020,7 +1020,7 @@ KCSA는 60문제 90분 이론 시험이다. 개념을 빠르게 적용하는 속
 ```bash
 # 타이머 시작 (5분)
 # 1단계: kube-bench Job 실행 (이미 실습 1b에서 실행했다면 로그 재확인으로 대체)
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   logs job/kube-bench -n kube-system | grep '\[FAIL\]' | head -5
 
 # 2단계: FAIL 항목 3개 선택 후 각각 kube-apiserver.yaml에서 수정

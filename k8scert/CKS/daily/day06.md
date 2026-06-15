@@ -16,7 +16,7 @@ Day 05에서 AppArmor 프로파일의 기초(프로파일 작성 문법, enforce
 
 ```bash
 # 1. kubeconfig 지정 (dev 클러스터 기준)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes   # 노드가 Ready 인지 확인
 
 # 2. 노드 SSH 접근 — VM 이름 별칭으로 비밀번호 없이 접속된다
@@ -1223,7 +1223,7 @@ securityContext:
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

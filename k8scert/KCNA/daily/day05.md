@@ -541,7 +541,7 @@ K8s v1.24부터 dockershim이 제거되어 Docker를 직접 런타임으로 사�
 
 ```bash
 # dev 클러스터 접속 (컨테이너 런타임 및 리소스 제한 확인용)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 노드 정보 확인
 kubectl get nodes -o wide
@@ -577,7 +577,7 @@ kubectl get node -o jsonpath='{.items[0].status.nodeInfo.containerRuntimeVersion
 
 ```bash
 # dev 클러스터 kubeconfig 설정
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # demo 네임스페이스 생성(이미 있으면 건너뜀) 및 리소스 제한이 설정된 Pod 2개 배포
 kubectl get ns demo >/dev/null 2>&1 || kubectl create namespace demo

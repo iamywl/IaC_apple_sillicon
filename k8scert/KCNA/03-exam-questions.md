@@ -1213,7 +1213,7 @@ docker run my-image ls             # "ls" 출력 (echo ls가 실행됨, ls 명�
 kubectl get pod <pod-name> -o jsonpath='{.spec.containers[0].command}'  # ENTRYPOINT에 해당
 kubectl get pod <pod-name> -o jsonpath='{.spec.containers[0].args}'     # CMD에 해당
 ```
-> **실습 환경 주의 — 이 저장소는 로컬 Docker Engine이 없다:** 위 `docker run my-image ...` 줄은 Docker가 설치된 워크스테이션에서의 기대 동작을 보여주는 예시이며, 이 저장소의 tart K8s 클러스터에는 로컬 Docker Engine이 없어 그대로 재현할 수 없다. 동일한 ENTRYPOINT/CMD 오버라이드 동작은 Kubernetes에서 직접 실증할 수 있다 — 아래 명령은 `command`(=ENTRYPOINT)와 `args`(=CMD)를 모두 지정해 Pod를 띄운다(`--kubeconfig`는 ~/sideproejct/IaC_apple_sillicon/kubeconfig/ 기준).
+> **실습 환경 주의 — 이 저장소는 로컬 Docker Engine이 없다:** 위 `docker run my-image ...` 줄은 Docker가 설치된 워크스테이션에서의 기대 동작을 보여주는 예시이며, 이 저장소의 tart K8s 클러스터에는 로컬 Docker Engine이 없어 그대로 재현할 수 없다. 동일한 ENTRYPOINT/CMD 오버라이드 동작은 Kubernetes에서 직접 실증할 수 있다 — 아래 명령은 `command`(=ENTRYPOINT)와 `args`(=CMD)를 모두 지정해 Pod를 띄운다(`--kubeconfig`는 kubeconfig/ 기준).
 ```bash
 # command(ENTRYPOINT)+args(CMD) 오버라이드를 실제 K8s에서 실증
 kubectl --kubeconfig kubeconfig/dev.yaml run cmdtest \

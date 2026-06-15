@@ -623,7 +623,7 @@ kubectl get pods -l app=web -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}
 ```bash
 # 전제: 클러스터 가동 + IP 드리프트 복구 완료
 #   ./scripts/boot.sh && ./scripts/fix-cluster-ip-drift.sh dev
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 시나리오 공통 네임스페이스 생성
 kubectl create namespace demo
@@ -958,7 +958,7 @@ spec:
 ```bash
 alias k=kubectl
 export do='--dry-run=client -o yaml'
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace lab17 2>/dev/null || true
 
 # 문제 1 재현을 위한 CrashLoopBackOff Pod 생성
@@ -1088,11 +1088,11 @@ kubectl delete namespace lab17
 
 ### 실습 환경 설정
 
-**전제:** dev 클러스터가 가동 중이고(`./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트까지 복구됨), kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`에 있다. 아래 실습은 `demo` 네임스페이스에 nginx 등의 워크로드가 있다고 가정하므로, fresh 클러스터라면 진단 대상부터 만들어야 한다(없으면 명령은 빈 결과를 낸다).
+**전제:** dev 클러스터가 가동 중이고(`./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh dev`로 IP 드리프트까지 복구됨), kubeconfig는 `kubeconfig/dev.yaml`에 있다. 아래 실습은 `demo` 네임스페이스에 nginx 등의 워크로드가 있다고 가정하므로, fresh 클러스터라면 진단 대상부터 만들어야 한다(없으면 명령은 빈 결과를 낸다).
 
 ```bash
 # dev 클러스터 접속 (실제 워크로드가 실행 중인 환경에서 트러블슈팅)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config use-context dev
 ```
 
@@ -1152,7 +1152,7 @@ kubectl exec -n demo -it $(kubectl get pod -n demo -l app=nginx -o name | head -
 ### 실습 3: platform 클러스터 Control Plane 건강 확인
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # Control Plane 컴포넌트 상태 확인
 kubectl get componentstatuses 2>/dev/null || echo "componentstatuses deprecated, checking pods..."

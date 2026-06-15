@@ -21,7 +21,7 @@
 
 ```bash
 # 1) 대상 클러스터에 접속 (kubeconfig 경로는 가동 시 자동 생성됨)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml
+export KUBECONFIG=kubeconfig/staging.yaml
 kubectl get nodes              # 노드 이름 확인 (staging-master, staging-worker1 ...)
 
 # 2) 실제 내부 IP 가 필요할 때 — INTERNAL-IP 컬럼에서 읽는다
@@ -597,7 +597,7 @@ spec:
 
 ```bash
 # platform 클러스터에 접속 (etcd가 실행 중인 클러스터)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl get nodes
 ```
 

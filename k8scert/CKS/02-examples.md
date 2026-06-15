@@ -656,7 +656,7 @@ profile k8s-restrict-network flags=(attach_disconnected,mediate_deleted) {
 
 ### 3.2 프로파일 로드 및 확인
 
-> **실습 전제:** AppArmor 프로파일은 Pod 가 아니라 **노드의 커널**에 로드되므로, kubectl 이 아니라 노드에 SSH 로 직접 들어가 작업한다. 본 저장소에서는 파괴 실습이 허용된 staging/dev 에서만 수행한다(platform/prod 금지). 전제 조건은 다음과 같다. (1) 대상 클러스터가 가동 중이고 `./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh staging` 으로 정상화되어 있다. (2) `~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml` 로 노드가 모두 Ready 다. (3) 아래 `apparmor_parser`·`aa-status`·`dmesg` 명령은 `ssh staging-master`(또는 `ssh staging-worker1`)로 노드 셸에 접속한 뒤 실행한다. (4) §3.1 의 프로파일 파일(`/etc/apparmor.d/k8s-deny-write` 등)을 해당 노드에 먼저 생성해 두어야 한다. 멀티노드 클러스터에서는 Pod 가 스케줄링될 수 있는 **모든 노드**에 프로파일을 로드해야 한다.
+> **실습 전제:** AppArmor 프로파일은 Pod 가 아니라 **노드의 커널**에 로드되므로, kubectl 이 아니라 노드에 SSH 로 직접 들어가 작업한다. 본 저장소에서는 파괴 실습이 허용된 staging/dev 에서만 수행한다(platform/prod 금지). 전제 조건은 다음과 같다. (1) 대상 클러스터가 가동 중이고 `./scripts/boot.sh` + `./scripts/fix-cluster-ip-drift.sh staging` 으로 정상화되어 있다. (2) `kubeconfig/staging.yaml` 로 노드가 모두 Ready 다. (3) 아래 `apparmor_parser`·`aa-status`·`dmesg` 명령은 `ssh staging-master`(또는 `ssh staging-worker1`)로 노드 셸에 접속한 뒤 실행한다. (4) §3.1 의 프로파일 파일(`/etc/apparmor.d/k8s-deny-write` 등)을 해당 노드에 먼저 생성해 두어야 한다. 멀티노드 클러스터에서는 Pod 가 스케줄링될 수 있는 **모든 노드**에 프로파일을 로드해야 한다.
 
 ```bash
 # (노드에서) 프로파일을 enforce 모드로 로드

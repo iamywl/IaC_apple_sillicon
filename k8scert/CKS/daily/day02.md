@@ -1231,7 +1231,7 @@ TCP 통신은 요청(클라이언트→서버)과 응답(서버→클라이언�
 
 ```bash
 # dev 클러스터에 접속 (CiliumNetworkPolicy + Zero Trust 적용된 환경)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

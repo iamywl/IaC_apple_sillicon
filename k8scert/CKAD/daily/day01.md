@@ -412,7 +412,7 @@ kubectl describe pod <pod-name> | grep -A5 "Events:"
 ./scripts/fix-cluster-ip-drift.sh dev
 
 # 2. kubeconfig 지정 (이 저장소 기준 경로. 본인 환경이면 자신의 경로로 교체)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes   # 전 노드 Ready 확인
 
 # 3. demo 네임스페이스가 없으면 생성하고 nginx 배포
@@ -426,7 +426,7 @@ kubectl expose deployment nginx --type=NodePort --port=80 -n demo
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

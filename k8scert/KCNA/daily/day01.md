@@ -1004,7 +1004,7 @@ Linux Kernel
 > **이론 검증 실습(1~3)**: kubeadm, minikube, kind 등 어떤 K8s 클러스터에서든 실행 가능하다.
 >
 > **[\[심화\] tart 특화 실습(4번 이후)**: 이 저장소의 tart 멀티클러스터 환경 사용자만 진행한다.
-> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터명>.yaml`
+> - kubeconfig 경로: `kubeconfig/<클러스터명>.yaml`
 > - SSH 노드 접속: `ssh platform-master`, `ssh dev-master`, `ssh staging-master` (별칭 방식)
 > - 클러스터 기동: `./scripts/boot.sh` 실행 후 `./scripts/fix-cluster-ip-drift.sh [클러스터]`로 IP 드리프트 복구
 > - platform 클러스터는 읽기 전용으로만 사용. 파괴 실습은 dev/staging에서만 진행.
@@ -1015,7 +1015,7 @@ Linux Kernel
 
 ```bash
 # 자신의 클러스터 kubeconfig를 설정한다
-# tart 환경: export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+# tart 환경: export KUBECONFIG=kubeconfig/platform.yaml
 # minikube: export KUBECONFIG=~/.kube/config  (기본값)
 # kind: export KUBECONFIG=~/.kube/config
 
@@ -1103,7 +1103,7 @@ kubectl get pods --all-namespaces --show-labels | head -20
 
 ```bash
 # dev 클러스터로 전환하여 멀티 클러스터 환경 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # API Server 엔드포인트 확인
 kubectl cluster-info

@@ -1729,10 +1729,10 @@ Day 13-14: 종합 모의시험 (100%)
 
 ```bash
 # CKS 모의시험은 4개 클러스터를 모두 사용한다
-alias kp='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml'
-alias kd='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml'
-alias ks='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml'
-alias kpr='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/prod.yaml'
+alias kp='export KUBECONFIG=kubeconfig/platform.yaml'
+alias kd='export KUBECONFIG=kubeconfig/dev.yaml'
+alias ks='export KUBECONFIG=kubeconfig/staging.yaml'
+alias kpr='export KUBECONFIG=kubeconfig/prod.yaml'
 ```
 
 ### 실습 1: 전 도메인 보안 종합 점검

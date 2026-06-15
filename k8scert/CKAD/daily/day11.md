@@ -668,7 +668,7 @@ spec:
 
 ```bash
 # 1단계 — 구 매니페스트 작성
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 cat > /tmp/lab-old-ingress.yaml << 'EOF'
 apiVersion: extensions/v1beta1
@@ -792,7 +792,7 @@ kubectl apply -f hpa.yaml
 | 항목 | 값 |
 |:--|:--|
 | 클러스터 | dev (파괴 실습 허용 클러스터) |
-| kubeconfig 경로 | `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` |
+| kubeconfig 경로 | `kubeconfig/dev.yaml` |
 | 노드 SSH 별칭 | `ssh dev-master`, `ssh dev-worker1` |
 | 클러스터 기동 확인 | `./scripts/boot.sh` → `./scripts/fix-cluster-ip-drift.sh dev` |
 
@@ -803,7 +803,7 @@ kubectl apply -f hpa.yaml
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl version --short 2>/dev/null || kubectl version
 ```
 
@@ -906,7 +906,7 @@ kubectl convert -f /tmp/old-ingress.yaml \
 grep apiVersion /tmp/old-ingress.yaml /tmp/new-ingress-converted.yaml
 
 # 6단계 — dev 클러스터에서 변환된 매니페스트 dry-run 검증
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   apply -f /tmp/new-ingress-converted.yaml --dry-run=server
 ```
 

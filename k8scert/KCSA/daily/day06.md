@@ -566,17 +566,17 @@ helm repo add kyverno https://kyverno.github.io/kyverno/
 helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno --create-namespace \
-  --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  --kubeconfig kubeconfig/dev.yaml \
   --version 3.2.6
 
 # ② Kyverno 파드가 Running 상태인지 확인
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   -n kyverno get pods
 ```
 
 ```bash
 # ③ disallow-latest-tag ClusterPolicy 적용
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   apply -f - <<'EOF'
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -603,16 +603,16 @@ EOF
 ```bash
 # ④ latest 태그 Pod 생성 → 거부 확인
 # 정상이면 "Error from server: admission webhook ... denied the request" 메시지가 출력된다.
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   run bad-pod --image=nginx:latest -n cap-kcsa-day06 || echo "거부 확인 완료 (미캡처)"
 
 # ⑤ 구체적 태그 Pod 생성 → 허용 확인
 # 정상이면 "pod/ok-pod created" 메시지가 출력된다.
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   run ok-pod --image=nginx:1.25 -n cap-kcsa-day06 && echo "허용 확인 완료 (미캡처)"
 
 # ⑥ 정리
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   delete pod ok-pod -n cap-kcsa-day06 --ignore-not-found
 ```
 
@@ -1004,12 +1004,12 @@ OPA/Kyverno:
   ./scripts/boot.sh
   ./scripts/fix-cluster-ip-drift.sh dev
   ```
-- **kubeconfig 경로**: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+- **kubeconfig 경로**: `kubeconfig/dev.yaml`
 - **노드 SSH 별칭**: `ssh dev-master`, `ssh dev-worker1` (키: `~/.ssh/tart_k8scert`)
 - **파괴 실습 대상**: dev 또는 staging 클러스터에서만 수행한다. platform/prod는 건드리지 않는다.
 - **선행 리소스**: 실습 1·2는 별도 네임스페이스를 생성해 격리한다.
   ```bash
-  kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+  kubectl --kubeconfig kubeconfig/dev.yaml \
     create namespace cap-kcsa-day06 --dry-run=client -o yaml | kubectl apply -f -
   ```
 - **스크린샷**: 실습 결과는 실제 터미널 화면 캡처(PNG)로 `KCSA/images/` 에 저장한다.
@@ -1018,7 +1018,7 @@ OPA/Kyverno:
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

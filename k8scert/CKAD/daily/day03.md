@@ -63,7 +63,7 @@ spec:
 - 멀티노드 클러스터에서 동일 emptyDir을 여러 노드의 Pod가 공유하는 것은 불가능하다. 노드 로컬 볼륨이기 때문이다.
 
 **공유 검증 방법:**
-위 Pod에서 writer 컨테이너는 `/data/message`에 "shared data"를 기록하고, reader 컨테이너는 같은 emptyDir 볼륨을 마운트하므로 동일 파일을 읽는다. 두 컨테이너가 실제로 같은 파일을 보는지는 다음 명령으로 확인한다. 전제: dev 클러스터 가동 + `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 후 위 매니페스트를 `kubectl apply -f emptydir-demo.yaml`로 생성한다.
+위 Pod에서 writer 컨테이너는 `/data/message`에 "shared data"를 기록하고, reader 컨테이너는 같은 emptyDir 볼륨을 마운트하므로 동일 파일을 읽는다. 두 컨테이너가 실제로 같은 파일을 보는지는 다음 명령으로 확인한다. 전제: dev 클러스터 가동 + `export KUBECONFIG=kubeconfig/dev.yaml` 후 위 매니페스트를 `kubectl apply -f emptydir-demo.yaml`로 생성한다.
 
 ```bash
 # reader 컨테이너에서 writer가 쓴 파일을 읽는다
@@ -537,7 +537,7 @@ Job은 "작업이 완료되면 Pod를 재시작하지 않는다"는 전제로 �
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

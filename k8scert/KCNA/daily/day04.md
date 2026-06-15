@@ -503,8 +503,8 @@ spec:
 > **실습 주의:** Ingress Controller가 설치되어 있지 않으면 위 Ingress 리소스는 etcd에 규칙만 저장될 뿐 실제 트래픽 라우팅은 일어나지 않는다. 이 저장소의 tart 클러스터에 Ingress Controller가 설치되어 있는지 먼저 확인한다.
 > ```bash
 > # Ingress Controller 존재 여부 확인
-> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get ingressclass
-> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get pod -n ingress-nginx
+> kubectl --kubeconfig kubeconfig/dev.yaml get ingressclass
+> kubectl --kubeconfig kubeconfig/dev.yaml get pod -n ingress-nginx
 > ```
 > 위 명령에서 결과가 없거나 `No resources found`라면 Ingress는 동작하지 않는다. KCNA 시험 범위에서는 "Ingress Controller가 반드시 필요하다"는 원칙만 기억하면 된다.
 
@@ -997,7 +997,7 @@ K8s의 접근 모드는 RWO, ROX, RWX, RWOP 4가지이다. RWA는 존재하지 �
 
 ```bash
 # dev 클러스터에 접속 (ssh dev-master 로 노드 직접 접근도 가능, ~/.ssh/config 등록 별칭)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

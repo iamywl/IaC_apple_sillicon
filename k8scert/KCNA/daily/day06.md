@@ -104,7 +104,7 @@ Graduated (졸업) → 성숙 단계
 > **시나리오**: "tart dev 클러스터에 설치된 CNCF 프로젝트들의 성숙도 단계를 명령어로 확인하라."
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 # Cilium(Graduated) Pod 수 확인
 kubectl get pods -n kube-system -l k8s-app=cilium --no-headers | wc -l
 # CoreDNS(Graduated) 버전 확인
@@ -248,7 +248,7 @@ CNCF가 정의하는 Cloud Native의 핵심 요소:
 **사전 배포 단계**: demo 네임스페이스에 ConfigMap과 이를 환경변수로 주입하는 Pod가 없으면 아래 명령으로 먼저 생성한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 kubectl create configmap demo-config -n demo \
   --from-literal=DB_HOST=postgres.demo.svc.cluster.local \
@@ -260,7 +260,7 @@ kubectl run demo-app --image=nginx:alpine -n demo \
 ```
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 # demo 네임스페이스의 ConfigMap 목록 확인
 kubectl get configmap -n demo
 # 특정 ConfigMap의 데이터 키 확인
@@ -352,7 +352,7 @@ Data Plane (데이터부):
 > **시나리오**: "dev 클러스터의 demo 네임스페이스에서 istio-injection이 활성화되어 있는지 확인하고, Pod에 사이드카(istio-proxy)가 주입되었는지 검증하라."
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 # 네임스페이스 레이블 확인
 kubectl get namespace demo --show-labels
 # Pod별 컨테이너 목록 확인 (istio-proxy가 있으면 사이드카 주입됨)
@@ -471,7 +471,7 @@ spec:
 > **시나리오**: "dev 클러스터 demo 네임스페이스에 nginx Deployment를 생성하고, CPU 50% 초과 시 Pod 수를 최대 5개까지 늘리는 HPA를 설정하라. metrics-server가 동작하는지 먼저 검증하라."
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 0. metrics-server 동작 확인 (HPA 필수 조건)
 kubectl top nodes
@@ -743,13 +743,13 @@ Falco는 컨테이너 런타임에서 비정상적인 활동(셸 접속, 파일 
 **실습 전제조건**:
 - 로컬 tart 클러스터가 가동 중이어야 한다. 가동 방법: `./scripts/boot.sh`
 - 재부팅 후에는 반드시 IP 드리프트 복구를 먼저 실행한다: `./scripts/fix-cluster-ip-drift.sh dev`
-- kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/`
+- kubeconfig 경로: `kubeconfig/`
 - 노드 SSH 접속: `ssh dev-master`, `ssh dev-worker1` (비밀번호 불필요, 전용 키 사전 배포)
 - 실습 1·2는 platform/dev 클러스터를 사용하며 **읽기 전용**이다. 파괴 실습은 dev/staging에서만 수행한다.
 - 아래 실습에서 `demo` 네임스페이스가 없는 경우 다음 명령으로 미리 생성한다:
 
 ```bash
-kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
+kubectl --kubeconfig kubeconfig/dev.yaml \
   create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -757,7 +757,7 @@ kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml \
 
 ```bash
 # dev 클러스터 접속 (서비스 메시, 오토스케일링 확인용)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # 클러스터 상태 확인
 kubectl get nodes
@@ -769,7 +769,7 @@ tart-infra에 설치된 CNCF 프로젝트들의 성숙도 단계를 직접 확�
 
 ```bash
 # platform 클러스터의 CNCF 프로젝트 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 
 # Prometheus (Graduated) - 모니터링
 kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus
@@ -784,7 +784,7 @@ kubectl get svc -n monitoring | grep grafana
 kubectl get pods -n argocd
 
 # dev 클러스터의 CNCF 프로젝트 확인
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # Cilium (Graduated) - CNI/서비스 메시
 kubectl get pods -n kube-system -l k8s-app=cilium
@@ -798,7 +798,7 @@ kubectl get pods -n istio-system
 ### 실습 2: 서비스 메시(Istio) Control Plane / Data Plane 확인
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 
 # Control Plane: istiod (Pilot+Citadel+Galley 통합)
 kubectl get pods -n istio-system -l app=istiod

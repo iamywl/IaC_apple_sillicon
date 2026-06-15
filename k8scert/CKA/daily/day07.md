@@ -965,7 +965,7 @@ kubectl delete deployment env-app -n demo
 
 ```bash
 # dev 클러스터 접속 (demo 네임스페이스에 nginx 등 앱이 배포됨)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config use-context dev
 ```
 

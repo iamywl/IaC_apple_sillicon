@@ -1027,16 +1027,16 @@ D) PSA
 
 > **실습 전제 조건:**
 > - dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 실행 후 `./scripts/fix-cluster-ip-drift.sh dev`로 복구 확인).
-> - kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`
+> - kubeconfig 경로: `kubeconfig/dev.yaml`
 > - SSH 접속: `ssh dev-master`(VM 이름 별칭, `~/.ssh/tart_k8scert` 키 필요)
 > - 이 실습은 dev 클러스터에서만 수행한다(CLAUDE.md §3 규정 — platform/prod 금지).
-> - 실습 시작 전 노드 상태를 확인한다: `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get nodes`
+> - 실습 시작 전 노드 상태를 확인한다: `kubectl --kubeconfig kubeconfig/dev.yaml get nodes`
 
 ### 실습 환경 설정
 
 ```bash
-alias kp='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml'
-alias kd='export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml'
+alias kp='export KUBECONFIG=kubeconfig/platform.yaml'
+alias kd='export KUBECONFIG=kubeconfig/dev.yaml'
 ```
 
 ### 실습 1: 모의시험 자가 채점

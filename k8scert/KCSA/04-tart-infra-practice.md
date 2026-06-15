@@ -16,10 +16,10 @@ tart-infra는 macOS 위에서 Tart 가상 머신을 통해 Kubernetes 클러스�
 2. **애플 실리콘에서 Native 성능**: tart는 macOS Virtualization.framework를 직접 사용하므로 Rosetta 에뮬레이션 없이 aarch64 Linux VM을 실행한다. VM 시작 시간이 10초 이내이며, 실습 후 파괴된 클러스터를 `./scripts/reset-cluster.sh`로 수 분 내에 재생성할 수 있다.
 3. **multi-cluster 병렬 학습**: `dev`(파괴 실습)와 `staging`(보안 강화 실습)이 동시에 동작하므로, Lab 간 전환 비용 없이 KCSA 범위 전체를 한 환경에서 실습한다.
 
-**kubeconfig 경로**: `~/sideproejct/IaC_apple_sillicon/kubeconfig/` 아래에 클러스터별 파일이 있다(`dev.yaml`, `staging.yaml` 등). KUBECONFIG 환경 변수를 설정하지 않고 실습할 경우 아래처럼 명시적으로 지정한다.
+**kubeconfig 경로**: `kubeconfig/` 아래에 클러스터별 파일이 있다(`dev.yaml`, `staging.yaml` 등). KUBECONFIG 환경 변수를 설정하지 않고 실습할 경우 아래처럼 명시적으로 지정한다.
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 ```
 
 **SSH 접속 별칭**: 전용 SSH 키가 배포되어 있어 `ssh dev-master`, `ssh staging-master`처럼 VM 이름 별칭으로 비밀번호 없이 접속할 수 있다(ProxyCommand가 `tart ip`로 실시간 IP를 조회). 이후 모든 `ssh dev-master` 예제는 `ssh dev-master`로 대체해도 동일하게 동작한다.

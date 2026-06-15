@@ -466,11 +466,11 @@ Application Delivery       8%      ~4문항       3개 이상
 
 ## 8. 시험에서 자주 나오는 트러블슈팅 시나리오
 
-앞 섹션 7의 개념 비교를 바탕으로, KCNA 시험은 상태 이름(Pending·CrashLoopBackOff 등)과 원인을 연결하는 객관식 형태로도 출제된다. 아래 시나리오별 "실측 검증" 명령은 dev 클러스터(`kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`)에서 직접 실행해 결과를 확인한다.
+앞 섹션 7의 개념 비교를 바탕으로, KCNA 시험은 상태 이름(Pending·CrashLoopBackOff 등)과 원인을 연결하는 객관식 형태로도 출제된다. 아래 시나리오별 "실측 검증" 명령은 dev 클러스터(`kubectl --kubeconfig kubeconfig/dev.yaml`)에서 직접 실행해 결과를 확인한다.
 
 시험 문제에서 장애 시나리오를 설명하고 원인 또는 해결 방법을 묻는 패턴이 자주 출제된다.
 
-> **실습 전제**: dev 또는 staging 클러스터 가동 상태, kubeconfig 경로 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`, 클러스터 접근은 `kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 또는 `ssh dev-master`. 파괴 실습은 dev/staging에서만 수행한다.
+> **실습 전제**: dev 또는 staging 클러스터 가동 상태, kubeconfig 경로 `kubeconfig/dev.yaml`, 클러스터 접근은 `kubectl --kubeconfig kubeconfig/dev.yaml` 또는 `ssh dev-master`. 파괴 실습은 dev/staging에서만 수행한다.
 
 ```
 시나리오 1: Pod가 Pending 상태

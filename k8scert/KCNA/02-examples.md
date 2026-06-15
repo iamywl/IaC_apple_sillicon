@@ -36,7 +36,7 @@
 ```bash
 alias k=kubectl
 export do='--dry-run=client -o yaml'
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 ```
 
 `alias k=kubectl`과 `export do`는 시험형 명령 단축 습관을 기르기 위한 설정이다. `KUBECONFIG`를 명시하지 않으면 기본 `~/.kube/config`를 참조하므로 의도와 다른 클러스터에 명령이 실행될 수 있다. 노드 SSH 접속은 `ssh dev-master` 별칭을 사용한다(`~/.ssh/config`에 등록, `tart ip`로 IP를 실시간 조회하는 ProxyCommand 방식).
@@ -116,7 +116,7 @@ spec:
 
 **검증:**
 
-> **실습 전제**: 클러스터가 가동 중이어야 한다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`, SSH 접속은 `ssh dev-master` 별칭을 사용한다. 아래 예제는 `default` 네임스페이스를 기준으로 한다. IP 주소(예: `10.244.1.15`)는 클러스터·노드 환경마다 달라지므로 참고용 예시이다.
+> **실습 전제**: 클러스터가 가동 중이어야 한다. kubeconfig 경로는 `kubeconfig/dev.yaml`, SSH 접속은 `ssh dev-master` 별칭을 사용한다. 아래 예제는 `default` 네임스페이스를 기준으로 한다. IP 주소(예: `10.244.1.15`)는 클러스터·노드 환경마다 달라지므로 참고용 예시이다.
 
 ```bash
 kubectl apply -f nginx-pod.yaml

@@ -35,7 +35,7 @@ Blue/Green의 핵심 비용은 리소스다. 두 버전의 Deployment를 동시�
 
 ### 1.2 Blue/Green 구현
 
-> **전제**: 아래 예제는 `demo` 네임스페이스를 사용한다. dev 클러스터(`export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`)가 가동 중이어야 하며, 먼저 네임스페이스를 생성한다(이미 있으면 에러 무시).
+> **전제**: 아래 예제는 `demo` 네임스페이스를 사용한다. dev 클러스터(`export KUBECONFIG=kubeconfig/dev.yaml`)가 가동 중이어야 하며, 먼저 네임스페이스를 생성한다(이미 있으면 에러 무시).
 >
 > ```bash
 > kubectl create namespace demo
@@ -772,7 +772,7 @@ kubectl get pods -l version=green -n demo
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 
@@ -916,7 +916,7 @@ A. Service selector에 `version`을 포함하면 특정 버전의 Pod만 선택�
 ```bash
 alias k=kubectl
 export do='--dry-run=client -o yaml'
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 ```
 
 **이 주제의 출제 패턴:**

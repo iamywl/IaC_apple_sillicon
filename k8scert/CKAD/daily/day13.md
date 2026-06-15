@@ -299,7 +299,7 @@ _그림 2. 일반 마운트와 subPath 마운트의 디렉토리 결과 차이._
 
 **검증: subPath 갱신 불가 직접 확인**
 
-아래 절차로 "갱신 안 됨"을 직접 눈으로 확인한다(dev 클러스터 사용, 사전에 `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml` 실행):
+아래 절차로 "갱신 안 됨"을 직접 눈으로 확인한다(dev 클러스터 사용, 사전에 `export KUBECONFIG=kubeconfig/dev.yaml` 실행):
 
 ```bash
 # 1단계: ConfigMap 생성 (v1)
@@ -895,7 +895,7 @@ kubectl logs nginx-pod
 **전제 조건**
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 alias k=kubectl
 export do='--dry-run=client -o yaml'
 kubectl create namespace lab13 --dry-run=client -o yaml | kubectl apply -f -
@@ -1083,7 +1083,7 @@ kubectl delete namespace lab13
 ### 실습 환경 설정
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 # CKAD 시험과 동일한 속도 셋업
 alias k=kubectl
 export do='--dry-run=client -o yaml'

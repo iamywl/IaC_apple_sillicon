@@ -4,7 +4,7 @@
 
 ---
 
-> 이 문서에서 반복 등장하는 **tart-infra**는 본 저장소가 로컬 Apple Silicon 위에 띄운 멀티클러스터 실습 환경(dev/staging/platform/prod 4개)을 가리킨다. 이 과정은 클라우드 SaaS가 아니라 로컬에 실제로 떠 있는 K8s 클러스터에서 직접 손으로 명령을 실행하며 배운다. 실습을 시작하기 전에 `./scripts/boot.sh`로 VM을 기동하고, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh`로 IP 드리프트를 복구해 두어야 한다(CLAUDE.md §3 참조). kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`에 있으며, 파괴 실습은 dev/staging 에서만 수행한다.
+> 이 문서에서 반복 등장하는 **tart-infra**는 본 저장소가 로컬 Apple Silicon 위에 띄운 멀티클러스터 실습 환경(dev/staging/platform/prod 4개)을 가리킨다. 이 과정은 클라우드 SaaS가 아니라 로컬에 실제로 떠 있는 K8s 클러스터에서 직접 손으로 명령을 실행하며 배운다. 실습을 시작하기 전에 `./scripts/boot.sh`로 VM을 기동하고, 재부팅 직후라면 `./scripts/fix-cluster-ip-drift.sh`로 IP 드리프트를 복구해 두어야 한다(CLAUDE.md §3 참조). kubeconfig는 `kubeconfig/<클러스터>.yaml`에 있으며, 파괴 실습은 dev/staging 에서만 수행한다.
 
 ## 오늘의 학습 목표
 
@@ -264,7 +264,7 @@ ENTRYPOINT ["python3", "app.py"]
 > 대상 클러스터: **dev 클러스터**에서 시험 환경 시뮬레이션용으로 `production` 네임스페이스를 생성한다. tart-infra의 prod 클러스터(CLAUDE.md §3: 읽기 위주, 변경 자제)와는 무관하다.
 >
 > ```bash
-> export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+> export KUBECONFIG=kubeconfig/dev.yaml
 > kubectl create ns production
 > kubectl create deployment web-app -n production --image=nginx:latest --replicas=1
 > kubectl wait deployment web-app -n production --for=condition=Available --timeout=60s
@@ -348,7 +348,7 @@ dev 클러스터의 demo 네임스페이스에서 실행 중인 모든 이미지
 준비: dev 클러스터 접속과 demo 네임스페이스 존재를 먼저 확인한다. demo는 tart-infra dev 클러스터에 상주하는 데모 워크로드 네임스페이스다(없으면 문제의 전제 리소스를 먼저 배포해야 한다).
 
 ```bash
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get ns | grep demo                 # demo 네임스페이스 존재 확인
 kubectl get pods -n demo                    # 스캔 대상 Pod 목록 확인
 ```
@@ -671,7 +671,7 @@ kubesec scan pod-fixed.yaml | jq '.[0].score'
 
 ```bash
 # dev 클러스터에 접속
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl get nodes
 ```
 

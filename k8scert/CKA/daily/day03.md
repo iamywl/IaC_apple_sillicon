@@ -1007,13 +1007,13 @@ kubectl get nodes -o custom-columns='NAME:.metadata.name,VERSION:.status.nodeInf
 
 전제 조건:
 - tart 멀티클러스터가 가동 중이어야 한다. 꺼져 있으면 `./scripts/boot.sh`로 기동하고, 재부팅 후라면 IP 드리프트 복구를 위해 `./scripts/fix-cluster-ip-drift.sh <클러스터>`를 먼저 실행한다.
-- kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`에 클러스터 가동 시 자동 생성된다(gitignore 대상). 본 실습은 platform과 dev 두 클러스터를 사용한다.
+- kubeconfig는 `kubeconfig/<클러스터>.yaml`에 클러스터 가동 시 자동 생성된다(gitignore 대상). 본 실습은 platform과 dev 두 클러스터를 사용한다.
 - etcd 인증서 경로(`/etc/kubernetes/pki/etcd/`)는 master 노드에 root 소유로 존재한다. SSH(`ssh platform-master` 등 VM 이름 별칭, §3)로 노드에 들어가 `sudo`로 접근한다.
 - 노드 IP는 tart 재부팅마다 바뀌므로(IP 드리프트) `listen-client-urls` 등에 보이는 노드 IP는 환경마다 다를 수 있다. 자신의 출력이 아래 예시와 IP만 다른 것은 정상이다.
 
 ```bash
 # platform 클러스터 접속 (etcd가 실행되는 클러스터)
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/platform.yaml
+export KUBECONFIG=kubeconfig/platform.yaml
 kubectl config use-context platform
 ```
 
@@ -1040,7 +1040,7 @@ kubectl describe pod etcd-platform-master -n kube-system | grep -E '(--cert-file
 
 ```bash
 # dev 클러스터로 전환
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
+export KUBECONFIG=kubeconfig/dev.yaml
 kubectl config use-context dev
 
 # 실습용 네임스페이스 및 Pod 준비 (아직 없으면 생성, 이미 있으면 건너뜀)
@@ -1089,11 +1089,11 @@ kubectl get nodes -o custom-columns='NAME:.metadata.name,VERSION:.status.nodeInf
 
 이 실습은 staging 클러스터에서 etcd snapshot save → restore → etcd.yaml 수정 → 클러스터 정상 확인까지 전 단계를 직접 수행한다. staging 클러스터는 파괴 실습이 허용된다(CLAUDE.md §3).
 
-**전제:** `export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml`
+**전제:** `export KUBECONFIG=kubeconfig/staging.yaml`
 
 ```bash
 # === 1단계: 스냅샷 저장 ===
-export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml
+export KUBECONFIG=kubeconfig/staging.yaml
 kubectl config use-context staging
 
 # staging-master에 SSH 접속

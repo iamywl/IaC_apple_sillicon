@@ -18,7 +18,7 @@
 
 ## Part 1: 누락된 개념 보강
 
-> **실습 전제 (모든 검증 섹션 공통).** 아래 검증 명령은 가동 중인 tart 클러스터를 대상으로 한다. 파괴 실습이 허용된 `dev` 또는 `staging`에서만 실행하고(`platform`·`prod` 금지), kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`을 사용한다(예: `kubectl --kubeconfig kubeconfig/dev.yaml ...`). 재부팅 직후라면 먼저 `./scripts/boot.sh` 와 `./scripts/fix-cluster-ip-drift.sh <클러스터>`로 IP 드리프트를 복구한 뒤 진행한다. 각 명령 아래의 `# 예상 출력:` 블록은 실제 실행 시 나타나야 할 결과의 형태를 미리 보여주는 참고용이며(클러스터·버전에 따라 IP·AGE·해시 값은 달라진다), CLAUDE.md §4① 규약상 최종 문서에는 실제 터미널 캡처 이미지로 대체되어야 한다(캡처는 메인 작업에서 수행한다).
+> **실습 전제 (모든 검증 섹션 공통).** 아래 검증 명령은 가동 중인 tart 클러스터를 대상으로 한다. 파괴 실습이 허용된 `dev` 또는 `staging`에서만 실행하고(`platform`·`prod` 금지), kubeconfig는 `kubeconfig/<클러스터>.yaml`을 사용한다(예: `kubectl --kubeconfig kubeconfig/dev.yaml ...`). 재부팅 직후라면 먼저 `./scripts/boot.sh` 와 `./scripts/fix-cluster-ip-drift.sh <클러스터>`로 IP 드리프트를 복구한 뒤 진행한다. 각 명령 아래의 `# 예상 출력:` 블록은 실제 실행 시 나타나야 할 결과의 형태를 미리 보여주는 참고용이며(클러스터·버전에 따라 IP·AGE·해시 값은 달라진다), CLAUDE.md §4① 규약상 최종 문서에는 실제 터미널 캡처 이미지로 대체되어야 한다(캡처는 메인 작업에서 수행한다).
 
 ---
 
@@ -920,7 +920,7 @@ AVAILABLE이 False이면 metrics-server Pod 상태를 확인한다: `kubectl get
 
 > 이 파트의 각 예제는 CKA 시험에서 자주 출제되는 시나리오를 기반으로 작성한다. 각 예제에는 등장 배경, 내부 동작 원리, 장애 시나리오가 포함되어 있다.
 >
-> **실습 전제.** etcd 백업/복원·kubeadm 업그레이드 예제는 노드에 직접 들어가야 하므로 `staging`(또는 별도 실습 클러스터)에서 SSH로 진행한다(`ssh staging-master` 등, §3의 전용 키 별칭). 등장하는 인증서 경로의 의미는 다음과 같다 — `--cacert`(etcd CA: 서버 신원을 검증하는 인증 기관 인증서), `--cert`/`--key`(클라이언트가 자신을 증명하는 인증서·개인키 쌍). 이 세 개가 mTLS(양방향 TLS, 서버·클라이언트가 서로의 신원을 인증서로 확인하는 방식) 접속에 모두 필요하다. kubectl로 클러스터 상태를 확인하는 명령은 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`을 사용한다. `# 예상 출력:` 블록은 형태 참고용이며 최종 문서에서는 실제 터미널 캡처로 대체된다(§4①).
+> **실습 전제.** etcd 백업/복원·kubeadm 업그레이드 예제는 노드에 직접 들어가야 하므로 `staging`(또는 별도 실습 클러스터)에서 SSH로 진행한다(`ssh staging-master` 등, §3의 전용 키 별칭). 등장하는 인증서 경로의 의미는 다음과 같다 — `--cacert`(etcd CA: 서버 신원을 검증하는 인증 기관 인증서), `--cert`/`--key`(클라이언트가 자신을 증명하는 인증서·개인키 쌍). 이 세 개가 mTLS(양방향 TLS, 서버·클라이언트가 서로의 신원을 인증서로 확인하는 방식) 접속에 모두 필요하다. kubectl로 클러스터 상태를 확인하는 명령은 `kubeconfig/<클러스터>.yaml`을 사용한다. `# 예상 출력:` 블록은 형태 참고용이며 최종 문서에서는 실제 터미널 캡처로 대체된다(§4①).
 
 ---
 
@@ -1619,7 +1619,7 @@ spec:
 >
 > **방법 1 — 실제 StorageClass 이름 확인 후 대체.**
 > ```bash
-> kubectl --kubeconfig ~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml get sc
+> kubectl --kubeconfig kubeconfig/dev.yaml get sc
 > # NAME   PROVISIONER   RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
 > # (없으면 빈 목록 또는 기본 제공 sc만 표시됨)
 > ```

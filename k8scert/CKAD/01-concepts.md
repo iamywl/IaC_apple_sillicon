@@ -398,7 +398,7 @@ _그림 1. 동적 프로비저닝 흐름 — PVC가 트리거가 되어 StorageC
 
 **실습: PVC를 생성해 Pod에 마운트**
 
-전제: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 사용한다. 아래 명령은 가독성을 위해 `--kubeconfig`와 `-n`을 생략했으나, 실제 실행 시에는 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...` 형태로 명시한다. 클러스터에 기본 StorageClass가 있으면 `storageClassName`을 생략해도 동적 프로비저닝이 동작한다(`kubectl get storageclass`로 default 표시를 확인한다). 명령 실행 화면은 CLAUDE.md §4① 규약에 따라 실제 터미널 캡처로 대체해야 한다(현재 미캡처).
+전제: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `kubeconfig/dev.yaml`을 사용한다. 아래 명령은 가독성을 위해 `--kubeconfig`와 `-n`을 생략했으나, 실제 실행 시에는 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...` 형태로 명시한다. 클러스터에 기본 StorageClass가 있으면 `storageClassName`을 생략해도 동적 프로비저닝이 동작한다(`kubectl get storageclass`로 default 표시를 확인한다). 명령 실행 화면은 CLAUDE.md §4① 규약에 따라 실제 터미널 캡처로 대체해야 한다(현재 미캡처).
 
 ```yaml
 # pvc-demo.yaml
@@ -565,7 +565,7 @@ Job은 이 한계를 "완료(completion)"라는 개념으로 넘어선다. Job�
 
 **실습: Job과 CronJob 생성**
 
-전제: dev 클러스터가 가동 중이어야 한다(필요 시 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 사용하며, 아래 명령은 가독성을 위해 `--kubeconfig`/`-n`을 생략했다(실제 실행 시 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...`로 명시). 명령 실행 화면은 CLAUDE.md §4① 규약에 따라 실제 터미널 캡처로 대체해야 한다(현재 미캡처). 더 자세한 실습은 [04-tart-infra-practice.md](04-tart-infra-practice.md) Lab 1.7 참고.
+전제: dev 클러스터가 가동 중이어야 한다(필요 시 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `kubeconfig/dev.yaml`을 사용하며, 아래 명령은 가독성을 위해 `--kubeconfig`/`-n`을 생략했다(실제 실행 시 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...`로 명시). 명령 실행 화면은 CLAUDE.md §4① 규약에 따라 실제 터미널 캡처로 대체해야 한다(현재 미캡처). 더 자세한 실습은 [04-tart-infra-practice.md](04-tart-infra-practice.md) Lab 1.7 참고.
 
 ```bash
 # 명령형으로 일회성 Job 생성 (3초 슬립 후 종료)
@@ -951,7 +951,7 @@ kustomize/
 
 **실습: base/overlay 구조를 만들어 dev 오버레이 적용**
 
-전제: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 사용한다. 아래 명령은 가독성을 위해 `--kubeconfig`와 `-n`을 생략했으나, 실제 실행 시에는 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...` 형태로 대상 클러스터와 네임스페이스를 명시한다. `kubectl apply -k`는 현재 컨텍스트에 적용되므로, `--kubeconfig`를 매번 붙이지 않으려면 실습 시작 시 한 번 `export KUBECONFIG=$HOME/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`로 대상을 고정한 뒤 진행한다(다른 클러스터에 의도치 않게 반영되는 사고를 막는다). 명령 실행 화면은 CLAUDE.md §4① 규약에 따라 실제 터미널 캡처로 대체해야 한다(현재 미캡처).
+전제: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `kubeconfig/dev.yaml`을 사용한다. 아래 명령은 가독성을 위해 `--kubeconfig`와 `-n`을 생략했으나, 실제 실행 시에는 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...` 형태로 대상 클러스터와 네임스페이스를 명시한다. `kubectl apply -k`는 현재 컨텍스트에 적용되므로, `--kubeconfig`를 매번 붙이지 않으려면 실습 시작 시 한 번 `export KUBECONFIG=$HOME/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`로 대상을 고정한 뒤 진행한다(다른 클러스터에 의도치 않게 반영되는 사고를 막는다). 명령 실행 화면은 CLAUDE.md §4① 규약에 따라 실제 터미널 캡처로 대체해야 한다(현재 미캡처).
 
 먼저 base 디렉토리에 공통 매니페스트와 kustomization.yaml을 만든다. base의 deployment.yaml은 템플릿 문법이 없는 완전한 유효 YAML이므로 단독으로도 적용 가능하다.
 
@@ -1400,7 +1400,7 @@ kubectl top nodes
 
 **실습: ConfigMap 생성 및 사용**
 
-전제: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml`을 사용한다. 아래 명령은 가독성을 위해 `--kubeconfig`와 `-n`을 생략했으나, 실제 실행 시에는 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...` 형태로 대상 클러스터와 네임스페이스를 명시한다. 아래 ` ```text ` 블록은 예상 출력이며, CLAUDE.md §4① 규약에 따라 실제 실행 화면은 추후 `images/configmap-result.png` 등의 터미널 캡처로 대체해야 한다(현재 미캡처).
+전제: dev 클러스터가 가동 중이어야 한다(`./scripts/boot.sh` 후 재부팅했다면 `./scripts/fix-cluster-ip-drift.sh dev`). kubeconfig는 `kubeconfig/dev.yaml`을 사용한다. 아래 명령은 가독성을 위해 `--kubeconfig`와 `-n`을 생략했으나, 실제 실행 시에는 `kubectl --kubeconfig kubeconfig/dev.yaml -n default ...` 형태로 대상 클러스터와 네임스페이스를 명시한다. 아래 ` ```text ` 블록은 예상 출력이며, CLAUDE.md §4① 규약에 따라 실제 실행 화면은 추후 `images/configmap-result.png` 등의 터미널 캡처로 대체해야 한다(현재 미캡처).
 
 ```bash
 # 리터럴로 ConfigMap 생성

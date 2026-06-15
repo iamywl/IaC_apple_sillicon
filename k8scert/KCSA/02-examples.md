@@ -1018,7 +1018,7 @@ resources:
 ### 4.3 Secret Encryption 실습 검증
 
 **실습 전제 조건:**
-- 클러스터: `staging` (파괴 실습 허용 클러스터). kubeconfig 경로: `~/sideproejct/IaC_apple_sillicon/kubeconfig/staging.yaml`
+- 클러스터: `staging` (파괴 실습 허용 클러스터). kubeconfig 경로: `kubeconfig/staging.yaml`
 - 노드 SSH 접속: `ssh staging-master` (마스터 노드에서 `etcdctl` 및 API Server 매니페스트에 직접 접근)
 - `etcdctl` 설치 확인: `which etcdctl`. 없으면 `apt-get install etcd-client` 또는 [etcd 릴리스](https://github.com/etcd-io/etcd/releases)에서 바이너리 다운로드. kubeadm 클러스터의 인증서는 `/etc/kubernetes/pki/etcd/` 경로에 있다.
 - EKS, GKE 같은 관리형 Kubernetes는 etcd에 직접 접근할 수 없으므로, 아래 etcdctl 명령 대신 `kubectl patch secret test-encryption -p '{"metadata":{"annotations":{"last-applied":"now"}}}' -n default`로 재저장하여 암호화가 적용되는지 간접 확인한다.

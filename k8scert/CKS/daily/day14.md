@@ -245,7 +245,9 @@ kubectl get pods -n scan-ns
 # cache2 (redis:7) - Running
 ```
 
-> **(미캡처)** 위 스캔 결과(exit code, CRITICAL 개수, 삭제 후 Pod 상태)는 실측 스크린샷으로 교체 예정이다. 코드 블록 안의 주석 출력은 예상 흐름만 안내하며, 실제 결과는 Trivy DB 버전과 이미지 릴리스 시점에 따라 다를 수 있다. 자신의 환경에서 `trivy image --severity CRITICAL nginx:1.19 2>/dev/null` 을 직접 실행해 출력을 비교한다.
+아래는 Trivy 로 CRITICAL 취약점을 스캔한 실측이다(2026-06-15, Trivy 0.71.1). `kong/httpbin:latest`(ubuntu 22.04 기반)는 Report Summary 에 CRITICAL **13개**가 잡힌다 — 범용·구형 베이스 이미지일수록 CRITICAL 이 많다는 점을 보여준다(`nginx:1.19` 같은 구버전도 동일하게 CRITICAL 이 많다). exit code 로 CI/CD 게이트를 거는 패턴은 아래 옵션 절을 참고한다.
+
+![Trivy CRITICAL 스캔 실측 — kong/httpbin:latest CRITICAL 13(공급망 위험 예시)](images/cks-trivy-kong-critical.png)
 
 **Trivy 주요 옵션:**
 ```bash

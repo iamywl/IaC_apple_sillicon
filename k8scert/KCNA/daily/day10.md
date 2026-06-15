@@ -627,4 +627,18 @@ Application Delivery (8%)
 
 ---
 
+## 더 읽을거리
+
+이 문서의 §4(최종 20문)·§10(학습 완료 자가 평가)이 자가점검 역할을 한다. 시험 직전 공식 자료로 마지막 확인을 한다.
+
+- [KCNA Curriculum (공식 시험 범위)](https://github.com/cncf/curriculum) — 5개 도메인 비중(Fundamentals 46% 등)
+- [CNCF Landscape](https://landscape.cncf.io/) · [Graduated/Incubating 프로젝트 목록](https://www.cncf.io/projects/) — "다음 중 Graduated 는?" 빈출
+- [Kubernetes Concepts](https://kubernetes.io/docs/concepts/) — 아키텍처·오브젝트 개요
+- [The Twelve-Factor App](https://12factor.net/) — 클라우드 네이티브 앱 원칙
+- [OpenTelemetry 문서](https://opentelemetry.io/docs/) · [Prometheus 개요](https://prometheus.io/docs/introduction/overview/) — 관측성 3요소
+- [Argo CD](https://argo-cd.readthedocs.io/) · [Helm](https://helm.sh/docs/) — GitOps·패키징
+- [Linux Foundation 시험 환경 안내(PSI)](https://docs.linuxfoundation.org/tc-docs/certifications/lf-candidate-handbook) — 응시 규정·신분증·환경
+
+---
+
 **KCNA 10일 학습 과정을 모두 완료했다. 시험에서 좋은 결과를 거두기 바란다.**

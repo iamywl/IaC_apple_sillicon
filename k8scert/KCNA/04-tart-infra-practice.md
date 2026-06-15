@@ -683,9 +683,9 @@ ssh dev-master
 sudo systemctl status containerd
 ```
 
-**검증 — 기대 출력:**
+**검증 — 실측 출력:** 아래는 dev-master 노드에서 `systemctl status containerd` 를 실행한 실측이다. `active (running)`, Main PID, CGroup 하위에 `containerd-shim-runc-v2`(컨테이너별 shim)가 보인다.
 
-(미캡처)
+![dev-master containerd systemctl status 실측](images/kcna-containerd-status.png)
 
 ```bash
 # containerd 버전

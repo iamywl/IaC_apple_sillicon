@@ -1288,7 +1288,9 @@ kubectl get pod -n demo -l app=nginx-web -o jsonpath='{.items[0].spec.securityCo
 # ss -tlnp | grep -E "(6443|2379|2380|10250|10257|10259)"
 ```
 
-실행 결과: (미캡처) — 메인 캡처 파이프라인에서 실제 터미널 스크린샷으로 교체 예정. 출력에는 6443(API Server), 2379/2380(etcd), 10250(kubelet), 10257/10259(controller-manager/scheduler)가 보인다.
+아래는 dev-master 노드에서 `ss -tlnp` 로 컨트롤플레인 리스닝 포트를 조회한 실측이다. 2379/2380(etcd), 10257(kube-controller-manager), 10259(kube-scheduler), 10250(kubelet), 6443(kube-apiserver)이 각 프로세스와 함께 보인다.
+
+![dev-master 컨트롤플레인 리스닝 포트 실측(ss -tlnp)](images/cks-cp-ports.png)
 
 **동작 원리:** K8s 컴포넌트 포트:
 1. 6443: API Server (HTTPS) — 유일하게 외부 노출이 필요한 포트

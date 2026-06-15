@@ -32,6 +32,10 @@ SYSEOF
     sysctl --system
 
     hostnamectl set-hostname '$node_name'
+
+    mkdir -p /etc/systemd/resolved.conf.d
+    printf '[Resolve]\nDNS=8.8.8.8 1.1.1.1\nFallbackDNS=9.9.9.9\n' > /etc/systemd/resolved.conf.d/k8s-dns.conf
+    systemctl restart systemd-resolved || true
   "
 }
 
@@ -64,7 +68,9 @@ install_kubeadm() {
   log_info "Installing kubeadm on '$node_name'..."
 
   ssh_exec_sudo "$ip" "
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg 2>/dev/null
+    mkdir -p /etc/apt/keyrings
+    rm -f /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
     echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
 
     apt-get update -qq

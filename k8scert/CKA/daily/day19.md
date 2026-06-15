@@ -133,7 +133,7 @@ kubectl -n kube-system get pod etcd-platform-master -o yaml | grep -E "cert|key|
 kubectl -n kube-system describe pod etcd-platform-master | grep -E "\-\-cert|\-\-key|\-\-ca"
 
 # SSH 접속 후 백업 (이 저장소에서는 별칭 'ssh platform-master' 도 됨, 상단 전제 참조)
-ssh admin@<platform-master-ip>
+ssh platform-master
 sudo ETCDCTL_API=3 etcdctl snapshot save /opt/etcd-backup-exam.db \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
@@ -301,7 +301,7 @@ Static Pod 생성 흐름:
 ```bash
 # 이 저장소에서는 VM 이름 별칭으로 접속 (staging-master 는 ~/.ssh/config 등록 별칭)
 ssh staging-master
-# 시험장 일반형: ssh admin@<staging-master-ip>
+# 시험장 일반형: ssh staging-master
 
 # staticPodPath 확인
 cat /var/lib/kubelet/config.yaml | grep staticPodPath

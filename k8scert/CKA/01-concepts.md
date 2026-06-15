@@ -4,6 +4,8 @@
 
 > CKA(Certified Kubernetes Administrator) 시험은 실기 시험이다. 모든 문제를 터미널에서 직접 해결해야 하므로, 개념을 이해하는 것뿐 아니라 kubectl 명령어와 YAML 작성에 익숙해야 한다.
 
+> **노드 이름 표기:** 본문의 `node01`·`master01` 등은 시험 환경의 노드 이름이다. 이 저장소에서 로컬로 재현할 때는 `node01`→`dev-worker1`, `master01`→`dev-master`로 읽고, SSH는 `ssh dev-master`처럼 VM 별칭으로 접속한다(§3 — 파괴 실습은 dev/staging에서만, platform/prod 금지).
+
 ## 오늘의 학습 목표
 
 - [ ] Control Plane / Worker Node 구성 요소와 apiserver 중심 통신 흐름을 설명한다.

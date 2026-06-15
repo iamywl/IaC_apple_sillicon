@@ -2,6 +2,8 @@
 
 기존 CKS 학습 자료(01~04)에서 다루지 못한 핵심 토픽을 보강하고, 추가 실전 예제와 확인 문제, 기출 유형 덤프 문제를 수록한 보충 문서이다.
 
+> **노드 이름 표기:** 문제 본문의 `node01`·`master01` 등은 CKS 시험 환경의 노드 이름이다. 이 저장소에서 로컬로 재현할 때는 `node01`→`staging-worker1`(또는 `dev-worker1`), `master01`→`staging-master`로 읽고, SSH는 `ssh staging-worker1`처럼 VM 별칭으로 접속한다(§3 — 파괴 실습은 dev/staging에서만).
+
 ---
 
 # Part 1: 누락된 개념 보강

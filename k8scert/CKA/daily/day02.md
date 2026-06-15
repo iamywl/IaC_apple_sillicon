@@ -228,7 +228,7 @@ cat /tmp/kube-system-status.txt
 <summary>풀이 과정</summary>
 
 ```bash
-# Step 1: SSH 접속 (별칭 미설정 시 ssh admin@<platform-master-ip>)
+# Step 1: SSH 접속 (별칭 미설정 시 ssh platform-master)
 ssh platform-master
 
 # Step 2: 모든 인증서 만료일 확인
@@ -324,7 +324,7 @@ kubectl config use-context platform
 kubectl -n kube-system get pod etcd-platform-master -o yaml | \
   grep "\-\-data-dir" | awk -F= '{print $2}' > /tmp/etcd-data-dir.txt
 
-# 방법 2: SSH로 확인 (별칭 미설정 시 ssh admin@<platform-master-ip>)
+# 방법 2: SSH로 확인 (별칭 미설정 시 ssh platform-master)
 ssh platform-master
 sudo grep "data-dir" /etc/kubernetes/manifests/etcd.yaml | awk -F= '{print $2}' > /tmp/etcd-data-dir.txt
 exit
@@ -409,7 +409,7 @@ cat /tmp/control-plane-ports.txt
 # etcd: 2379
 ```
 
-**방법 2: SSH 접속하여 확인** (별칭 미설정 시 `ssh admin@<platform-master-ip>`)
+**방법 2: SSH 접속하여 확인** (별칭 미설정 시 `ssh platform-master`)
 ```bash
 ssh platform-master
 sudo ss -tlnp | grep -E "6443|10259|10257|2379|2380"
@@ -920,7 +920,7 @@ kubectl config get-contexts
 
 ```bash
 # 인증서 만료일 확인
-# (SSH 별칭. ~/.ssh/config 에 platform-master 미등록 시 ssh admin@<platform-master-ip>)
+# (SSH 별칭. ~/.ssh/config 에 platform-master 미등록 시 ssh platform-master)
 ssh platform-master
 sudo kubeadm certs check-expiration
 ```

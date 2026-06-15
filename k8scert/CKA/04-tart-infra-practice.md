@@ -203,7 +203,7 @@ done
 
 ```bash
 # master 노드에 SSH 접속 (admin/admin)
-ssh admin@<platform-master-ip>
+ssh platform-master
 
 # 접속 후 kubelet 상태 확인
 sudo systemctl status kubelet
@@ -400,7 +400,7 @@ kubectl --context=platform get pods -n kube-system -o wide | grep -E "(apiserver
 
 ```bash
 # master 노드에 SSH 접속
-ssh admin@<platform-master-ip>
+ssh platform-master
 
 # Static Pod 매니페스트 디렉토리 확인
 ls -la /etc/kubernetes/manifests/
@@ -542,7 +542,7 @@ kubectl --context=platform -n kube-system get pod etcd-platform-master -o yaml |
 
 ```bash
 # platform master 노드에 SSH 접속
-ssh admin@<platform-master-ip>
+ssh platform-master
 
 # etcdctl 설치 확인
 ETCDCTL_API=3 etcdctl version
@@ -659,7 +659,7 @@ etcd 데이터 디렉토리(`/var/lib/etcd`)가 삭제되면 다음과 같은 �
 
 ```bash
 # 복구 전 현재 클러스터 상태를 기록해 둔다
-ssh admin@<platform-master-ip>
+ssh platform-master
 
 # 현재 네임스페이스 목록
 kubectl get namespaces > /tmp/before-restore-ns.txt
@@ -1390,7 +1390,7 @@ kubeadm 1.8 이후 `kubeadm upgrade`를 실행하면 인증서가 자동 갱신�
 
 ```bash
 # platform master 노드에 SSH 접속
-ssh admin@<platform-master-ip>
+ssh platform-master
 
 # 모든 인증서 만료일 확인
 sudo kubeadm certs check-expiration
@@ -4965,7 +4965,7 @@ kubelet은 다음 과정으로 API Server와 통신한다:
 
 ```bash
 # platform 워커 노드에 SSH 접속
-ssh admin@<platform-worker1-ip>
+ssh platform-worker1
 
 # kubelet 서비스 상태 확인
 sudo systemctl status kubelet
@@ -5103,7 +5103,7 @@ sudo journalctl -u kubelet | grep "config" | tail -5
 
 ```bash
 # master 노드에 SSH 접속
-ssh admin@<platform-master-ip>
+ssh platform-master
 
 # 모든 인증서 만료일 확인
 sudo kubeadm certs check-expiration
@@ -5468,7 +5468,7 @@ kubectl --context=dev logs -n kube-system -l component=etcd --tail=20
 
 ```bash
 # SSH로 노드 접속
-ssh admin@<dev-worker1-ip>
+ssh dev-worker1
 
 # crictl로 컨테이너 목록 확인
 sudo crictl ps
@@ -5528,7 +5528,7 @@ kubectl --context=platform describe node platform-worker1 | grep -A20 Conditions
 # NetworkUnavailable:   False (정상) / True (네트워크 설정 미완료)
 
 # 2. SSH로 노드 접속하여 확인
-ssh admin@<platform-worker1-ip>
+ssh platform-worker1
 
 # kubelet 상태
 sudo systemctl status kubelet
@@ -5555,7 +5555,7 @@ exit
 
 ```bash
 # kubelet 재시작
-ssh admin@<platform-worker1-ip>
+ssh platform-worker1
 sudo systemctl restart kubelet
 exit
 
@@ -5584,7 +5584,7 @@ kubectl describe node <name> | grep -A20 Conditions
 
 ```bash
 # 2. SSH 접속 후 kubelet/containerd 상태 확인
-ssh admin@<node-ip>
+ssh node
 sudo systemctl status kubelet
 sudo systemctl status containerd
 
@@ -5620,7 +5620,7 @@ sudo systemctl restart kubelet
 
 ```bash
 # SSH로 노드 접속
-ssh admin@<dev-worker1-ip>
+ssh dev-worker1
 
 # containerd 상태 확인
 sudo systemctl status containerd
@@ -5737,7 +5737,7 @@ kubectl --context=platform -n kube-system get pod etcd-platform-master -o yaml |
   grep -E "(--cert-file|--key-file|--trusted-ca-file|--listen-client)"
 
 # 2. SSH 접속
-ssh admin@<platform-master-ip>
+ssh platform-master
 
 # 3. 백업 실행
 ETCDCTL_API=3 etcdctl snapshot save /opt/etcd-backup-scenario1.db \

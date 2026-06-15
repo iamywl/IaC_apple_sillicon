@@ -1455,7 +1455,7 @@ kill $PF_PID 2>/dev/null || true
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 
 # Cilium CLI로 상태 확인 (SSH로 노드 접속 후)
-# tart ssh dev-master
+# ssh dev-master
 # cilium status
 ```
 

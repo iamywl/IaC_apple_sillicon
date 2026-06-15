@@ -790,7 +790,7 @@ kubectl get pod etcd-dev-master -n kube-system -o yaml | grep -E "(--cert-file|-
 # 읽기전용 포트(10255): HTTP, 인증 없음 — 비활성화 권장
 
 # kubelet 설정 확인 (SSH 접속 필요)
-# tart ssh dev-master
+# ssh dev-master
 # sudo cat /var/lib/kubelet/config.yaml | grep -E "(authentication|authorization|readOnlyPort)"
 ```
 

@@ -728,7 +728,7 @@ exit
 kubectl --context=dev get pods -n demo -l app=nginx-web
 
 # crictl로 동일한 컨테이너 조회 (노드 수준, SSH 필요)
-# ssh admin@<node-ip>
+# ssh node
 # sudo crictl ps --name nginx-web
 ```
 
@@ -901,7 +901,7 @@ kubectl --context=dev exec -n kube-system $ETCD_POD -- \
 kubectl --context=dev top pod -n kube-system -l component=etcd
 
 # etcd 디스크 I/O 확인 (SSH 접속 필요)
-# ssh admin@<node-ip>
+# ssh node
 # sudo iostat -x 1 5
 
 # etcd 디스크 동기화 지연 확인

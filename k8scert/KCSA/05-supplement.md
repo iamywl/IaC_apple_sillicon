@@ -1910,7 +1910,7 @@ seccomp과 무관한 다른 securityContext 오류일 수 있다. 정확한 원�
 
 ```bash
 # seccomp에 의한 시스템 콜 거부 확인 (dmesg 로그)
-ssh admin@<node-ip> 'sudo dmesg | grep "seccomp" | tail -5'
+ssh node 'sudo dmesg | grep "seccomp" | tail -5'
 ```
 
 > **참조 — audit 로깅(설정 의존):** [12345.678] audit: type=1326 audit(...): auid= ...
@@ -3468,7 +3468,7 @@ Kubernetes 클러스터의 인증서가 만료되면 컴포넌트 간 통신이 
 
 ```bash
 # 모든 인증서의 만료일을 한 번에 확인하는 스크립트
-ssh admin@<dev-master-ip> 'for cert in /etc/kubernetes/pki/*.crt /etc/kubernetes/pki/etcd/*.crt; do
+ssh dev-master 'for cert in /etc/kubernetes/pki/*.crt /etc/kubernetes/pki/etcd/*.crt; do
   EXPIRY=$(sudo openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
   DAYS_LEFT=$(( ($(date -d "$EXPIRY" +%s 2>/dev/null || date -j -f "%b %d %T %Y %Z" "$EXPIRY" +%s 2>/dev/null) - $(date +%s)) / 86400 ))
   [ "$DAYS_LEFT" -lt 90 ] && STATUS="[WARNING]" || STATUS="[OK]"
@@ -3482,7 +3482,7 @@ done' 2>/dev/null
 
 ```bash
 # kubeadm 환경에서 인증서 일괄 갱신
-ssh admin@<dev-master-ip> 'sudo kubeadm certs check-expiration'
+ssh dev-master 'sudo kubeadm certs check-expiration'
 ```
 
 > **예시(참조) — CERTIFICATE                EXPIRES            :** KCSA 보안 개념/점검 기대 출력(설정/도구/환경 의존). 재현 가능 핵심은 KCSA daily 및 본 캡처 참고.

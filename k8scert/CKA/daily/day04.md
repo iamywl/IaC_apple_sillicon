@@ -625,7 +625,7 @@ kubectl get pod etcd-platform-master -n kube-system -o yaml | grep -A5 "command:
 
 ```bash
 # etcd 엔드포인트 health 확인 (SSH로 master 노드 접속 후)
-# tart ssh platform-master
+# ssh platform-master
 # ETCDCTL_API=3 etcdctl endpoint health \
 #   --endpoints=https://127.0.0.1:2379 \
 #   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
@@ -654,7 +654,7 @@ kubectl version --short 2>/dev/null || kubectl version
 
 ```bash
 # kubeadm 업그레이드 가능 버전 확인 (SSH로 master 노드 접속 후)
-# tart ssh platform-master
+# ssh platform-master
 # sudo kubeadm upgrade plan
 ```
 

@@ -2,6 +2,8 @@
 
 > **학습 목표**: CKS 시험 전 도메인에 걸친 실전 예제를 직접 실행해 손 숙련도를 높인다. | **도메인**: CKS 전체 (Cluster Setup & Hardening·System Hardening·Minimize Microservice Vulnerabilities·Supply Chain Security·Monitoring·Logging·Runtime Security) | **예상 소요**: 6~8시간
 
+> **노드 이름 표기:** 본문의 `node01`·`master01` 등은 CKS 시험 환경의 노드 이름이다. 로컬 재현 시 `node01`→`staging-worker1`, `master01`→`staging-master`로 읽고 `ssh staging-worker1`처럼 VM 별칭으로 접속한다(§3 — 파괴 실습은 dev/staging에서만).
+
 **섹션-도메인 매핑표**
 
 | 섹션 | CKS 도메인 | 시험 비중(참고) |

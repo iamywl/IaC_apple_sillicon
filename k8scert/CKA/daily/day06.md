@@ -646,7 +646,7 @@ kubectl delete namespace rbac-test
 
 ```bash
 # API Server 인증서 만료일 확인 (SSH로 master 접속 후)
-# tart ssh platform-master
+# ssh platform-master
 # sudo kubeadm certs check-expiration
 ```
 

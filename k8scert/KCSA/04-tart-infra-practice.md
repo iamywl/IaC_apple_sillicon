@@ -5467,9 +5467,9 @@ kubectl get events -n demo --sort-by='.lastTimestamp'        # 이벤트 확인 
 kubectl logs <pod> -n demo --previous                        # 이전 컨테이너 로그 (크래시 분석)
 
 # === 노드 보안 ===
-ssh admin@<node-ip> 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'  # API Server 설정
-ssh admin@<node-ip> 'sudo cat /var/lib/kubelet/config.yaml'                   # kubelet 설정
-ssh admin@<node-ip> 'sudo ls -la /etc/kubernetes/pki/'                        # PKI 인증서 목록
+ssh node 'sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml'  # API Server 설정
+ssh node 'sudo cat /var/lib/kubelet/config.yaml'                   # kubelet 설정
+ssh node 'sudo ls -la /etc/kubernetes/pki/'                        # PKI 인증서 목록
 ```
 
 ---

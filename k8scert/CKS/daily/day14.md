@@ -1809,7 +1809,7 @@ kubectl auth can-i get pods -n default --as=system:serviceaccount:default:defaul
 
 ```bash
 # API Server 매니페스트 위치 확인
-# tart ssh dev-master
+# ssh dev-master
 # sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | head -30
 
 # 시험에서 자주 수정하는 항목:

@@ -2,6 +2,8 @@
 
 > 학습 목표 | CKS 도메인: Cluster Setup (10%) | 예상 소요 시간: 2시간
 
+> **노드 이름 표기:** 본문의 `node01`·`master01` 등은 CKS 시험 환경의 노드 이름이다. 로컬 재현 시 `node01`→`staging-worker1`, `master01`→`staging-master`로 읽고 `ssh staging-worker1`처럼 VM 별칭으로 접속한다(§3).
+
 ---
 
 ## 오늘의 학습 목표

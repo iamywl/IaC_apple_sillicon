@@ -842,9 +842,11 @@ kubectl explain hpa.spec.metrics
 kubectl get hpa -n demo -o yaml 2>/dev/null | grep apiVersion || echo "HPA가 없으면 manifests/hpa/ 확인"
 ```
 
-**(미캡처)** 아래는 v1.31 클러스터에서의 참고용 출력 형식이다. 실제 실행 후 터미널 스크린샷으로 교체한다.
+아래는 dev(v1.31) 클러스터에서 `kubectl explain ingress.spec.rules.http.paths` 를 실행한 실측이다.
 
-`kubectl explain ingress.spec.rules.http.paths` 출력에서 주목할 점은 `pathType <string> -required-` 항목이다. `-required-` 표시가 있는 필드는 매니페스트에 반드시 기재해야 하며, 없으면 apply가 거부된다. `kubectl explain`으로 필드의 필수 여부를 확인하는 습관이 시험에서 실수를 막는다.
+![dev kubectl explain ingress.spec.rules.http.paths 실측 — pathType -required-](images/ckad-explain-ingress.png)
+
+출력에서 주목할 점은 `pathType <string> -required-` 항목이다. `-required-` 표시가 있는 필드는 매니페스트에 반드시 기재해야 하며, 없으면 apply가 거부된다. `kubectl explain`으로 필드의 필수 여부를 확인하는 습관이 시험에서 실수를 막는다.
 
 **동작 원리:** `kubectl explain`은 API Server의 OpenAPI 스키마를 조회하여 각 필드의 타입, 필수 여부, 설명을 보여준다. `.`으로 중첩 필드를 탐색할 수 있다. 시험에서 YAML 필드명이 기억나지 않을 때 즉시 확인하는 방법이다.
 

@@ -95,25 +95,26 @@ Kubernetes가 해결한 문제:
 
 컨테이너 하나를 실행하는 것은 간단하다. 하지만 수백, 수천 개의 컨테이너를 여러 서버에서 운영해야 한다면?
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  s1["서버 1\n앱 A · 앱 E"]
+  s2["서버 2\n앱 B · 앱 F"]
+  s3["서버 3\n앱 C · ??"]
+  s4["서버 4\n앱 D · 앱 G"]
 ```
-문제 상황:
-==================================================
 
-서버 1      서버 2      서버 3      서버 4
-+------+   +------+   +------+   +------+
-| 앱 A |   | 앱 B |   | 앱 C |   | 앱 D |
-| 앱 E |   | 앱 F |   |  ??  |   | 앱 G |
-+------+   +------+   +------+   +------+
+_그림. 수백~수천 개 컨테이너를 여러 서버에 흩어 운영할 때 수작업으로는 풀기 어려운 문제들이 생긴다._
 
-질문들:
-- 앱 C가 죽으면 누가 재시작하나?
-- 서버 3이 다운되면 앱 C는 어디서 실행하나?
-- 트래픽이 급증하면 앱 A를 몇 개로 늘려야 하나?
-- 앱 B를 새 버전으로 교체할 때 다운타임 없이 어떻게 하나?
-- 앱 A에서 앱 F로 통신하려면 IP 주소를 어떻게 알아내나?
+이때 떠오르는 질문들:
 
-=> Kubernetes가 이 모든 것을 자동으로 해결한다!
-```
+- 앱 C 가 죽으면 누가 재시작하나?
+- 서버 3 이 다운되면 앱 C 는 어디서 실행하나?
+- 트래픽이 급증하면 앱 A 를 몇 개로 늘려야 하나?
+- 앱 B 를 새 버전으로 교체할 때 다운타임 없이 어떻게 하나?
+- 앱 A 에서 앱 F 로 통신하려면 IP 주소를 어떻게 알아내나?
+
+→ Kubernetes 가 이 모든 것을 자동으로 해결한다.
 
 이 문제들을 명령적 방식(쉘 스크립트·수동 절차)으로 해결하려 하면 즉각적인 한계에 부딪힌다. 예를 들어, 앱 C가 죽으면 재시작하는 쉘 스크립트를 작성했다고 하자. `if ! pgrep app-c; then docker run app-c; fi` 수준의 루프는 서버 3이 동시에 다운되는 순간 **레이스 컨디션**이 발생하여 중복 실행이나 무한 재시작 폭풍을 낳는다. 노드가 10대로 늘어나면 스크립트는 10배 복잡해지고, 각 노드의 환경 차이(패키지 버전, 마운트 경로)가 누적되어 **스노우플레이크 서버** 문제(서버마다 상태가 조금씩 달라 동일 명령이 다른 결과를 낸다)가 생긴다. 이 한계가 "어떻게(How)를 일일이 지시하지 않고 원하는 최종 상태(What)만 선언하는" 접근 방식을 강제한다.
 
@@ -247,41 +248,16 @@ K8s는 **제어 계층(누가 결정하는가)**과 **실행 계층(어디서 �
 
 #### 요청 처리 흐름 (3단계)
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  req["사용자 요청\n(kubectl apply ...)"] --> a1
+  a1["1단계: 인증 Authentication\n누구인가? — X.509·Bearer 토큰·OIDC·ServiceAccount 토큰"] --> a2
+  a2["2단계: 인가 Authorization\n권한이 있는가? — RBAC·ABAC·Webhook"] --> a3
+  a3["3단계: 어드미션 컨트롤 Admission Control\n정책에 부합하는가?\nMutating(변형: 라벨 추가 등) → Validating(검증: 위반 시 거부)"] --> etcd[(etcd 저장)]
 ```
-사용자 요청 (kubectl apply ...)
-           |
-           v
-+------------------------------------------+
-| 1단계: 인증 (Authentication)              |
-|   "당신은 누구인가?"                       |
-|   - X.509 인증서                         |
-|   - Bearer 토큰                          |
-|   - OIDC (OpenID Connect)                |
-|   - ServiceAccount 토큰                  |
-+------------------------------------------+
-           |
-           v
-+------------------------------------------+
-| 2단계: 인가 (Authorization)               |
-|   "당신은 이 작업을 할 권한이 있는가?"       |
-|   - RBAC (Role-Based Access Control)     |
-|   - ABAC (Attribute-Based)               |
-|   - Webhook                             |
-+------------------------------------------+
-           |
-           v
-+------------------------------------------+
-| 3단계: 어드미션 컨트롤 (Admission Control) |
-|   "이 요청은 정책에 부합하는가?"            |
-|   - Mutating Admission (변형)            |
-|     -> 리소스 자동 수정 (라벨 추가 등)      |
-|   - Validating Admission (검증)          |
-|     -> 정책 위반 시 거부                  |
-+------------------------------------------+
-           |
-           v
-      etcd에 저장
-```
+
+_그림. API Server 요청 처리 3단계. 인증(누구인가)→인가(권한이 있는가)→어드미션(정책 부합 여부, Mutating 후 Validating)을 통과해야 etcd 에 저장된다._
 
 #### kube-apiserver Static Pod YAML 상세 분석
 
@@ -425,33 +401,23 @@ Google은 내부 Borg 시스템을 운영하며 분산 상태 저장에 단순�
 > **Raft 합의 알고리즘**이란?
 > 여러 대의 서버가 동일한 데이터를 유지하도록 보장하는 방법이다. 투표를 통해 하나의 **리더(Leader)**를 선출하고, 리더가 모든 쓰기 요청을 처리한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  leader["etcd-1 (Leader)\n쓰기 요청 수신·과반수 확인·커밋 완료"]
+  f2["etcd-2 (Follower)\n복제 수신·ACK 응답"]
+  f3["etcd-3 (Follower)\n복제 수신·ACK 응답"]
+  leader -->|복제 요청| f2
+  leader -->|복제 요청| f3
+  f2 -->|ACK| leader
+  f3 -->|ACK| leader
 ```
-Raft 합의 알고리즘 (3노드 etcd 클러스터)
-============================================================
 
-etcd-1 (Leader)         etcd-2 (Follower)     etcd-3 (Follower)
-+---------------+       +---------------+     +---------------+
-| 쓰기 요청 수신 |------>| 복제 수신      |     | 복제 수신      |
-| 과반수 확인    |       | ACK 응답       |---->| ACK 응답       |
-| 커밋 완료      |<------|               |     |               |
-+---------------+       +---------------+     +---------------+
+_그림. 3노드 etcd 의 Raft 동작. Leader 만 쓰기를 받아 Follower 에 복제하고, 과반수 ACK 가 모이면 커밋한다._
 
-쓰기 과정:
-1. 클라이언트(API Server)가 Leader에게 쓰기 요청
-2. Leader가 Follower들에게 데이터 복제 요청
-3. 과반수(2/3)가 응답하면 커밋 완료
-4. 나머지 Follower에게도 커밋 통지
+**쓰기 과정:** ① 클라이언트(API Server)가 Leader 에 쓰기 요청 → ② Leader 가 Follower 에 복제 요청 → ③ 과반수(2/3) 응답 시 커밋 완료 → ④ 나머지 Follower 에 커밋 통지.
 
-장애 허용 (Fault Tolerance):
-- 3 노드 → 1 노드 장애 허용 (과반수 = 2)
-- 5 노드 → 2 노드 장애 허용 (과반수 = 3)
-- 7 노드 → 3 노드 장애 허용 (과반수 = 4)
-
-왜 홀수인가?
-- 짝수(4노드)의 과반수는 3이다. 1노드 장애 시 남은 3개로 과반수(3) 확보 가능하므로
-  1노드만 허용한다. 반면 홀수 3노드도 마찬가지로 1노드 장애만 허용한다.
-  결과적으로 4노드는 3노드보다 VM 1대를 더 쓰면서 장애 허용 수는 동일하다 → 비효율.
-- 정리: N 노드 클러스터의 과반수 = ⌊N/2⌋ + 1, 장애 허용 = N - 과반수
+**장애 허용(Fault Tolerance):** 과반수 = ⌊N/2⌋ + 1, 장애 허용 = N − 과반수. 짝수 노드는 한 단계 아래 홀수 노드와 장애 허용 수가 같으면서 VM 만 1대 더 쓰므로 **홀수가 효율적**이다.
 
 | 노드 수 | 과반수 | 장애 허용 | 비고 |
 |:---:|:---:|:---:|:---|
@@ -461,16 +427,7 @@ etcd-1 (Leader)         etcd-2 (Follower)     etcd-3 (Follower)
 | 6 | 4 | 2 | 5노드와 동일한 장애 허용, VM 낭비 |
 | 7 | 4 | 3 | 대형 클러스터 |
 
-- **홀수가 더 효율적**: 짝수 N 노드는 N-1 홀수 노드와 장애 허용 수가 같으면서 VM이 1대 더 필요하다.
-
-Leader 장애 시나리오:
-  Leader가 다운되면 Follower들은 election timeout(150~300ms 무작위) 후 새 Leader
-  선거를 시작한다. 과반수(quorum)가 확보되어야 선거가 성립하므로,
-  3노드 중 2노드가 다운되면 남은 1노드는 과반수(2)를 충족하지 못해
-  Leader 선출 불가 → 클러스터가 쓰기 불능(read-only) 상태가 된다.
-  3노드 중 1노드만 다운되면 남은 2노드가 과반수를 충족하여 새 Leader를 선출하고
-  정상 운영이 재개된다.
-```
+**Leader 장애 시나리오:** Leader 가 다운되면 Follower 들이 election timeout(150~300ms 무작위) 후 새 Leader 선거를 시작한다. 과반수(quorum)가 있어야 선거가 성립하므로, 3노드 중 2노드가 다운되면 남은 1노드는 과반수(2)를 못 채워 Leader 선출 불가 → 쓰기 불능(read-only)이 된다. 1노드만 다운되면 남은 2노드가 과반수를 충족해 새 Leader 를 선출하고 정상 운영을 재개한다.
 
 #### etcd Static Pod YAML 상세 분석
 
@@ -695,39 +652,17 @@ Scheduler는 단발로 Pod를 배치(nodeName 설정)하는 것만 담당하고,
 
 #### 컨트롤 루프(Reconciliation Loop) 개념
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  obs["관찰 (Observe)\n현재 상태 확인 — API Server 질의"] --> cmp{"비교 (Compare)\n현재 상태 vs 원하는 상태\n일치하는가?"}
+  cmp -->|일치| wait[대기]
+  cmp -->|불일치| act["조치 (Act)\n상태를 맞추는 액션 실행"]
+  wait --> obs
+  act --> obs
 ```
-컨트롤 루프 (무한 반복)
-============================================================
 
-         +----------+
-         | 관찰     |  현재 상태 확인
-         | (Observe)|  (API Server에 질의)
-         +----+-----+
-              |
-              v
-         +----------+
-         | 비교     |  현재 상태 vs 원하는 상태
-         | (Compare)|  일치하는가?
-         +----+-----+
-              |
-      +-------+-------+
-      |               |
-      v               v
-  +------+       +-------+
-  | 일치 |       | 불일치 |
-  | 대기 |       | 조치   |  상태를 맞추기 위한 액션 실행
-  +------+       +-------+
-      |               |
-      +-------+-------+
-              |
-              v
-         (다시 처음으로)
-
-예시:
-- Desired: replicas=3 (Pod 3개가 필요)
-- Current: Pod 2개만 실행 중
-- Action: Pod 1개 추가 생성
-```
+_그림. 컨트롤 루프(Reconciliation Loop)는 관찰→비교→조치를 무한 반복하며 상태 드리프트를 자동 보정한다. 예: Desired `replicas=3` 인데 Current 가 Pod 2개면 1개를 추가 생성한다._
 
 #### 주요 컨트롤러 목록
 
@@ -778,17 +713,17 @@ Reconciliation Loop는 **이벤트 기반이 아닌 주기적 폴링** 방식으
 
 #### kubelet의 핵심 역할
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  api[API Server] -->|PodSpec| kubelet
+  kubelet["kubelet (각 노드)\n1. PodSpec 수신\n2. 컨테이너 생성\n3. 상태 모니터링\n4. 상태 보고\n5. Probe 실행"]
+  kubelet -->|CRI API| ctr["containerd\n컨테이너 생성/실행"]
+  ctr -.->|상태| kubelet
+  kubelet -->|Node Status| api
 ```
-API Server                kubelet (각 노드)               containerd
-+---------+              +----------------+              +------------+
-|         |  PodSpec     |                |   CRI API    |            |
-|         |------------->| 1. PodSpec 수신 |------------>| 컨테이너   |
-|         |              | 2. 컨테이너 생성 |              | 생성/실행  |
-|         |              | 3. 상태 모니터링 |<------------|            |
-|         |<-------------| 4. 상태 보고    |              |            |
-|         |  Node Status | 5. Probe 실행   |              |            |
-+---------+              +----------------+              +------------+
-```
+
+_그림. kubelet 은 API Server 에서 PodSpec 을 받아 CRI API 로 containerd 에 컨테이너 생성을 위임하고, 노드·Pod 상태를 다시 API Server 에 보고한다._
 
 1. **PodSpec 수신**: API Server로부터 이 노드에서 실행해야 할 Pod 목록을 받는다
 2. **컨테이너 실행**: CRI(Container Runtime Interface)를 통해 containerd에게 컨테이너 실행을 요청
@@ -874,22 +809,17 @@ spec:
 > **kube-proxy**란?
 > 각 Worker Node에서 실행되는 **L4 네트워크 프록시**이다. Kubernetes Service 오브젝트의 변경을 Watch하여 iptables 규칙 또는 IPVS 가상 서버 테이블을 동적으로 갱신한다. Service의 Virtual IP(ClusterIP)로 들어오는 패킷을 DNAT(Destination NAT)를 통해 백엔드 Pod의 실제 IP로 전달하며, 라운드로빈 등의 로드밸런싱 알고리즘을 적용한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  svc["Service\nClusterIP 10.96.0.100:80"] --> rule
+  rule["kube-proxy 가 관리하는\niptables / IPVS 규칙\n(로드밸런싱: 라운드로빈)"]
+  rule --> pa["Pod-A 10.244.1.5:80"]
+  rule --> pb["Pod-B 10.244.2.3:80"]
+  rule --> pc["Pod-C 10.244.1.8:80"]
 ```
-Service (ClusterIP: 10.96.0.100)
-            |
-            v
-+---------------------------+
-| kube-proxy가 관리하는      |
-| iptables/IPVS 규칙        |
-|                           |
-| 10.96.0.100:80 →          |
-|   Pod-A (10.244.1.5:80)   |
-|   Pod-B (10.244.2.3:80)   |
-|   Pod-C (10.244.1.8:80)   |
-|                           |
-| 로드밸런싱: 라운드로빈      |
-+---------------------------+
-```
+
+_그림. Service 의 ClusterIP 로 들어온 패킷을 kube-proxy 가 갱신한 iptables/IPVS 규칙이 DNAT 로 백엔드 Pod 들에 라운드로빈 분산한다._
 
 #### kube-proxy 등장 배경 및 모드 변천
 

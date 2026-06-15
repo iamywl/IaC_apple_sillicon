@@ -1188,3 +1188,51 @@ kubectl get namespace cap-kcsa-day06 --show-labels
         적용 후 기존 Secret을 재암호화한다:
         kubectl get secrets --all-namespaces -o json | kubectl replace -f -
 ```
+
+---
+
+## ✅ 자가점검
+
+<details>
+<summary>1. NetworkPolicy에서 한 ingress 규칙 안의 여러 from 항목, 그리고 여러 ingress 규칙은 각각 AND인가 OR인가?</summary>
+
+**여러 ingress 규칙(배열 요소)끼리는 OR** — 하나라도 매칭하면 허용. 한 from 항목 안에서 **`namespaceSelector`와 `podSelector`를 같은 `-` 아래** 쓰면 **AND**(둘 다 만족), **별도 `-`로 분리**하면 **OR**다. 이 미묘한 차이가 빈출 함정이다.
+</details>
+
+<details>
+<summary>2. default-deny와 allow 정책을 함께 쓸 때 적용 순서는?</summary>
+
+NetworkPolicy는 **순서·우선순위가 없다**. 어떤 정책이든 트래픽을 허용하면 통과한다(deny 규칙은 없고, "허용 목록의 합집합"으로 동작). default-deny는 "아무 allow에도 안 걸리는 트래픽을 차단"하는 효과를 만든다. 따라서 default-deny + 필요한 allow들을 함께 둔다.
+</details>
+
+<details>
+<summary>3. Secret의 "3중 방어"란 무엇인가?</summary>
+
+(1) **전송 중 암호화**(API Server TLS), (2) **저장 시 암호화**(etcd EncryptionConfiguration/KMS), (3) **접근 제어**(RBAC로 get/list 제한 + `automountServiceAccountToken: false`). 세 계층을 모두 갖춰야 Secret 노출 위험을 줄인다.
+</details>
+
+<details>
+<summary>4. OPA Gatekeeper와 Kyverno의 핵심 차이는?</summary>
+
+Gatekeeper는 **Rego**(별도 정책 언어)로 ConstraintTemplate/Constraint를 작성한다. Kyverno는 **Kubernetes YAML**로 정책을 쓰고 validate 외에 **mutate·generate·verifyImages**까지 한 정책에서 제공한다. K8s만 다루면 Kyverno가 진입 장벽이 낮다.
+</details>
+
+<details>
+<summary>5. PSA(Pod Security Admission)의 세 모드는?</summary>
+
+`enforce`(위반 Pod 거부), `audit`(감사 로그에 기록만), `warn`(사용자에게 경고만). 네임스페이스 레이블 `pod-security.kubernetes.io/<mode>: <level>`로 적용하며 level은 `privileged`/`baseline`/`restricted`. PSP(삭제됨)의 후속이다.
+</details>
+
+## 시험 팁
+
+- NetworkPolicy **AND vs OR**(같은 `-` 아래 = AND, 분리 = OR)는 거의 매 시험 함정이다.
+- NetworkPolicy는 **순서 없음, 허용의 합집합**. default-deny로 기본 차단을 만든다.
+- Gatekeeper=**Rego**, Kyverno=**YAML+mutate/generate/verifyImages**.
+- PSA 모드 3종 `enforce/audit/warn` × level 3종 `privileged/baseline/restricted`.
+
+## 더 읽을거리
+
+- [Kubernetes 공식 — Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/) — AND/OR 규칙 의미.
+- [Kubernetes 공식 — Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
+- [Kyverno](https://kyverno.io/docs/) vs [OPA Gatekeeper](https://open-policy-agent.github.io/gatekeeper/) — 정책 엔진 비교.
+- [Encrypting Secret Data at Rest](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/)

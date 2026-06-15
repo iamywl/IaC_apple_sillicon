@@ -384,11 +384,13 @@ EndpointSlice: 여러 작은 오브젝트로 분할 (기본 100개씩)
 # 특정 Service의 EndpointSlice 조회
 kubectl get endpointslices -n <ns> -l kubernetes.io/service-name=<svc-name>
 
-# 예시: cap-cka-d11 네임스페이스의 backend-svc
-kubectl get endpointslices -n cap-cka-d11 -l kubernetes.io/service-name=backend-svc
+# 예시: demo 네임스페이스의 nginx-web Service (저장소 demo 스택)
+kubectl get endpointslices -n demo -l kubernetes.io/service-name=nginx-web
 ```
 
-(미캡처 — 클러스터 기동 후 실측 예정)
+![nginx-web Service의 EndpointSlice (dev 실측)](images/day11-endpointslice.png)
+
+`ADDRESSTYPE=IPv4`, `PORTS=80`이고 ENDPOINTS 열에 3개 Pod IP(dev Pod CIDR 10.20.1.x)가 하나의 슬라이스에 등록돼 있다. Pod 수가 기본 100개를 넘으면 여러 EndpointSlice로 분할된다.
 
 ### 3.3 sessionAffinity
 

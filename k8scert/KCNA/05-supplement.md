@@ -19,23 +19,24 @@
 
 PDB가 등장하기 전에는 노드 유지보수 시 심각한 가용성 문제가 발생하였다. 예를 들어, 서비스가 2개의 replica로 운영되고 있고, 두 Pod가 모두 같은 노드에 배치된 상황을 가정한다. 관리자가 `kubectl drain`으로 해당 노드를 비우면 두 Pod가 동시에 퇴거(evict)되어 서비스가 완전히 중단된다. 새 Pod가 다른 노드에서 시작될 때까지 수 초에서 수십 초 동안 다운타임이 발생하는 것이다.
 
+`replicas=2` 인 Deployment 의 두 Pod 가 모두 node-1 에 배치된 상황에서, 관리자가 PDB 없이 node-1 을 drain 하면 다음과 같이 서비스가 완전히 끊긴다.
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph N1["node-1"]
+    pa["Pod-A (app=web)"]
+    pb["Pod-B (app=web)"]
+  end
+  subgraph N2["node-2 (비어 있음)"]
+    empty[" "]
+  end
+  drain["kubectl drain node-1"] --> evict
+  evict["Pod-A·Pod-B 거의 동시에 퇴거"] --> down["서비스 완전 중단 0/2 Running\n사용자 503 경험"]
+  down --> recover["수 초~수십 초 후 node-2 에서 재생성"]
 ```
-PDB가 없는 경우의 문제 시나리오
-==========================================
 
-Deployment: replicas=2, 두 Pod 모두 node-1에 배치됨
-
-[node-1]                         [node-2]
-  Pod-A (app=web)                  (비어 있음)
-  Pod-B (app=web)
-
-관리자: kubectl drain node-1 실행
-  -> Pod-A 퇴거됨
-  -> Pod-B 퇴거됨  (거의 동시에!)
-  -> 서비스 완전 중단 (0/2 Running)
-  -> 수 초~수십 초 후 node-2에서 Pod 재생성
-  -> 그 사이 사용자는 503 에러를 경험
-```
+_그림. PDB 가 없으면 drain 이 두 Pod 를 동시에 퇴거시켜 재생성될 때까지 가용 Pod 가 0 이 된다(503)._
 
 이 문제의 핵심은 Kubernetes가 "이 서비스에서 최소 몇 개의 Pod는 반드시 살아 있어야 한다"는 정보를 알 수 없다는 점이다. PDB는 바로 이 정보를 Kubernetes에 전달하는 메커니즘이다.
 
@@ -47,20 +48,14 @@ Pod Disruption Budget(PDB)은 **자발적 중단(voluntary disruption)** 상황�
 
 ### 자발적 중단 vs 비자발적 중단
 
-```
-중단(Disruption)의 종류
-====================================
+| 자발적 중단 (Voluntary) — **PDB 보호 가능** | 비자발적 중단 (Involuntary) — **PDB 보호 불가** |
+|:--|:--|
+| 노드 드레인(`kubectl drain`) | 하드웨어 장애 |
+| 클러스터 업그레이드 | 커널 패닉 |
+| Deployment 롤링 업데이트 | VM 삭제 |
+| Eviction API 를 통한 축출 | 네트워크 파티션 / 리소스 부족 축출(Eviction) |
 
-자발적 중단 (Voluntary)             비자발적 중단 (Involuntary)
-- 노드 드레인 (kubectl drain)       - 하드웨어 장애
-- 클러스터 업그레이드                - 커널 패닉
-- Deployment 롤링 업데이트           - VM 삭제
-- Eviction API를 통한 축출           - 네트워크 파티션
-                                     - 리소스 부족으로 인한 축출(Eviction)
-
-  --> PDB가 보호 가능                 --> PDB가 보호 불가
-  (주의: kubectl delete pod는 PDB를 무시한다. Eviction API만 PDB를 준수한다.)
-```
+> **주의:** `kubectl delete pod` 는 PDB 를 무시한다. **Eviction API 만** PDB 를 준수한다.
 
 자발적 중단과 비자발적 중단의 구분이 중요한 이유는, PDB가 오직 자발적 중단에 대해서만 보호를 제공하기 때문이다. 하드웨어 장애와 같은 비자발적 중단은 예측할 수 없으므로, 이에 대비하려면 충분한 replica 수와 Pod Anti-Affinity 같은 별도의 전략이 필요하다.
 
@@ -275,42 +270,28 @@ CRD를 API 서버에 등록하면, API 서버는 다음과 같은 과정을 수�
 
 이후 해당 타입의 Custom Resource(CR)를 생성, 조회, 수정, 삭제할 수 있으며, etcd에 저장된다. RBAC으로 접근 제어도 가능하다.
 
+**CRD 등록 및 사용 흐름:**
+
+1. **CRD 등록** — `kubectl apply -f database-crd.yaml` → API 서버가 `/apis/example.com/v1/databases` 엔드포인트를 생성한다.
+2. **Custom Resource 생성** — `kubectl apply -f my-database.yaml` → API 서버가 CR 을 etcd 에 저장한다.
+3. **Custom Controller(Operator)가 CR 을 Watch** — CR 생성 시 실제 DB 프로비저닝, 수정 시 설정 업데이트, 삭제 시 정리를 수행한다.
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph API["Kubernetes API Server"]
+    subgraph BUILTIN["내장 리소스 (K8s 코어에 내장)"]
+      b["Pod / Service / Deployment"]
+    end
+    subgraph CUSTOM["사용자 정의 리소스 CR (CRD 로 정의·등록)"]
+      c["Database(커스텀) / Certificate / BackupJob"]
+    end
+  end
 ```
-CRD 등록 및 사용 흐름
-====================================
 
-1. CRD 등록:
-   kubectl apply -f database-crd.yaml
-   → API 서버가 /apis/example.com/v1/databases 엔드포인트를 생성한다
+_그림. API 서버는 내장 리소스(Pod·Service·Deployment)와 CRD 로 등록한 사용자 정의 리소스(Database·Certificate·BackupJob 등)를 동일한 방식으로 다룬다._
 
-2. Custom Resource 생성:
-   kubectl apply -f my-database.yaml
-   → API 서버가 CR을 etcd에 저장한다
-
-3. Custom Controller(Operator)가 CR을 Watch:
-   → CR이 생성되면 실제 데이터베이스를 프로비저닝한다
-   → CR이 수정되면 데이터베이스 설정을 업데이트한다
-   → CR이 삭제되면 데이터베이스를 정리한다
-
-+---------------------------------------------------+
-|            Kubernetes API Server                    |
-|                                                     |
-|  내장 리소스          사용자 정의 리소스 (CR)        |
-|  +-----------+       +-------------------+          |
-|  | Pod       |       | Database (커스텀) |          |
-|  | Service   |       | Certificate       |          |
-|  | Deployment|       | BackupJob         |          |
-|  +-----------+       +-------------------+          |
-|       ^                      ^                      |
-|       |                      |                      |
-|   K8s 코어에 내장       CRD로 정의하여 등록          |
-+---------------------------------------------------+
-
-사용자가 CRD를 등록하면:
-  kubectl get databases      <-- 가능해진다!
-  kubectl describe database my-db
-  kubectl delete database my-db
-```
+CRD 를 등록하면 `kubectl get databases`, `kubectl describe database my-db`, `kubectl delete database my-db` 처럼 내장 리소스와 똑같이 다룰 수 있게 된다.
 
 ### CRD + Custom Controller = Operator Pattern
 
@@ -525,40 +506,23 @@ Admission Controller는 Kubernetes API 서버가 요청을 처리하는 과정�
 
 이 흐름은 KCNA 시험에서 매우 자주 출제되는 내용이므로, 순서를 정확히 기억해야 한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  req["kubectl apply -f pod.yaml"] --> authn
+  subgraph API["kube-apiserver"]
+    authn["1. Authentication 인증\n누구인가? — X.509·Bearer Token·OIDC"] --> authz
+    authz["2. Authorization 인가\n권한이 있는가? — RBAC·Node·Webhook·ABAC"] --> mut
+    subgraph ADM["3. Admission Controllers"]
+      mut["Mutating Admission (먼저)\n요청 변경 — 기본값 주입·사이드카 추가"] --> sch
+      sch["Schema Validation\n리소스 스키마 유효성 검사"] --> val
+      val["Validating Admission (나중)\n요청 거부 — 리소스 제한 위반 차단"]
+    end
+    val --> etcd[("4. etcd 저장")]
+  end
 ```
-kubectl apply -f pod.yaml
-        |
-        v
-+-----------------------------------------------+
-|              kube-apiserver                     |
-|                                                 |
-|  1. Authentication (인증)                       |
-|     "이 사용자가 누구인가?"                      |
-|     방법: X.509 인증서, Bearer Token, OIDC 등   |
-|        |                                        |
-|        v                                        |
-|  2. Authorization (인가 - RBAC 등)              |
-|     "이 사용자가 이 작업을 할 권한이 있는가?"     |
-|     방법: RBAC, Node, Webhook, ABAC            |
-|        |                                        |
-|        v                                        |
-|  3. Admission Controllers  <-- 여기!            |
-|     |                                           |
-|     +-- Mutating Admission (수정) - 먼저 실행    |
-|     |   "요청을 변경할 수 있다"                   |
-|     |   예: 기본값 주입, 사이드카 추가            |
-|     |                                           |
-|     +-- Schema Validation                       |
-|     |   "리소스 스키마 유효성 검사"               |
-|     |                                           |
-|     +-- Validating Admission (검증) - 나중 실행  |
-|         "요청을 거부할 수 있다"                   |
-|         예: 리소스 제한 위반 차단                 |
-|        |                                        |
-|        v                                        |
-|  4. etcd에 저장                                 |
-+-----------------------------------------------+
-```
+
+_그림. API 요청은 인증→인가→Admission(Mutating→Schema→Validating)→etcd 순으로 처리된다. Mutating 이 먼저라 주입된 기본값을 Validating 이 검증할 수 있다._
 
 Mutating이 먼저 실행되는 이유는, Mutating 단계에서 주입된 기본값이나 추가 필드를 Validating 단계에서 검증할 수 있어야 하기 때문이다. 예를 들어, LimitRanger(Mutating)가 기본 리소스 제한을 주입한 후, ResourceQuota(Validating)가 네임스페이스 총 리소스를 검증한다.
 
@@ -721,20 +685,16 @@ etcd 클러스터 구성과 장애 허용
 
 ### 백업과 복구의 전체 흐름
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  ok[("etcd [데이터]\n정상 운영")] -->|스냅샷 생성\nsnapshot.db| broken[("etcd [손상!]\n장애 발생")]
+  broken -->|snapshot.db 사용\n복원| restored[("etcd [복원됨]\n복구 완료")]
+  ok -.->|정기적 스냅샷 저장\n예: 매 시간| ok
+  restored -.->|클러스터 상태가\n스냅샷 시점으로 복구| restored
 ```
-정상 운영                     장애 발생               복구 완료
-=========                    =========              =========
 
-+--------+                   +--------+             +--------+
-| etcd   |  --스냅샷 생성-->  | etcd   |  --복원-->  | etcd   |
-| [데이터]|  snapshot.db     | [손상!] |  snapshot  | [복원됨]|
-+--------+                   +--------+   .db 사용  +--------+
-    |                                                    |
-    v                                                    v
-정기적으로                                         클러스터 상태가
-스냅샷을 저장                                      스냅샷 시점으로 복구
-(예: 매 시간)
-```
+_그림. 정상 운영 중 정기적으로 스냅샷을 저장해 두고, etcd 가 손상되면 그 스냅샷으로 복원한다. 복구 시점의 클러스터 상태는 마지막 스냅샷 시점으로 되돌아간다._
 
 ### 핵심 개념
 

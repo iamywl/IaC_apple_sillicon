@@ -155,7 +155,7 @@ kubectl exec -n demo deploy/nginx -- /bin/sh -c "echo test"
 sudo journalctl -u falco --since "1 minute ago" | grep "Shell"
 ```
 
-검증 기대 출력 (예시-환경/도구따라다름, dev/staging에 Falco 미설치):
+검증 기대 출력 (modern eBPF 기준 — Falco는 cks 랩 또는 Falco를 설치한 dev/staging에서 재현; 아래는 실측):
 ![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
 
 ```bash
@@ -163,7 +163,7 @@ sudo journalctl -u falco --since "1 minute ago" | grep "Shell"
 sudo systemctl status falco | head -5
 ```
 
-기대 출력 (예시-환경/도구따라다름, dev/staging에 Falco 미설치):
+기대 출력 (modern eBPF 기준 — Falco는 cks 랩 또는 Falco를 설치한 dev/staging에서 재현; 아래는 실측):
 ![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
 
 </details>

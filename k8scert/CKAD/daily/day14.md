@@ -1418,6 +1418,38 @@ kubectl edit configmap mini-immutable -n exam
 
 ---
 
+## ✅ 자가점검
+
+<details>
+<summary>1. Secret의 data와 stringData의 차이는?</summary>
+
+`data`는 **base64 인코딩된 값**을 넣는다. `stringData`는 **평문**을 넣으면 apply 시 자동으로 base64 인코딩되어 `data`로 저장된다(쓰기 편의용, 조회 시엔 `data`로만 보인다). 둘 다 있고 같은 키면 `stringData`가 우선한다.
+</details>
+
+<details>
+<summary>2. immutable: true인 ConfigMap/Secret을 수정하려면?</summary>
+
+수정할 수 없다(`kubectl edit`/`patch` 거부). **새 이름으로 재생성**하고 이를 참조하는 Deployment의 `volumes[].configMap.name`/`secretName`을 바꿔 롤아웃한다. immutable은 대규모 클러스터에서 watch 부하를 줄이고 실수 변경을 막는다.
+</details>
+
+<details>
+<summary>3. subPath로 마운트한 ConfigMap은 업데이트가 자동 반영되나?</summary>
+
+**반영되지 않는다.** 일반 볼륨 마운트는 ConfigMap 변경이 (kubelet 동기화 주기 후) 자동 반영되지만, **`subPath` 마운트는 자동 갱신되지 않는다**. 갱신하려면 Pod를 재시작해야 한다. 시험 함정으로 자주 나온다.
+</details>
+
+<details>
+<summary>4. Projected volume이란 무엇인가?</summary>
+
+여러 소스(Secret·ConfigMap·downwardAPI·serviceAccountToken)를 **하나의 디렉터리로 합쳐 마운트**하는 볼륨이다. 예: 토큰 + CA + 설정을 한 경로에 모아 주입. `serviceAccountToken` projected source는 만료·audience 지정이 가능한 단명 토큰을 제공한다.
+</details>
+
+<details>
+<summary>5. kubernetes.io/dockerconfigjson 타입 Secret의 용도는?</summary>
+
+프라이빗 레지스트리 **이미지 풀 인증**(imagePullSecrets)에 쓴다. `kubectl create secret docker-registry`로 만들며, Pod/ServiceAccount의 `imagePullSecrets`에 연결한다. 일반 `Opaque`와 타입이 다르므로 타입을 정확히 지정해야 한다.
+</details>
+
 ## 9. 시험 팁
 
 - **명령형 우선**: `kubectl create configmap <name> --from-literal=K=V` 는 선언형 YAML보다 2~3배 빠르다. 볼륨 마운트가 필요한 경우에만 `--dry-run=client -o yaml > x.yaml` 후 편집한다.

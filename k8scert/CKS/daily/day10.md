@@ -143,7 +143,11 @@ kubectl delete pod web1 -n scan-ns     # nginx:1.19 (구버전)
 kubectl delete pod cache1 -n scan-ns   # redis:6 (구버전)
 ```
 
-> 위 `trivy image ...` 명령의 실제 출력(취약점 표·`Total: ... (CRITICAL: N)` 요약 줄)은 §4①에 따라 실제 터미널 스크린샷으로 제시해야 한다. 현재는 (스크린샷 필요) 상태이며, 캡처는 메인이 dev 클러스터에서 별도 수행한다. 출력 형식의 읽는 법은 "추가 심화 학습 > Trivy 스캔 결과 분석 예제"를 참조한다.
+**검증 — 기대 출력(실측):** `nginx:1.25`의 CRITICAL 스캔 결과다. 취약 패키지(libxml2·openssl·perl-base·zlib1g 등)·CVE ID·설치 버전·수정(Fixed) 버전이 표로 나오며, `Total: ... (CRITICAL: N)` 요약으로 위험을 판단한다. Fixed 버전이 있으면 베이스 이미지 업그레이드로 해소한다.
+
+![trivy image --severity CRITICAL nginx:1.25 — CRITICAL CVE 목록 (cks 랩 실측)](images/cks-trivy-critical.png)
+
+출력 형식의 읽는 법은 "추가 심화 학습 > Trivy 스캔 결과 분석 예제"를 참조한다.
 
 </details>
 

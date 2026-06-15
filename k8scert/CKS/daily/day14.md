@@ -1766,7 +1766,9 @@ kubectl get events -n demo --field-selector type=Warning --no-headers 2>/dev/nul
 echo "Warning 이벤트 수"
 ```
 
-> **(미캡처)** 위 실습 1 명령들의 실행 결과(CiliumNetworkPolicy 수, cluster-admin 바인딩 목록, Pod SecurityContext 상태, PeerAuthentication 존재 여부, 이미지 태그 목록, Warning 이벤트 수)는 실측 스크린샷으로 교체 예정이다. dev 클러스터를 기동한 뒤 `kd` 별칭으로 kubeconfig를 전환하고 각 명령을 순서대로 실행하면 클러스터의 현재 보안 상태를 한눈에 점검할 수 있다.
+아래는 cks 랩에서 종합 보안 점검을 실행한 실제 화면이다(도메인별 한 줄 점검). NetworkPolicy 수, cluster-admin 바인딩 목록, PSA `enforce=restricted` 라벨, cks-demo 의 이미지 태그(busybox:1.36·debian:12·nginx:1.25·netshoot:v0.13), Warning 이벤트 수가 한눈에 나온다. dev/staging 에서는 네임스페이스를 `demo` 로 바꿔 동일하게 점검한다.
+
+![cks 종합 보안 점검 — NetworkPolicy/cluster-admin/PSA/이미지태그/Warning 이벤트 실측](images/cks-security-audit.png)
 
 ### 실습 2: 시험 핵심 스킬 연습
 

@@ -686,7 +686,9 @@ kubectl get nodes
 kubectl get pods -n demo -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | sort -u
 ```
 
-**예상 출력:** (미캡처) — 실제 출력은 메인이 dev 클러스터 demo 네임스페이스에서 캡처 후 삽입한다.
+**실측 출력:** dev 클러스터 demo 네임스페이스에서 사용 중인 이미지 목록이다(아래 실측). `kong/httpbin:latest` 처럼 `:latest` 를 쓰는 이미지가 보이면 공급망 보안상 고정 태그/다이제스트로 교체 대상이다.
+
+![dev demo 네임스페이스 사용 이미지 목록 실측](images/cks-demo-images.png)
 
 **동작 원리:** 이미지 보안 점검 순서:
 1. 사용 중인 이미지 목록을 추출한다
@@ -720,7 +722,9 @@ kubectl get pods -n demo -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{ra
 kubectl get pod kube-apiserver-dev-master -n kube-system -o yaml | grep "enable-admission-plugins"
 ```
 
-**예상 출력:** (미캡처) — 실제 출력은 메인이 dev 클러스터에서 `kubectl get pod kube-apiserver-dev-master -n kube-system -o yaml` 실행 후 캡처해 삽입한다.
+**실측 출력:** dev 클러스터의 kube-apiserver 매니페스트에 `--enable-admission-plugins=NodeRestriction` 이 활성화돼 있다(아래 실측). CKS 에서는 여기에 `PodSecurity`, `ImagePolicyWebhook` 등을 추가·확인하는 문제가 나온다.
+
+![dev kube-apiserver 의 enable-admission-plugins 실측](images/cks-admission-plugins.png)
 
 **동작 원리:** Admission Controller의 역할:
 1. API 요청이 인증/인가를 통과한 후 etcd에 저장되기 전에 실행된다

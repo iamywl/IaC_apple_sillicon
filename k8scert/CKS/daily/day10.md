@@ -1188,3 +1188,50 @@ EXPOSE 5000
 HEALTHCHECK CMD curl -f http://localhost:5000/ || exit 1  # 헬스체크 추가
 CMD ["python", "app.py"]
 ```
+
+---
+
+## ✅ 자가점검
+
+<details>
+<summary>1. Trivy 스캔 결과의 Fixed Version 열이 비어 있으면 무엇을 뜻하나?</summary>
+
+해당 CVE에 대한 **수정 버전이 아직 없다**(will_not_fix 또는 미배포)는 뜻이다. 이 경우 베이스 이미지 업그레이드로 해소되지 않으므로, 대체 이미지(distroless 등)·완화 설정·예외 처리(`.trivyignore`)를 검토한다. Fixed Version이 있으면 그 버전 이상으로 업그레이드한다.
+</details>
+
+<details>
+<summary>2. ImagePolicyWebhook의 defaultAllow는 무엇을 결정하나?</summary>
+
+webhook 백엔드에 **연결할 수 없을 때**의 기본 동작이다. `defaultAllow: false`면 webhook이 응답하지 않을 때 이미지 생성을 **거부**(fail-closed)한다. 보안상 false가 권장되지만, webhook 장애 시 배포가 전면 중단될 수 있어 가용성과 트레이드오프가 있다.
+</details>
+
+<details>
+<summary>3. 이미지 다이제스트(@sha256:...)를 태그 대신 쓰는 이유는?</summary>
+
+태그(`:1.25`)는 **가변**이라 같은 태그가 다른 이미지를 가리킬 수 있다(공급망 변조 위험). 다이제스트는 이미지 내용의 **불변 해시**라 정확히 같은 이미지를 보장한다. CKS에서는 admission 정책으로 "다이제스트 고정"을 강제하는 문제가 나온다.
+</details>
+
+<details>
+<summary>4. kubesec와 Trivy는 무엇이 다른가?</summary>
+
+**Trivy**는 이미지의 **CVE(취약점)**를 스캔한다. **kubesec**는 **매니페스트의 보안 설정**(privileged, runAsNonRoot, capabilities, readOnlyRootFilesystem 등)을 점수화한다. 즉 Trivy=이미지 취약점, kubesec=워크로드 스펙 하드닝.
+</details>
+
+<details>
+<summary>5. Cosign 서명 검증은 클러스터의 어디에서 강제하나?</summary>
+
+Admission 단계에서 강제한다. Kyverno `verifyImages` 또는 sigstore policy-controller가 Validating Webhook으로 동작해 서명/attestation이 없는 이미지의 Pod 생성을 거부한다(런타임 아님).
+</details>
+
+## 시험 팁
+
+- Trivy: **Fixed Version 유무**로 조치 결정. `--severity CRITICAL,HIGH --exit-code 1`로 CI 차단.
+- ImagePolicyWebhook **defaultAllow=false** = fail-closed(보안↑, 가용성 트레이드오프).
+- 공급망 변조 방지 = **다이제스트 고정 + Cosign 서명 검증(admission)**.
+- **Trivy=CVE, kubesec=매니페스트 하드닝** 점수 — 역할 혼동 주의.
+
+## 더 읽을거리
+
+- [Trivy 문서](https://aquasecurity.github.io/trivy/) · [kubesec.io](https://kubesec.io/)
+- [Kubernetes 공식 — ImagePolicyWebhook](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#imagepolicywebhook)
+- [Sigstore cosign](https://docs.sigstore.dev/cosign/overview/)

@@ -42,7 +42,14 @@
       "4. 트리거 Pod는 Kyverno disallow-latest 때문에 태그 명시(nginx:1.25). cks-demo ns 사용."
     ]
   },
-  "next_session_order": ["C2_storyline(스토리라인 4요소 카드)","D_screenshots(cks 보안캡처 + dev 읽기전용 잔여)"],
+  "feedback_reflection_review_2026-06-15": {
+    "scope": "FEEDBACK-최종재검토.md(5종) HIGH 227건 기준 반영도 검토",
+    "reflected": "A(무결성)·B(사실)·안전논리·C1(daily구조)·C3(ASCII→mermaid, mermaid-cli 렌더검증)·C4·C5·C6 완료. 정확성오류 HIGH 22건은 스폿체크 결과 대부분 이전 패스에서 이미 반영(03-exam·04 재작성으로 라인 어긋남) — 이번에 추가로 실제 잔존 오류 수정: KCNA CRI-O(2023-07-19)·Falco(2024-02-29) Graduated 정정(웹검증), CKA etcd 다중멤버 restore 주의. CKA 채점표 136%·Workloads 6/30·Q17 블루프린트 주석은 이미 반영 확인.",
+    "partially_reflected": "스크린샷부족 HIGH 103건 + 실습재현불가 55건: 다회 세션에 걸쳐 다수 실측 캡처 반영(KCNA/CKA/KCSA/CKS images + 이번 세션 RBAC·PSA·NetworkPolicy·cordon). 그러나 전량은 아님 — 상당수 '(미캡처)'/'예시(참조)'가 잔존. 라이브 클러스터(주로 cks/dev/staging) 기동 후 capture-shot.sh 로 점진 교체 필요.",
+    "not_a_defect": "정확성오류 중 이미지 중복/캡션불일치 다수(CKS checksum OK/FAILED·seccomp·apparmor·gatekeeper 등)는 별도 실측 캡처가 있어야 정확히 교체 가능 → D backlog 로 분류.",
+    "honest_status": "구조·사실·안전·다이어그램 피드백은 반영 완료·검증됨. 캡처 의존 피드백(스크린샷/실습재현, ~158 HIGH)은 부분 반영이며 잔량은 클러스터 캡처 작업으로 남음. '피드백 100% 반영'은 아님."
+  },
+  "next_session_order": ["D_screenshots(스크린샷부족/실습재현 HIGH — cks/dev/staging 기동 후 (미캡처)/예시(참조) 점진 교체)","정확성오류 이미지중복/캡션 교체(checksum OK/FAILED·seccomp·apparmor 등 별도 캡처)","C2 LOW 잔여"],
   "verification_greps": [
     "fence parity: per file grep -c '^```' must be even",
     "no destructive platform/prod: grep -nE '(drain|uncordon|taint nodes|label node|delete pod|delete deployment) (platform|prod)' k8scert",

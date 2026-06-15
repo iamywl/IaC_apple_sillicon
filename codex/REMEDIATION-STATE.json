@@ -50,7 +50,10 @@
     "accuracy_remaining_needs_capture": "KCSA etcd 암호화 전후 동일이미지(hexdump 평문 vs k8s:enc 캡처 2장 필요 — etcd 암호화 설정 선행), CKS seccomp 이미지의 RuntimeClass dmesg(4.5) 오용, CKS notoken→connection-string(예제19) No such file 캡처.",
     "not_a_defect": "이미지 중복/캡션불일치 중 일부는 별도 실측 캡처가 있어야 정확히 교체 가능 → 위 remaining.",
     "honest_status": "구조·사실(+CNCF·etcd)·안전·다이어그램 피드백 반영 완료·검증됨. 정확성오류 이미지오용 8건 해소(checksum OK/FAILED·capability·readOnlyRootFilesystem·chmod600 DAC·webhook목록·KCSA etcd 전후). (미캡처) 일부 실측 교체(security-audit·admission-plugins·demo-images·ckad-top).",
-    "placeholder_scale_truth": "전 트리 placeholder 실측 잔량은 (미캡처)=61 + 예시(참조)≈1545 = 약 1606개. 예시(참조)는 환경의존 출력을 의도적으로 라벨한 reference 블록이라 전량 스크린샷 전환은 다회 세션 캡처 캠페인(순차 capture-shot, 항목당 워크로드 셋업+캡처+편집)이며 단일 세션 완료 불가. 우선순위: (미캡처) 명시 공백 61 → HIGH 스크린샷부족/실습재현 → 예시(참조) 점진. 전 클러스터(platform/dev/staging/prod/cks) 가동 중이면 dev demo 스택·metrics-server·cks 보안도구로 대부분 캡처 가능."
+    "placeholder_scale_truth": "전 트리 placeholder 실측 잔량은 시작 시점 (미캡처)=61 + 예시(참조)≈1545 = 약 1606개. 예시(참조)는 환경의존 출력을 의도적으로 라벨한 reference 블록이라 전량 스크린샷 전환은 다회 세션 캡처 캠페인이며 단일 세션 완료 불가. 우선순위: (미캡처) 명시 공백 → HIGH 스크린샷부족/실습재현 → 예시(참조) 점진.",
+    "grind_round_2026-06-15_captures": "(미캡처) 61→52 진행. 신규 실측: cks-rbac-can-i·cks-psa-forbidden·cks-netpol-default-deny·day04-10-cordon-cks·cks-checksum-ok/fail·cks-cap-deny·cks-readonly-fs·cks-validating-webhook-list·cks-security-audit·cks-admission-plugins(dev)·cks-demo-images(dev)·ckad-top-mem(dev)·ckad-api-resources-net(dev)·ckad-netpol-demo(dev)·ckad-probe-demo(dev)·cks-psa-warn·KCSA etcd-plaintext/encrypted(전후). 모두 양쪽 images 디렉터리 배치+문서 교체+커밋푸시 완료.",
+    "cluster_side_effects": "dev demo 에 manifests/network-policies/ 적용함(CiliumNetworkPolicy 다수 생성, 이전엔 없었음 → 이제 default-deny 효과로 ad-hoc pod 통신 차단됨; repo 의도 정책이라 유지). cks 에 캡처용 ns: cks-rbac/psa/netpol/demo/warn + pod: verify(debian)·capdrop·rofs 등 잔존(재사용 가능). dev demo 에 probe-demo pod 추가.",
+    "honest_gatekeeper_note": "CKS day08 L494 등 OPA Gatekeeper 전용 캡처는 cks 가 Kyverno 만 설치돼 미설치 정직 예외로 둠(Gatekeeper 설치 시 Kyverno 와 webhook 충돌 가능). CKS day12 Falco journalctl 4건은 cks 가 DaemonSet Falco + gVisor 런타임이라 컨테이너 스코프 syscall 귀속이 깨끗하지 않아(host 로만 잡힘) 정직 예외 유지."
   },
   "next_session_order": ["D_screenshots(스크린샷부족/실습재현 HIGH — cks/dev/staging 기동 후 (미캡처)/예시(참조) 점진 교체)","정확성오류 이미지중복/캡션 교체(checksum OK/FAILED·seccomp·apparmor 등 별도 캡처)","C2 LOW 잔여"],
   "verification_greps": [

@@ -157,9 +157,9 @@ kubectl exec secure-nginx -n production -- capsh --decode=0000000000000400
 kubectl exec secure-nginx -n production -- ip link set lo down
 ```
 
-![seccomp — syscall 차단(Operation not permitted)](images/cks-seccomp.png)
+![capability drop ALL Pod 의 NET_ADMIN 차단 — CapEff=0, ip link 시 Operation not permitted (cks 실측)](images/cks-cap-deny.png)
 
-> **[이미지 정확성 주의]** 위 이미지는 seccomp 프로파일 차단 화면이지만, capability 차단의 에러 메시지도 동일하게 `Operation not permitted`로 출력된다. 두 메커니즘의 커널 반환값이 모두 `-EPERM`이기 때문이다. capability 차단 실측 화면(cks-cap-deny.png)은 추후 교체 예정이다.
+> 위 캡처는 `capabilities.drop: ["ALL"]` 적용 Pod 의 실측이다. `CapEff: 0000000000000000`(모든 capability 제거)이라 NET_ADMIN 이 필요한 `ip link` 가 `Operation not permitted`(커널 `-EPERM`)로 차단된다. seccomp 차단도 같은 `-EPERM` 문자열을 내지만, 이 화면은 capability 메커니즘의 차단을 보여준다.
 
 NET_ADMIN capability가 없으므로 네트워크 인터페이스 조작이 차단된다.
 
@@ -168,9 +168,9 @@ NET_ADMIN capability가 없으므로 네트워크 인터페이스 조작이 차�
 kubectl exec secure-nginx -n production -- chown nobody /tmp
 ```
 
-![seccomp — syscall 차단(Operation not permitted)](images/cks-seccomp.png)
+![capability drop ALL Pod — CHOWN 부재로 chown 차단(동일 CapEff=0 Pod, cks 실측은 NET_ADMIN 예시)](images/cks-cap-deny.png)
 
-> **[이미지 정확성 주의]** 위 이미지는 seccomp 프로파일 차단 화면이지만, capability 차단의 에러 메시지도 동일하게 `Operation not permitted`로 출력된다. capability 차단 실측 화면(cks-cap-deny.png)은 추후 교체 예정이다.
+> 위 캡처의 Pod 는 `drop: ["ALL"]` 이라 CHOWN 도 제거돼 `chown` 역시 `Operation not permitted`로 차단된다(캡처의 실행 예시는 NET_ADMIN `ip link` 이며, CapEff=0 이 모든 capability 제거를 증명한다).
 
 CHOWN capability가 없으므로 파일 소유권 변경이 차단된다.
 
@@ -5154,9 +5154,9 @@ kubectl exec web-app -- cat /proc/1/status | grep -i cap
 kubectl exec web-app -- ip link set lo down 2>&1
 ```
 
-![seccomp — syscall 차단(Operation not permitted)](images/cks-seccomp.png)
+![capability drop ALL Pod 의 NET_ADMIN 차단 — CapEff=0, ip link 시 Operation not permitted (cks 실측)](images/cks-cap-deny.png)
 
-> **[이미지 정확성 주의]** 위 이미지는 seccomp 프로파일 차단 화면이지만, capability 차단의 에러 메시지도 동일하게 `Operation not permitted`로 출력된다. 두 메커니즘 모두 커널이 `-EPERM`을 반환하므로 사용자 공간에서 보이는 에러 문자열이 같다. capability 차단 실측 화면(cks-cap-deny.png)은 추후 교체 예정이다.
+> 위 캡처는 `capabilities.drop: ["ALL"]` Pod 의 실측이다. `CapEff: 0000000000000000` 이라 NET_ADMIN 이 필요한 `ip link` 가 `Operation not permitted`(커널 `-EPERM`)로 차단된다. seccomp 차단도 같은 `-EPERM` 문자열을 내지만, 이 화면은 capability 메커니즘의 차단이다.
 
 ```bash
 # 정리

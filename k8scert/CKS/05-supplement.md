@@ -498,7 +498,9 @@ webhooks:
 kubectl get mutatingwebhookconfigurations
 ```
 
-> **(미캡처)** dev 클러스터에서 `kubectl get mutatingwebhookconfigurations` 실행 결과로 교체 예정. Falco 경보 이미지(cks-falco-alert.png)는 이 위치와 무관하며, Section 5(Sysdig/Falco) 검증 위치에만 사용한다.
+아래는 cks 랩에서 `kubectl get mutatingwebhookconfigurations` 를 실행한 실측이다. Kyverno 가 등록한 `kyverno-*-mutating-webhook-cfg` 가 보인다(MutatingAdmissionWebhook — 정책 엔진이 API 요청을 변형/검증함을 보여준다).
+
+![MutatingWebhookConfiguration 목록 — Kyverno mutating webhook(cks 실측)](images/cks-mutating-webhook-list.png)
 
 ```bash
 kubectl get validatingwebhookconfigurations

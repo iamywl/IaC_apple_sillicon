@@ -422,10 +422,10 @@ echo "$(cat kubelet.sha512)  /usr/bin/kubelet" | sha512sum --check
 정상 케이스와 변조 케이스는 `sha512sum --check`의 마지막 줄 표시로 구분한다. 해시가 일치하면 `/usr/bin/kubelet: OK`가 출력되고 종료 코드는 0이다. 한 바이트라도 다르면 `/usr/bin/kubelet: FAILED`와 함께 `sha512sum: WARNING: 1 computed checksum did NOT match` 경고가 출력되고 종료 코드는 1이 된다. 즉 두 상태는 같은 화면이 아니라 끝줄의 `OK`/`FAILED` 토큰과 종료 코드로 명확히 갈린다.
 
 기대 출력 (정상 — `OK`, 종료 코드 0):
-![바이너리 무결성 sha512sum OK](images/cks-checksum.png)
+![바이너리 무결성 sha512sum OK — kubectl.bin: OK (cks 실측)](images/cks-checksum-ok.png)
 
 기대 출력 (변조됨 — `FAILED` + `did NOT match` 경고, 종료 코드 1):
-![체크섬 불일치 — 변조 탐지](images/cks-checksum.png)
+![체크섬 불일치 — kubectl.bin: FAILED + did NOT match (cks 실측)](images/cks-checksum-fail.png)
 
 **CKS 시험에서의 활용:**
 - 특정 바이너리가 변조되었는지 확인하는 문제가 출제된다

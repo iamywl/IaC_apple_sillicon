@@ -325,12 +325,12 @@ systemctl restart kubelet
 # 정상 바이너리 해시 비교
 echo "$(cat kubelet.sha512)  /usr/bin/kubelet" | sha512sum --check
 ```
-![바이너리 무결성 sha512sum OK](images/cks-checksum.png)
+![바이너리 무결성 sha512sum OK — kubectl.bin: OK (cks 실측)](images/cks-checksum-ok.png)
 ```bash
 # 변조된 경우 출력
 echo "$(cat kubelet.sha512)  /usr/bin/kubelet" | sha512sum --check
 ```
-![체크섬 불일치 — 변조 탐지](images/cks-checksum.png)
+![체크섬 불일치 — kubectl.bin: FAILED + did NOT match (cks 실측)](images/cks-checksum-fail.png)
 ```bash
 # 교체 후 kubelet 정상 동작 확인
 systemctl status kubelet

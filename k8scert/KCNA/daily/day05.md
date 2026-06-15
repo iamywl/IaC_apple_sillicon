@@ -698,6 +698,52 @@ kubectl get pods -n demo -o custom-columns=NAME:.metadata.name,IP:.status.podIP
 
 ---
 
+## ✅ 자가점검
+
+<details>
+<summary>1. OCI(Open Container Initiative) 표준은 무엇을 규정하나?</summary>
+
+컨테이너의 **이미지 포맷(image-spec)**, **런타임 동작(runtime-spec)**, **배포(distribution-spec)** 를 표준화한다. 덕분에 한 빌더로 만든 이미지를 여러 런타임(containerd/CRI-O 등)이 동일하게 실행한다. dockershim 제거 후에도 Docker로 빌드한 OCI 이미지는 계속 쓸 수 있는 이유다.
+</details>
+
+<details>
+<summary>2. 컨테이너 이미지의 레이어 구조와 장점은?</summary>
+
+이미지는 읽기 전용 **레이어의 스택**이다(각 Dockerfile 명령이 레이어 생성). 공통 베이스 레이어는 이미지 간 **공유·캐시**되어 저장·전송이 효율적이다. 실행 시 맨 위에 쓰기 가능한 컨테이너 레이어가 추가된다(copy-on-write).
+</details>
+
+<details>
+<summary>3. CRI(Container Runtime Interface)란?</summary>
+
+kubelet과 컨테이너 런타임 사이의 **gRPC 표준 인터페이스**다. kubelet이 containerd·CRI-O 같은 CRI 구현체와 통신해 Pod/컨테이너를 관리한다. dockershim(v1.24 제거)은 Docker를 CRI에 끼워 맞추던 shim이었다.
+</details>
+
+<details>
+<summary>4. 컨테이너 격리의 두 커널 기능 namespace와 cgroup의 역할 차이는?</summary>
+
+**namespace**=무엇을 볼 수 있는지 격리(PID·net·mount·user 등 — "시야"). **cgroup**=얼마나 쓸 수 있는지 제한(CPU·메모리 — "자원 한도"). 둘이 합쳐져 컨테이너 격리를 만든다.
+</details>
+
+<details>
+<summary>5. containerd와 Docker(Engine)의 관계는?</summary>
+
+containerd는 Docker에서 분리돼 나온 **핵심 런타임**(이미지 풀·컨테이너 실행)이다. Docker Engine은 containerd 위에 빌드·네트워킹·CLI 등을 얹은 상위 도구다. K8s는 containerd/CRI-O를 CRI로 직접 쓰고 Docker Engine은 필요 없다.
+</details>
+
+## 시험 팁
+
+- **OCI**=이미지·런타임·배포 표준. dockershim 제거(v1.24)해도 **OCI 이미지는 계속 사용**.
+- **CRI**=kubelet↔런타임 gRPC 표준. 구현체 containerd/CRI-O.
+- **namespace=시야 격리 / cgroup=자원 한도** — 자주 묻는 구분.
+
+## 더 읽을거리
+
+- [OCI](https://opencontainers.org/) · [containerd](https://containerd.io/) · [CRI-O](https://cri-o.io/)
+- [Kubernetes 공식 — Container Runtimes](https://kubernetes.io/docs/setup/production-environment/container-runtimes/)
+- [dockershim 제거 FAQ](https://kubernetes.io/blog/2022/02/17/dockershim-faq/)
+
+---
+
 ## 내일 학습 예고
 
 > Day 6에서는 Cloud Native Architecture를 학습한다. CNCF 생태계, 마이크로서비스 vs 모놀리식, 서비스 메시, 오토스케일링(HPA/VPA), 서버리스, 12-Factor App을 다룬다.

@@ -8,23 +8,33 @@
 
 Kubernetes 보안 메커니즘은 API 요청의 라이프사이클에 따라 다음과 같이 배치된다. 각 단계의 보안 도구와 그 동작 원리를 이해하는 것이 KCSA 시험의 핵심이다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph BUILD["빌드/배포 전"]
+    direction TB
+    T["Trivy\n이미지 스캔"]
+    C["cosign\n이미지 서명"]
+    S["SBOM\n컴포넌트 목록"]
+    L["SLSA\n빌드 증명"]
+  end
+  subgraph API["API 요청 처리"]
+    direction TB
+    A1["인증\nAuthentication"] --> A2["인가\nAuthorization: RBAC"]
+    A2 --> A3["Mutating Admission\nKyverno mutate, Istio sidecar inject"]
+    A3 --> A4["Schema Validation"]
+    A4 --> A5["Validating Admission\nOPA Gatekeeper, Kyverno validate, PSA"]
+    A5 --> A6["etcd 저장\nEncryptionConfiguration, KMS v2"]
+  end
+  subgraph RUN["런타임"]
+    direction TB
+    R1["Falco\n시스템 콜 모니터링"]
+    R2["Tetragon\neBPF 차단"]
+    R3["Prometheus\n메트릭 감시"]
+  end
+  BUILD --> API --> RUN
 ```
-[빌드/배포 전]                    [API 요청 처리]                        [런타임]
- Trivy (이미지 스캔)              인증 (Authentication)                 Falco (시스템 콜 모니터링)
- cosign (이미지 서명)              ↓                                   Tetragon (eBPF 차단)
- SBOM (컴포넌트 목록)             인가 (Authorization: RBAC)            Prometheus (메트릭 감시)
- SLSA (빌드 증명)                  ↓
-                               Mutating Admission
-                               (Kyverno mutate, Istio sidecar inject)
-                                  ↓
-                               Schema Validation
-                                  ↓
-                               Validating Admission
-                               (OPA Gatekeeper, Kyverno validate, PSA)
-                                  ↓
-                               etcd 저장
-                               (EncryptionConfiguration, KMS v2)
-```
+_그림 0. Kubernetes 보안 메커니즘의 요청 라이프사이클 배치 — 빌드/배포 전, API 요청 처리(순차 파이프라인), 런타임._
 
 각 단계의 실패 시 동작:
 

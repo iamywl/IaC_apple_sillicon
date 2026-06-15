@@ -1307,3 +1307,51 @@ spec:
 2. **gVisor**: 사용자 공간 커널 → syscall 인터셉트, 오버헤드 존재
 3. **Kata**: 경량 VM → 가장 강한 격리, 가장 큰 오버헤드
 4. CKS 시험에서는 RuntimeClass를 생성하고 Pod에 적용하는 문제가 출제된다
+
+---
+
+## ✅ 자가점검
+
+<details>
+<summary>1. RuntimeClass의 handler 필드는 무엇과 연결되는가?</summary>
+
+`handler`는 노드 containerd 설정(`config.toml`)에 등록된 **런타임 이름**과 일치해야 한다(예: `runsc`=gVisor). Pod는 `spec.runtimeClassName`으로 RuntimeClass를 참조하고, kubelet은 해당 handler의 런타임으로 컨테이너를 실행한다. 노드에 런타임이 없으면 Pod는 스케줄돼도 실행에 실패한다.
+</details>
+
+<details>
+<summary>2. runc·gVisor·Kata의 격리 방식과 트레이드오프는?</summary>
+
+`runc`=호스트 커널 직접 공유(빠름, 격리 약함). `gVisor(runsc)`=사용자 공간에서 syscall을 인터셉트하는 별도 커널(격리↑, syscall 오버헤드). `Kata`=경량 VM로 커널까지 분리(격리 최강, 부팅·메모리 오버헤드 최대). 신뢰 낮은 워크로드일수록 gVisor/Kata.
+</details>
+
+<details>
+<summary>3. PSA(Pod Security Admission)의 모드와 레벨 조합은?</summary>
+
+모드 `enforce`/`audit`/`warn` × 레벨 `privileged`/`baseline`/`restricted`. 네임스페이스 레이블 `pod-security.kubernetes.io/<mode>: <level>`로 적용한다. `restricted`는 non-root·seccomp·capability drop 등을 요구한다.
+</details>
+
+<details>
+<summary>4. Gatekeeper의 ConstraintTemplate과 Constraint의 관계는?</summary>
+
+**ConstraintTemplate**은 Rego로 정책 *로직*과 새 CRD(종류)를 정의한다. **Constraint**는 그 템플릿을 인스턴스화해 *적용 범위·파라미터*를 지정한다(예: "모든 Pod에 label X 필수"). 템플릿 1개로 여러 Constraint를 만든다.
+</details>
+
+<details>
+<summary>5. etcd Secret 암호화(at rest)는 어떻게 구성하나?</summary>
+
+`EncryptionConfiguration`(aescbc/aesgcm/KMS provider)을 만들고 API Server에 `--encryption-provider-config` 플래그를 추가한다. 적용 후 기존 Secret은 `kubectl get secrets -A -o json | kubectl replace -f -`로 재암호화해야 실제로 암호화된다.
+</details>
+
+## 시험 팁
+
+- RuntimeClass 문제는 **handler 이름 = 노드 런타임 등록명** 일치가 핵심. gVisor=`runsc`.
+- PSA는 **모드×레벨** 조합으로 외운다. `restricted`가 가장 엄격.
+- Gatekeeper=Template(로직)+Constraint(적용), Kyverno=YAML 단일 정책.
+- Secret 암호화는 **EncryptionConfiguration + apiserver 플래그 + 기존 Secret 재암호화** 3단계.
+
+## 더 읽을거리
+
+- [Kubernetes 공식 — RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/)
+- [gVisor 문서](https://gvisor.dev/docs/) · [Kata Containers](https://katacontainers.io/)
+- [Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
+- [Encrypting Confidential Data at Rest](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/)

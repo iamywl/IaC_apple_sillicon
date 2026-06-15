@@ -706,7 +706,9 @@ kubectl apply -f /tmp/lab-new-ingress.yaml
 kubectl get ingress lab-ingress
 ```
 
-**(미캡처)** dev 클러스터 기동 후 각 단계 터미널 출력을 스크린샷으로 교체한다.
+아래는 dev 의 demo 네임스페이스에 `networking.k8s.io/v1` 로 변환한 `lab-ingress` 를 적용하고 조회한 실측이다. `get ingress` 의 HOSTS(lab.example.com)·PORTS(80)와 `describe` 의 Rules(`/` → `nginx-web:80`, v1 의 `pathType: Prefix`·`backend.service.port` 구조)가 보인다.
+
+![dev lab-ingress(networking.k8s.io/v1) get+describe 실측](images/ckad-ingress-v1.png)
 
 **체크포인트:**
 - 2단계에서 `no matches for kind` 에러가 나지 않는다면 dev 클러스터 버전이 1.22 미만이거나 extensions API가 활성화된 것이다. `kubectl version`으로 서버 버전을 확인한다.

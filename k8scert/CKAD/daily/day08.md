@@ -93,29 +93,19 @@ helm history myapp -n production
 
 ### 1.4 Helm 내부 동작 원리
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  S1["1. Chart 로딩\ntemplates/ Go 템플릿 파싱\nvalues.yaml + -f + --set 값 병합"] --> S2["2. 템플릿 렌더링\n{{ .Values.xxx }} → 실제 값 치환\n결과 = 순수 K8s YAML 매니페스트"]
+  S2 --> S3["3. API Server 전송\nkubectl apply 와 동일하게 전송\n의존성 순서 적용\nNamespace → ConfigMap → Deployment"]
+  S3 --> S4["4. Release 정보 저장\n네임스페이스 Secret 으로 저장\nsh.helm.release.v1.<name>.v<revision>"]
 ```
-[helm install 실행 시 내부 과정]
+_그림 1-4. helm install 실행 시 내부 과정 — Chart 로딩 → 템플릿 렌더링 → API Server 전송 → Release 저장._
 
-1. Chart 로딩
-   - templates/ 디렉토리의 Go 템플릿 파일 파싱
-     (Go 템플릿 엔진: {{ }} 이중 중괄호로 변수를 치환하는 Go 언어 기반 텍스트 처리 방식)
-   - values.yaml + -f 오버라이드 + --set 값 병합
-
-2. 템플릿 렌더링
-   - Go template 엔진이 {{ .Values.xxx }}를 실제 값으로 치환
-   - 결과물은 순수 Kubernetes YAML 매니페스트
-
-3. API Server에 전송
-   - 렌더링된 매니페스트를 kubectl apply와 동일하게 전송
-   - 리소스 간 의존성 순서(Namespace -> ConfigMap -> Deployment)로 적용
-
-4. Release 정보 저장
-   - Release 메타데이터를 해당 네임스페이스의 Secret으로 저장
-   - Secret 이름 형식: sh.helm.release.v1.<release-name>.v<revision>
-     (이 형식은 Helm이 Release 이력을 추적하기 위해 정한 내부 규약이다.
-      revision 번호마다 별도 Secret이 생성되어 롤백 시 참조된다)
-   - 이 Secret에 렌더링된 매니페스트, values, Chart 메타데이터가 포함된다
-```
+**세부 메커니즘:**
+- **Go 템플릿 엔진**: `{{ }}` 이중 중괄호로 변수를 치환하는 Go 언어 기반 텍스트 처리 방식이다.
+- **값 병합 우선순위**: `values.yaml` < `-f` 오버라이드 < `--set`.
+- **Release Secret**: 이름 형식은 `sh.helm.release.v1.<release-name>.v<revision>`이다. Helm이 Release 이력을 추적하기 위한 내부 규약으로, revision마다 별도 Secret이 생성되어 롤백 시 참조된다. 이 Secret에 렌더링된 매니페스트·values·Chart 메타데이터가 포함된다.
 
 ### 1.5 트레이드오프
 

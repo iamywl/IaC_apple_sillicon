@@ -3513,27 +3513,14 @@ kubectl --context=dev delete pod sched-test-ok sched-test-fail -n demo --ignore-
 
 Cloud Native Computing Foundation(CNCF)은 Linux Foundation 산하의 재단으로, 클라우드 네이티브 기술의 발전을 촉진한다. 2015년 Kubernetes를 첫 프로젝트로 시작하여, 현재 180+ 프로젝트를 호스팅한다. CNCF의 성숙도 단계는 프로젝트의 안정성과 프로덕션 준비 정도를 나타내는 지표이다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  S["Sandbox\n초기 단계·실험적\nCNCF 중립적 홈 제공\n예: 다수의 신규 프로젝트"] --> I["Incubating\n다수 프로덕션 사용자 확보\n커뮤니티 활성·지속 성장\n예: Backstage, Dapr"]
+  I --> G["Graduated\n프로덕션 광범위 사용\n보안 감사 완료·건전한 거버넌스\n예: Kubernetes, Prometheus, Envoy, Helm,\nCoreDNS, containerd, Cilium, Argo, Flux,\nOpenTelemetry, Kyverno"]
+  G -.->|비활성·기준 미달 시| A["Archive\n프로젝트 탈락"]
 ```
-CNCF 성숙도 단계
-====================================
-
-Sandbox → Incubating → Graduated
-  │          │              │
-  │          │              └── 프로덕션 환경에서 광범위하게 사용
-  │          │                  보안 감사 완료, 건전한 거버넌스
-  │          │                  예: Kubernetes, Prometheus, Envoy,
-  │          │                      Helm, CoreDNS, containerd, Cilium
-  │          │
-  │          └── 다수의 프로덕션 사용자 확보
-  │              커뮤니티 활성화, 지속적 성장
-  │              예: Argo, Backstage, Dapr, Flux
-  │
-  └── 초기 단계, 실험적
-      CNCF의 중립적 홈 제공
-      예: 다수의 신규 프로젝트
-
-프로젝트 탈락(Archive)도 가능하다.
-```
+_그림 6-1. CNCF 프로젝트 성숙도 단계 — Sandbox → Incubating → Graduated, 탈락 시 Archive (상태 기준일 2026-06-15)._
 
 **Step 1: tart-infra에 설치된 CNCF 프로젝트 확인**
 

@@ -1110,10 +1110,12 @@ kubectl cluster-info
 
 # demo 네임스페이스의 워크로드를 통해 선언적 시스템 확인
 kubectl get all -n demo
-
-# 예상 출력: nginx, httpbin 등의 Deployment/Service/Pod가 표시됨
-# kubectl이 API Server에 GET 요청 → API Server가 etcd에서 조회 → 결과 반환
+# (동작) kubectl이 API Server에 GET 요청 → API Server가 etcd에서 조회 → 결과 반환
 ```
+
+![demo 네임스페이스의 Deployment/ReplicaSet/Pod/Service 전체 (dev 실측)](images/day01-demo-getall.png)
+
+nginx-web·httpbin 등 데모 스택의 Deployment·ReplicaSet·Pod·Service가 함께 표시된다. Deployment가 ReplicaSet을, ReplicaSet이 Pod를 만드는 선언적 시스템 구조를 한 화면에서 확인할 수 있다.
 
 ---
 

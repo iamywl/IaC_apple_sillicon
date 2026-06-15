@@ -28,11 +28,18 @@
     "build_status_2026-06-15": "clean rebuild 진행/완료 예정 (reset-cluster.sh --yes cks). lib 버그 2건 수정 후 재빌드.",
     "bug_report": "codex/BUG-REPORT-cks-build.md (DNS·GPG키링 수정완료, containerd init은 partial-state탓 → clean rebuild로 해소).",
     "build_command": "./scripts/boot.sh 로 안 됨(신규 클러스터). 빌드는 ./scripts/reset-cluster.sh --yes cks. 이후 기동은 boot.sh가 cks 포함.",
+    "build_done": "cks 빌드 완료(양 노드 Ready, Cilium·CoreDNS).",
+    "tools_installed": {
+      "kyverno": "설치됨(kubectl create install.yaml). ClusterPolicy disallow-latest-tag(Enforce) 적용. 캡처3장→KCSA/05-supplement(kcsa-kyverno-latest-deny/policy/pods).",
+      "trivy": "호스트 Mac에 trivy 0.71.1 설치돼 있음(노드 설치 불필요). DB 워밍됨. 캡처1장(cks-trivy-critical)→CKS/daily/day10 문제1.",
+      "falco": "helm 설치됨(falco ns, modern_ebpf). /etc/shadow 읽기 탐지 검증 OK. 기존 cks-falco-alert.png로 충분해 day12 캡션만 정정.",
+      "gvisor": "미설치(남음). 노드 containerd runsc 런타임 설치+RuntimeClass 필요."
+    },
     "next_steps": [
-      "1. cks 빌드 완료 확인: kubectl --kubeconfig kubeconfig/cks.yaml get nodes (둘 다 Ready)",
-      "2. 보안도구 설치(순서): Kyverno(kubectl apply install.yaml) → Trivy(trivy-operator 또는 노드 CLI) → Falco(helm, eBPF) → gVisor(노드 containerd runsc 런타임)",
-      "3. 캡처: Kyverno latest-tag 거부, Gatekeeper deny, Falco alert, Trivy scan, gVisor runsc, PSA Forbidden 등 → KCSA/05-supplement, CKS daily 의 (미캡처)/예시(참조) 교체",
-      "4. capture: CAP_SETUP=\"export KUBECONFIG=$(pwd)/kubeconfig/cks.yaml\" ./scripts/capture-shot.sh \"<cmd>\" <out.png>"
+      "1. gVisor: cks 노드에 runsc 설치 + containerd runtime 등록 + RuntimeClass runsc + runsc Pod 실행 → crictl info|grep runsc / dmesg 캡처(CKS day08 RuntimeClass).",
+      "2. 추가 cks 캡처: Gatekeeper deny, PSA Forbidden, RBAC can-i 매트릭스, NetworkPolicy default-deny 차단 등 → CKS daily/03-exam, KCSA daily 의 (미캡처) 교체.",
+      "3. capture: CAP_SETUP=\"export KUBECONFIG=$(pwd)/kubeconfig/cks.yaml\" ./scripts/capture-shot.sh \"<cmd>\" <out.png>",
+      "4. 트리거 Pod는 Kyverno disallow-latest 때문에 태그 명시(nginx:1.25). cks-demo ns 사용."
     ]
   },
   "next_session_order": ["cks_lab(보안도구 설치+CKS캡처)","D_screenshots(도구불필요 dev 읽기전용 잔여)","C1_daily_structure","C3_ascii_to_mermaid","C2_storyline"],

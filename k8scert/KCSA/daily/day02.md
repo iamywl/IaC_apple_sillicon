@@ -897,3 +897,51 @@ kubectl get ciliumnetworkpolicies -n demo -o custom-columns=NAME:.metadata.name
         포함하지 않는 미니멀 이미지로, 공격 표면을 줄이고 포함된 CVE 수도 감소한다.
         (단순히 패키지를 "제거"하는 것이 아니라 처음부터 없는 이미지를 선택하는 것이다.)
 ```
+
+---
+
+## ✅ 자가점검
+
+<details>
+<summary>1. 이미지 서명 검증은 클러스터의 어느 지점에서 강제되며, 무엇이 미서명 이미지를 막는가?</summary>
+
+Admission 단계에서 강제된다. Cosign/Sigstore policy-controller(또는 Kyverno `verifyImages`)가 **Validating Admission Webhook**으로 동작해, 서명·attestation이 정책과 맞지 않는 Pod 생성을 거부한다. 런타임이 아니라 "생성 시점"에 막는 것이 핵심이다.
+</details>
+
+<details>
+<summary>2. SBOM이란 무엇이고 왜 공급망 보안에 필요한가?</summary>
+
+SBOM(Software Bill of Materials)은 이미지/아티팩트에 포함된 모든 컴포넌트·버전·라이선스 목록이다. 새 CVE가 공개됐을 때 "우리 이미지 중 무엇이 영향받는가"를 즉시 조회할 수 있게 한다. 대표 포맷은 SPDX, CycloneDX. `syft`로 생성, `grype`/`trivy`로 대조한다.
+</details>
+
+<details>
+<summary>3. SLSA는 무엇을 보장하려는 프레임워크인가?</summary>
+
+SLSA(Supply-chain Levels for Software Artifacts)는 **빌드 출처(provenance)와 무결성**을 단계(Level)별로 보장한다. "이 아티팩트가 어떤 소스에서, 어떤 빌더로, 변조 없이 만들어졌는가"를 검증 가능한 메타데이터로 증명한다. 빌드 환경의 격리·서명된 provenance가 핵심 요구사항이다.
+</details>
+
+<details>
+<summary>4. Cosign keyless 서명의 동작 원리는?</summary>
+
+키 파일 없이 OIDC 신원으로 서명한다. (1) OIDC로 신원 증명 → (2) **Fulcio**가 단명(short-lived) 인증서 발급 → (3) 그 인증서로 서명 → (4) 서명·인증서를 **Rekor**(투명성 로그, transparency log)에 기록. 검증 시 Rekor 로그와 OIDC 신원으로 확인한다. 개인키 보관·유출 위험이 없다.
+</details>
+
+<details>
+<summary>5. Trivy 스캔은 CI 파이프라인의 어디에 넣고, 어떤 기준으로 빌드를 실패시키는가?</summary>
+
+이미지 빌드 직후(레지스트리 push 전) 단계에 넣는다. `trivy image --severity CRITICAL,HIGH --exit-code 1 <image>`처럼 심각도 임계값으로 **exit code 1**을 반환시켜 파이프라인을 실패시킨다. 배포 전에 차단해 취약 이미지가 레지스트리·클러스터로 가지 않게 한다.
+</details>
+
+## 시험 팁
+
+- 공급망 도메인은 **"서명·검증 흐름"과 "도구의 역할 구분"** 이 빈출이다. cosign(서명/검증), Fulcio(인증서), Rekor(투명성 로그), syft(SBOM 생성), trivy/grype(스캔)를 혼동하지 않는다.
+- SBOM 포맷은 **SPDX·CycloneDX** 두 개를 기억한다.
+- 서명 검증은 **런타임이 아니라 Admission(생성 시점)** 에서 강제된다는 점이 오답 유도 포인트다.
+- "키 없이 서명" = **keyless = OIDC + Fulcio + Rekor**.
+
+## 더 읽을거리
+
+- [Sigstore 공식 문서](https://docs.sigstore.dev/) — cosign·Fulcio·Rekor 구조와 keyless 서명.
+- [SLSA framework](https://slsa.dev/) — 빌드 provenance 레벨 정의.
+- [CNCF Software Supply Chain Best Practices](https://github.com/cncf/tag-security) — TAG-Security의 공급망 보안 가이드.
+- [in-toto](https://in-toto.io/) — 공급망 단계별 무결성 증명 프레임워크.

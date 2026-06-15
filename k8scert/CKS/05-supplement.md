@@ -504,9 +504,9 @@ kubectl get mutatingwebhookconfigurations
 kubectl get validatingwebhookconfigurations
 ```
 
-![OPA Gatekeeper — 필수 라벨 없는 리소스를 admission webhook 이 거부(dev 실측)](images/cks-gatekeeper-deny.png)
+![ValidatingWebhookConfiguration 목록 — Kyverno 가 등록한 검증 webhook 들(cks 실측)](images/cks-validating-webhook-list.png)
 
-> **[이미지 정확성 주의]** 위 이미지는 `kubectl get validatingwebhookconfigurations` 목록 화면이 아니라 OPA Gatekeeper가 정책 위반 요청을 거부하는 화면이다. ValidatingWebhookConfiguration 목록 실측 화면(cks-validating-webhook-list.png)은 추후 교체 예정이다. 현재 이미지는 ValidatingAdmissionWebhook이 실제로 동작 중임을 간접 증거로 보여주는 용도로 참고한다.
+> cks 랩에는 Kyverno 가 설치돼 있어 `kyverno-*-validating-webhook-cfg` 가 등록돼 있다(클러스터에 따라 OPA Gatekeeper 의 `gatekeeper-validating-webhook-configuration` 이 보일 수도 있다). 정책 엔진이 ValidatingAdmissionWebhook 으로 API 요청을 가로채 검증함을 보여준다.
 
 ```bash
 # 검증 2: webhook 상세 정보 확인

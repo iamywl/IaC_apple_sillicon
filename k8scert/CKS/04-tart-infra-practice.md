@@ -161,13 +161,20 @@ kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium 
 ![cilium endpoint list — 엔드포인트별 정책 적용 상태](images/cks04-cilium-endpoints.png)
 
 **트래픽 흐름도:**
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  ext[외부] --> nw["nginx-web\n(30080)"]
+  nw --> hb["httpbin\n(GET only)"]
+  hb --> redis[(redis)]
+  hb --> pg[(postgres)]
+  ext --> kc["keycloak\n(30880)"]
+  rmq["rabbitmq\n(내부 only)"]
+  dns["DNS (53)\n모든 Pod 허용"]
 ```
-외부 → nginx-web(30080) → httpbin(GET only) → redis
-                                              → postgres
-keycloak(30880) ← 외부
-rabbitmq ← 내부 only
-DNS(53) ← 모든 Pod
-```
+
+_그림. 데모 스택의 허용 트래픽 경로. 외부는 nginx-web(30080)·keycloak(30880)으로만 진입하고, httpbin 은 GET 만 받아 redis·postgres 로 나간다. rabbitmq 는 내부 전용, DNS(53)는 모든 Pod 에 허용한다._
 
 #### 트러블슈팅: 정책이 적용되지 않는 경우
 
@@ -823,17 +830,20 @@ RBAC은 쿠버네티스 1.8에서 GA(General Availability)가 되었다. Role/Cl
 
 RBAC은 커널이 아닌 API 서버의 인가(Authorization) 단계에서 동작한다. 클라이언트 요청이 인증(Authentication)을 통과하면, API 서버의 RBAC authorizer가 요청의 subject(사용자/SA), verb(동작), resource(리소스)를 추출하고, 모든 Role/RoleBinding과 ClusterRole/ClusterRoleBinding을 평가하여 허용/거부를 결정한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  req[요청] --> authn[인증\nAuthentication]
+  authn --> authz[인가\nAuthorization: RBAC 평가]
+  authz --> adm[Admission Control]
+  adm --> etcd[(etcd)]
+  authz -.-> r1[Subject + Verb + Resource 추출]
+  r1 --> r2[RoleBinding / ClusterRoleBinding 검색]
+  r2 --> r3[매칭되는 Role / ClusterRole 의 rules 평가]
+  r3 --> r4{허용 Allow\n또는 거부 Deny=기본값}
 ```
-요청 → 인증(Authentication) → 인가(Authorization: RBAC 평가) → Admission Control → etcd
-                                   ↓
-                     Subject + Verb + Resource 추출
-                                   ↓
-                     RoleBinding/ClusterRoleBinding 검색
-                                   ↓
-                     매칭되는 Role/ClusterRole의 rules 평가
-                                   ↓
-                     허용(Allow) 또는 거부(Deny, 기본값)
-```
+
+_그림. API 서버 요청은 인증→인가(RBAC)→Admission 순으로 처리된 뒤 etcd 에 쓰인다. 인가 단계에서 RBAC authorizer 가 subject·verb·resource 를 추출해 바인딩과 rule 을 평가하며, 명시적 허용이 없으면 기본 거부한다._
 
 RBAC의 핵심 특성:
 - **Default Deny**: 명시적으로 허용되지 않은 모든 접근은 거부된다
@@ -983,11 +993,16 @@ SA 토큰은 JWT(JSON Web Token) 형식이다. Pod 내부의 `/var/run/secrets/k
 
 토큰 마운트는 kubelet이 수행한다. kubelet은 Pod 생성 시 TokenRequest API를 통해 시간 제한이 있는 토큰을 발급받고, Pod의 컨테이너에 projected volume으로 마운트한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  pod[Pod 생성] --> kubelet[kubelet]
+  kubelet -->|TokenRequest API| api[API 서버]
+  api -->|시간 제한 JWT 발급| jwt[projected volume 마운트\n/var/run/secrets/kubernetes.io/serviceaccount/token]
+  jwt --> app[Pod 내 앱이 토큰으로\nAPI 서버에 인증]
 ```
-Pod 생성 → kubelet → TokenRequest API → API 서버 → JWT 발급
-    → projected volume으로 Pod에 마운트 (/var/run/secrets/kubernetes.io/serviceaccount/token)
-    → Pod 내 애플리케이션이 토큰으로 API 서버에 인증
-```
+
+_그림. kubelet 이 Pod 생성 시 TokenRequest API 로 시간 제한 토큰(BoundServiceAccountToken)을 발급받아 projected volume 으로 마운트한다. 앱은 이 토큰으로 API 서버에 인증한다._
 
 #### 방어하는 공격 벡터
 
@@ -1241,12 +1256,18 @@ EncryptionConfiguration은 API 서버가 etcd에 데이터를 쓰기 전에 암�
 
 #### 암호화 동작 원리
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  create["kubectl create secret"] --> api[API 서버 수신]
+  api -->|EncryptionConfiguration\n첫 번째 provider 로 암호화| enc[암호화]
+  enc -->|"접두사 k8s:enc:&lt;provider&gt;:v1:&lt;key&gt;:"| etcd[(etcd 저장)]
+  get["kubectl get secret"] --> api2[API 서버]
+  api2 -->|etcd 에서 읽고 복호화| etcd
+  api2 --> ret[평문 반환]
 ```
-kubectl create secret → API 서버 수신
-    → EncryptionConfiguration의 첫 번째 provider로 암호화
-    → 암호화된 데이터를 etcd에 저장 (접두사: k8s:enc:<provider>:v1:<key-name>:)
-    → kubectl get secret → API 서버가 etcd에서 읽고 복호화 후 반환
-```
+
+_그림. 쓰기 시 API 서버가 첫 번째 provider 로 암호화해 `k8s:enc:` 접두사와 함께 etcd 에 저장한다. 읽기 시 etcd 의 암호문을 복호화해 평문으로 반환한다. 암·복호화는 etcd 가 아닌 API 서버가 수행한다._
 
 provider 순서가 중요하다:
 - **첫 번째** provider: 새 데이터 쓰기(암호화)에 사용된다
@@ -1516,14 +1537,18 @@ seccomp(Secure Computing Mode)은 Linux 커널 2.6.12에서 도입되었다. BPF
 
 seccomp은 커널의 `prctl(PR_SET_SECCOMP)` 또는 `seccomp()` syscall로 활성화된다. 컨테이너 런타임(containerd, CRI-O — CRI는 Container Runtime Interface로 쿠버네티스가 컨테이너를 생성·삭제하기 위해 호출하는 표준 인터페이스이며, containerd와 CRI-O가 이를 구현한다)이 컨테이너 프로세스 생성 시 seccomp 프로파일을 적용한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  p[프로세스] -->|syscall 호출| k[커널 syscall 진입점]
+  k --> f{seccomp BPF\n필터 평가}
+  f -->|SCMP_ACT_ALLOW| a[syscall 실행]
+  f -->|SCMP_ACT_ERRNO| e[EPERM 반환]
+  f -->|SCMP_ACT_KILL| kill[SIGKILL 전송]
+  f -->|SCMP_ACT_LOG| log[syscall 실행 + 로그 기록]
 ```
-프로세스 → syscall 호출 → 커널 syscall 진입점
-    → seccomp BPF 필터 평가
-    → SCMP_ACT_ALLOW: syscall 실행
-    → SCMP_ACT_ERRNO: EPERM 반환
-    → SCMP_ACT_KILL: SIGKILL 전송
-    → SCMP_ACT_LOG: syscall 실행 + 로그 기록
-```
+
+_그림. 컨테이너 프로세스의 syscall 은 커널 진입점에서 seccomp BPF 필터를 거친다. 필터는 syscall 별로 허용(ALLOW)·차단 후 EPERM(ERRNO)·프로세스 종료(KILL)·실행+감사(LOG) 중 하나의 액션을 적용한다._
 
 세 가지 프로파일 유형:
 - **RuntimeDefault**: 컨테이너 런타임이 제공하는 기본 프로파일. 약 60개의 위험한 syscall을 차단한다
@@ -2094,13 +2119,17 @@ mTLS(mutual TLS, 클라이언트와 서버가 서로의 X.509 인증서를 교�
 
 #### Istio mTLS의 커널 레벨 동작
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  appA[Pod A 앱 컨테이너] -->|localhost\nHTTP 평문| envA[Envoy sidecar\nPod A]
+  envA -->|TLS 핸드셰이크\n+ 인증서 교환| net[네트워크 전송\n암호화 TLS 트래픽]
+  net --> envB[Envoy sidecar\nPod B]
+  envB -->|TLS 종료\n+ 인증서 검증| appB[Pod B 앱 컨테이너]
+  envB -.->|localhost\nHTTP 평문| appB
 ```
-Pod A의 앱 컨테이너 → localhost(HTTP 평문)
-    → Envoy sidecar(Pod A) → TLS 핸드셰이크 + 인증서 교환
-    → 네트워크 전송(암호화된 TLS 트래픽)
-    → Envoy sidecar(Pod B) → TLS 종료 + 인증서 검증
-    → localhost(HTTP 평문) → Pod B의 앱 컨테이너
-```
+
+_그림. 앱은 평문 HTTP 로 자기 Pod 의 Envoy sidecar 와만 통신한다. sidecar 끼리 mTLS 핸드셰이크로 인증서를 교환·검증해 네트워크 구간만 암호화한다. 앱 코드는 수정 없이 전송 암호화·서비스 인증을 얻는다._
 
 ```bash
 # 1. PeerAuthentication 확인
@@ -2760,13 +2789,17 @@ Falco는 Sysdig에서 개발한 런타임 보안 도구이다. Linux 커널의 s
 
 #### 커널 레벨 동작 원리
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  proc[컨테이너 프로세스] -->|syscall 호출| k[커널]
+  k --> ebpf[eBPF tracepoint / kprobe\n이벤트 캡처]
+  ebpf --> engine[Falco 엔진\n사용자 공간으로 이벤트 전달]
+  engine --> rule{Falco 규칙 엔진\n조건 평가}
+  rule -->|매칭| alert[알림 생성\nsyslog · stdout · webhook]
 ```
-컨테이너 프로세스 → syscall 호출 → 커널
-    → eBPF tracepoint/kprobe에서 이벤트 캡처
-    → Falco 엔진(사용자 공간)으로 이벤트 전달
-    → Falco 규칙 엔진이 조건 평가
-    → 매칭 시 알림 생성 (syslog, stdout, webhook 등)
-```
+
+_그림. Falco 는 커널의 syscall 을 eBPF(tracepoint/kprobe)로 캡처해 사용자 공간 엔진으로 보낸다. 규칙 엔진이 조건에 매칭되면 알림을 생성한다. 컨테이너 코드 수정 없이 런타임 행위를 감시한다._
 
 ```bash
 # 1. Falco 설치

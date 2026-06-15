@@ -584,7 +584,7 @@ ETCDCTL_API=3 etcdctl snapshot save /opt/etcd-backup/etcd-snapshot-$(date +%Y%m%
 
 ```bash
 # 스냅샷 상태 확인 (테이블 형식)
-ETCDCTL_API=3 etcdctl snapshot status /opt/etcd-backup/etcd-snapshot-*.db --write-table
+ETCDCTL_API=3 etcdctl snapshot status /opt/etcd-backup/etcd-snapshot-*.db --write-out=table
 
 # 출력 예시:
 # +----------+----------+------------+------------+
@@ -613,7 +613,7 @@ ETCDCTL_API=3 etcdctl snapshot save /tmp/etcd-backup.db \
   --key=/etc/kubernetes/pki/etcd/server.key
 
 # 검증
-ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-backup.db --write-table
+ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-backup.db --write-out=table
 ```
 
 #### 트러블슈팅: etcd 백업 실패 시나리오
@@ -1543,9 +1543,9 @@ kubectl --context=platform get nodes -o custom-columns='NAME:.metadata.name,VERS
 
 ```bash
 # master 노드에 SSH 접속
-ssh admin@<platform-master-ip>
+ssh staging-master   # 업그레이드 실습은 staging에서 (§3·§10). platform/prod 금지
 
-# kubeadm 업그레이드 계획 확인
+# kubeadm 업그레이드 계획 확인 (plan 자체는 변경 없음)
 sudo kubeadm upgrade plan
 
 # 출력 예시:
@@ -1569,7 +1569,7 @@ sudo kubeadm upgrade plan
 
 #### Step 3: 업그레이드 절차 정리 (CKA 시험용)
 
-실제 업그레이드는 위험할 수 있으므로, 여기서는 절차만 정리한다.
+> ⚠️ **실행 클러스터 주의(§3·§10):** kubeadm 업그레이드는 파괴적 작업이므로 **platform/prod에서 실행 금지**다. 실제로 실습하려면 `staging` 또는 별도 실습 클러스터에서만 수행한다. 아래 절차의 노드 이름은 `staging-master`/`staging-worker1` 기준이며, platform 노드에는 적용하지 않는다(Step 1~2의 조회는 읽기 전용이라 무방). 버전 문자열(`1.32.x`)은 `apt-cache madison kubeadm | head`로 실제 사용 가능한 버전을 먼저 확인해 치환한다.
 
 ```bash
 # === Control Plane 업그레이드 절차 ===
@@ -1583,8 +1583,8 @@ sudo apt-mark hold kubeadm
 # 2. 업그레이드 적용
 sudo kubeadm upgrade apply v1.32.x
 
-# 3. 노드 drain (워크로드 이동)
-kubectl drain platform-master --ignore-daemonsets --delete-emptydir-data
+# 3. 노드 drain (워크로드 이동) — staging에서만
+kubectl --kubeconfig kubeconfig/staging.yaml drain staging-master --ignore-daemonsets --delete-emptydir-data
 
 # 4. kubelet, kubectl 업그레이드
 sudo apt-mark unhold kubelet kubectl
@@ -1596,15 +1596,15 @@ sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
 # 6. 노드 uncordon (스케줄링 재개)
-kubectl uncordon platform-master
+kubectl --kubeconfig kubeconfig/staging.yaml uncordon staging-master
 
 # === Worker Node 업그레이드 절차 ===
 
 # 1. 워커 노드 drain
-kubectl drain platform-worker1 --ignore-daemonsets --delete-emptydir-data
+kubectl --kubeconfig kubeconfig/staging.yaml drain staging-worker1 --ignore-daemonsets --delete-emptydir-data
 
 # 2. 워커 노드에서 kubeadm 업그레이드
-ssh admin@<platform-worker1-ip>
+ssh staging-worker1
 sudo apt-mark unhold kubeadm
 sudo apt-get update
 sudo apt-get install -y kubeadm=1.32.x-*
@@ -1620,21 +1620,21 @@ sudo systemctl restart kubelet
 exit
 
 # 4. 워커 노드 uncordon
-kubectl uncordon platform-worker1
+kubectl --kubeconfig kubeconfig/staging.yaml uncordon staging-worker1
 ```
 
 #### Step 4: 업그레이드 후 검증
 
 ```bash
 # 모든 노드 버전 확인
-kubectl --context=platform get nodes
+kubectl --kubeconfig kubeconfig/staging.yaml get nodes
 
 # 컨트롤 플레인 Pod 상태 확인
-kubectl --context=platform get pods -n kube-system
+kubectl --kubeconfig kubeconfig/staging.yaml get pods -n kube-system
 
 # 클러스터 건강 상태 확인
-kubectl --context=platform get cs 2>/dev/null
-kubectl --context=platform cluster-info
+kubectl --kubeconfig kubeconfig/staging.yaml get cs 2>/dev/null
+kubectl --kubeconfig kubeconfig/staging.yaml cluster-info
 ```
 
 **확인 문제**:
@@ -2073,38 +2073,33 @@ CKA 시험에서는 nodeSelector와 nodeAffinity 모두 출제된다. nodeSelect
 
 #### Step 1: 노드 레이블 확인
 
+> **실행 클러스터(§3):** 이 랩은 노드 레이블 추가/삭제와 Pod 생성/삭제를 하므로 **dev에서 수행한다(platform/prod 금지)**. dev는 worker가 1개(dev-worker1)뿐이라, "worker1=ssd / worker2=hdd로 나눠 배치"하는 다중 worker 시연은 시험 환경 기준 설명으로 남기고, 로컬 재현은 dev-worker1 한 노드로 "매칭되면 배치, 안 되면 Pending"을 확인한다.
+
 ```bash
-# platform 클러스터 노드의 기존 레이블 확인
-kubectl --context=platform get nodes --show-labels
+# dev 클러스터 노드의 기존 레이블 확인
+kubectl --kubeconfig kubeconfig/dev.yaml get nodes --show-labels
 
 # 특정 노드의 레이블만 확인
-kubectl --context=platform get node platform-worker1 -o jsonpath='{.metadata.labels}' | python3 -m json.tool
+kubectl --kubeconfig kubeconfig/dev.yaml get node dev-worker1 -o jsonpath='{.metadata.labels}' | python3 -m json.tool
 ```
 
 #### Step 2: 커스텀 레이블 추가
 
 ```bash
-# worker1에 disk=ssd 레이블 추가
-kubectl --context=platform label node platform-worker1 disk=ssd
-
-# worker2에 disk=hdd 레이블 추가
-kubectl --context=platform label node platform-worker2 disk=hdd
+# dev-worker1에 disk=ssd 레이블 추가
+kubectl --kubeconfig kubeconfig/dev.yaml label node dev-worker1 disk=ssd
 
 # 레이블 확인
-kubectl --context=platform get nodes -L disk
-
-# 출력 예시:
-# NAME              STATUS   ROLES           AGE   VERSION   DISK
-# platform-master   Ready    control-plane   30d   v1.31.x
-# platform-worker1  Ready    <none>          30d   v1.31.x   ssd
-# platform-worker2  Ready    <none>          30d   v1.31.x   hdd
+kubectl --kubeconfig kubeconfig/dev.yaml get nodes -L disk
+# dev-worker1 행 DISK 열에 ssd 가 표시된다.
+# (시험의 다중 worker 환경에서는 worker2에 disk=hdd 를 추가해 디스크 유형별 분산 배치를 시연한다.)
 ```
 
 #### Step 3: nodeSelector를 사용한 Pod 배치
 
 ```bash
-# SSD 노드에만 배치되는 Pod 생성
-kubectl --context=platform apply -f - <<EOF
+# disk=ssd 노드에 배치되는 Pod 생성 → dev-worker1에 배치된다
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f - <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
@@ -2122,38 +2117,16 @@ spec:
         memory: 64Mi
 EOF
 
-# Pod가 worker1에 배치되었는지 확인
-kubectl --context=platform get pod ssd-pod -o wide
-# NODE 열에 platform-worker1이 표시되어야 한다
-
-# HDD 노드에만 배치되는 Pod 생성
-kubectl --context=platform apply -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: hdd-pod
-  namespace: default
-spec:
-  nodeSelector:
-    disk: hdd
-  containers:
-  - name: app
-    image: nginx:1.25
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-EOF
-
-# Pod가 worker2에 배치되었는지 확인
-kubectl --context=platform get pod hdd-pod -o wide
+# Pod가 dev-worker1에 배치되었는지 확인
+kubectl --kubeconfig kubeconfig/dev.yaml get pod ssd-pod -o wide
+# NODE 열에 dev-worker1이 표시되어야 한다
 ```
 
 #### Step 4: 존재하지 않는 레이블로 nodeSelector 테스트
 
 ```bash
-# 존재하지 않는 레이블 — Pod가 Pending 상태에 머문다
-kubectl --context=platform apply -f - <<EOF
+# 존재하지 않는 레이블(disk=nvme, dev에는 해당 노드 없음) — Pod가 Pending 상태에 머문다
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f - <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
@@ -2168,20 +2141,19 @@ spec:
 EOF
 
 # Pending 상태 확인
-kubectl --context=platform get pod pending-pod
+kubectl --kubeconfig kubeconfig/dev.yaml get pod pending-pod
 # STATUS: Pending
 
 # 이벤트에서 원인 확인
-kubectl --context=platform describe pod pending-pod | grep -A5 Events
-# Warning  FailedScheduling  ...  0/3 nodes are available: 3 node(s) didn't match Pod's node affinity/selector
+kubectl --kubeconfig kubeconfig/dev.yaml describe pod pending-pod | grep -A5 Events
+# Warning  FailedScheduling  ...  node(s) didn't match Pod's node affinity/selector
 ```
 
 #### Step 5: 정리
 
 ```bash
-kubectl --context=platform delete pod ssd-pod hdd-pod pending-pod
-kubectl --context=platform label node platform-worker1 disk-
-kubectl --context=platform label node platform-worker2 disk-
+kubectl --kubeconfig kubeconfig/dev.yaml delete pod ssd-pod pending-pod --ignore-not-found
+kubectl --kubeconfig kubeconfig/dev.yaml label node dev-worker1 disk-
 ```
 
 **확인 문제**:
@@ -2226,16 +2198,18 @@ Toleration의 `operator` 필드:
 
 #### Step 1: 현재 노드의 Taint 확인
 
+> **실행 클러스터(§3):** Taint 추가/제거와 Deployment 생성/삭제는 **dev에서만** 한다(platform/prod 금지). Step 1의 조회(describe/get)는 읽기 전용이라 모든 클러스터에 무방하다. dev는 worker가 1개라 "worker1 taint→worker2로 분산" 대신 "worker1 taint→배치 불가(Pending)"로 NoSchedule을 확인한다.
+
 ```bash
-# 모든 클러스터의 Taint 확인
+# 모든 클러스터의 Taint 확인 (읽기 전용)
 for ctx in platform dev staging prod; do
   echo "=== $ctx ==="
-  kubectl --context=$ctx get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints'
+  kubectl --kubeconfig kubeconfig/$ctx.yaml get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints'
   echo ""
 done
 
-# platform 클러스터의 master 노드 Taint 확인
-kubectl --context=platform describe node platform-master | grep -A3 Taints
+# dev master 노드의 control-plane Taint 확인
+kubectl --kubeconfig kubeconfig/dev.yaml describe node dev-master | grep -A3 Taints
 
 # 출력 예시:
 # Taints:             node-role.kubernetes.io/control-plane:NoSchedule
@@ -2244,19 +2218,19 @@ kubectl --context=platform describe node platform-master | grep -A3 Taints
 #### Step 2: 워커 노드에 Taint 추가
 
 ```bash
-# platform-worker1에 Taint 추가
-kubectl --context=platform taint nodes platform-worker1 env=production:NoSchedule
+# dev-worker1에 Taint 추가 (dev에서만)
+kubectl --kubeconfig kubeconfig/dev.yaml taint nodes dev-worker1 env=production:NoSchedule
 
 # Taint 확인
-kubectl --context=platform describe node platform-worker1 | grep -A3 Taints
+kubectl --kubeconfig kubeconfig/dev.yaml describe node dev-worker1 | grep -A3 Taints
 # Taints:             env=production:NoSchedule
 ```
 
 #### Step 3: Toleration 없는 Pod 배치 시도
 
 ```bash
-# Toleration 없는 Pod — worker1에는 배치되지 않는다
-kubectl --context=platform apply -f - <<EOF
+# Toleration 없는 Pod — dev-worker1은 env taint, dev-master는 control-plane taint라 모두 Pending이 된다
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -2281,15 +2255,15 @@ spec:
             memory: 64Mi
 EOF
 
-# Pod 배치 노드 확인 — worker2에만 배치된다
-kubectl --context=platform get pods -l app=no-toleration -o wide
+# 배치 상태 확인 — 스케줄 가능한 노드가 없어 Pending 이다 (시험의 다중 worker 환경에서는 taint 없는 worker2로 배치된다)
+kubectl --kubeconfig kubeconfig/dev.yaml get pods -l app=no-toleration -o wide
 ```
 
 #### Step 4: Toleration 있는 Pod 배치
 
 ```bash
-# Toleration이 있는 Pod — worker1에도 배치될 수 있다
-kubectl --context=platform apply -f - <<EOF
+# env taint를 허용하는 Toleration이 있는 Pod — dev-worker1에 배치된다 (control-plane taint는 허용 안 하므로 master에는 안 감)
+kubectl --kubeconfig kubeconfig/dev.yaml apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -2319,29 +2293,29 @@ spec:
             memory: 64Mi
 EOF
 
-# Pod 배치 확인 — worker1, worker2 모두에 분산 배치된다
-kubectl --context=platform get pods -l app=with-toleration -o wide
+# 배치 확인 — 4개 replica 모두 dev-worker1에 배치된다 (시험의 다중 worker 환경에서는 worker들에 분산된다)
+kubectl --kubeconfig kubeconfig/dev.yaml get pods -l app=with-toleration -o wide
 ```
 
 #### Step 5: NoExecute 효과 테스트
 
 ```bash
 # NoExecute Taint — 기존 Pod도 퇴거(evict)시킨다
-kubectl --context=platform taint nodes platform-worker2 maintenance=true:NoExecute
+kubectl --kubeconfig kubeconfig/dev.yaml taint nodes dev-worker1 maintenance=true:NoExecute
 
-# worker2에 있던 Pod가 퇴거되는 것을 확인
-kubectl --context=platform get pods -l app=no-toleration -o wide
-# 모든 Pod가 Pending 상태가 될 수 있다 (worker1도 Taint가 있으므로)
+# with-toleration Pod가 퇴거되는 것을 확인 (maintenance taint는 허용 안 하므로)
+kubectl --kubeconfig kubeconfig/dev.yaml get pods -l app=with-toleration -o wide
+# 퇴거되어 Pending 상태가 된다 (dev-worker1에 NoExecute, dev-master에 control-plane taint)
 
 # NoExecute Taint 제거
-kubectl --context=platform taint nodes platform-worker2 maintenance=true:NoExecute-
+kubectl --kubeconfig kubeconfig/dev.yaml taint nodes dev-worker1 maintenance=true:NoExecute-
 ```
 
 #### Step 6: 정리
 
 ```bash
-kubectl --context=platform delete deployment no-toleration with-toleration
-kubectl --context=platform taint nodes platform-worker1 env=production:NoSchedule-
+kubectl --kubeconfig kubeconfig/dev.yaml delete deployment no-toleration with-toleration --ignore-not-found
+kubectl --kubeconfig kubeconfig/dev.yaml taint nodes dev-worker1 env=production:NoSchedule-
 ```
 
 **확인 문제**:
@@ -2555,12 +2529,14 @@ CKA 시험에서 Static Pod 관련 출제 패턴은 다음과 같다:
 
 #### Step 1: 기존 Static Pod 확인
 
+> **실행 클러스터(§3):** 이 랩은 master 노드의 `/etc/kubernetes/manifests/`에 파일을 만들고 지우므로 **dev에서만** 한다(platform/prod의 control-plane 디렉토리는 건드리지 않는다). 노드 이름은 dev-master 기준이다.
+
 ```bash
 # kube-system의 Static Pod 확인 (이름에 노드명이 접미사로 붙는다)
-kubectl --context=platform get pods -n kube-system | grep platform-master
+kubectl --kubeconfig kubeconfig/dev.yaml get pods -n kube-system | grep dev-master
 
 # SSH로 매니페스트 디렉토리 확인
-ssh admin@<platform-master-ip>
+ssh dev-master
 ls -la /etc/kubernetes/manifests/
 # etcd.yaml
 # kube-apiserver.yaml
@@ -2599,26 +2575,26 @@ spec:
 EOF
 
 # kubelet이 자동으로 Static Pod를 생성한다 (수초 대기)
-# API Server에서 확인 (이름에 -platform-master 접미사)
-kubectl --context=platform get pods --all-namespaces | grep static-nginx
-# static-nginx-platform-master   1/1     Running   0   10s
+# API Server에서 확인 (이름에 -dev-master 접미사)
+kubectl --kubeconfig kubeconfig/dev.yaml get pods --all-namespaces | grep static-nginx
+# static-nginx-dev-master   1/1     Running   0   10s
 ```
 
 #### Step 3: Static Pod 삭제 시도
 
 ```bash
 # API Server를 통한 삭제 시도 — 삭제되지 않는다 (mirror pod)
-kubectl --context=platform delete pod static-nginx-platform-master
+kubectl --kubeconfig kubeconfig/dev.yaml delete pod static-nginx-dev-master
 # Pod가 즉시 다시 생성된다
 
-kubectl --context=platform get pods | grep static-nginx
+kubectl --kubeconfig kubeconfig/dev.yaml get pods | grep static-nginx
 # 여전히 Running 상태
 
-# 매니페스트 파일을 삭제해야 Static Pod가 제거된다
+# 매니페스트 파일을 삭제해야 Static Pod가 제거된다 (dev-master에서)
 sudo rm /etc/kubernetes/manifests/static-nginx.yaml
 
 # 확인 (수초 대기)
-kubectl --context=platform get pods | grep static-nginx
+kubectl --kubeconfig kubeconfig/dev.yaml get pods | grep static-nginx
 # Pod가 사라진다
 ```
 
@@ -2636,7 +2612,7 @@ exit
 **확인 문제 풀이**:
 1. **kubelet**이 직접 관리한다. kube-apiserver, kube-controller-manager, kube-scheduler, etcd 등 Control Plane 컴포넌트도 kubelet이 Static Pod로 관리한다. kubelet은 `staticPodPath`에 지정된 디렉토리의 매니페스트 파일을 주기적으로 스캔하고, 파일이 추가/수정/삭제되면 해당 Pod를 생성/재시작/삭제한다. kube-apiserver와 독립적으로 동작하므로, API Server가 다운되어도 Static Pod는 계속 실행된다.
 2. `kubectl delete pod`로 삭제하는 것은 미러 Pod(mirror pod)만 삭제하는 것이다. 미러 Pod는 kubelet이 API Server에 생성한 읽기 전용 복사본이다. 미러 Pod가 삭제되어도 실제 Static Pod는 kubelet에 의해 계속 실행 중이며, kubelet이 즉시 새 미러 Pod를 생성한다. Static Pod를 실제로 제거하려면 해당 노드의 `staticPodPath` 디렉토리에서 매니페스트 파일을 삭제해야 한다.
-3. (1) **관리 주체**: Static Pod는 kubelet이, 일반 Pod는 kube-apiserver → kube-controller-manager → kubelet 체인으로 관리된다. (2) **API Server 의존성**: Static Pod는 API Server 없이도 동작하지만, 일반 Pod는 API Server가 정상이어야 생성/관리된다. (3) **ReplicaSet/Deployment 관리**: Static Pod는 Deployment, ReplicaSet 등 상위 컨트롤러에 의해 관리될 수 없다. 일반 Pod는 Deployment, StatefulSet, Job 등에 의해 관리된다. (추가) Static Pod의 이름에는 노드명이 접미사로 자동 추가된다 (예: `static-nginx-platform-master`).
+3. (1) **관리 주체**: Static Pod는 kubelet이, 일반 Pod는 kube-apiserver → kube-controller-manager → kubelet 체인으로 관리된다. (2) **API Server 의존성**: Static Pod는 API Server 없이도 동작하지만, 일반 Pod는 API Server가 정상이어야 생성/관리된다. (3) **ReplicaSet/Deployment 관리**: Static Pod는 Deployment, ReplicaSet 등 상위 컨트롤러에 의해 관리될 수 없다. 일반 Pod는 Deployment, StatefulSet, Job 등에 의해 관리된다. (추가) Static Pod의 이름에는 노드명이 접미사로 자동 추가된다 (예: `static-nginx-dev-master`).
 
 ---
 
@@ -5587,10 +5563,10 @@ exit
 kubectl --context=platform get nodes
 # Ready 상태로 복구되었는지 확인
 
-# 노드 drain 및 uncordon (유지보수 시)
-kubectl --context=platform drain platform-worker1 --ignore-daemonsets --delete-emptydir-data
+# 노드 drain 및 uncordon (유지보수 시) — 파괴 작업은 staging에서만 (§3)
+kubectl --kubeconfig kubeconfig/staging.yaml drain staging-worker1 --ignore-daemonsets --delete-emptydir-data
 # 유지보수 작업 수행
-kubectl --context=platform uncordon platform-worker1
+kubectl --kubeconfig kubeconfig/staging.yaml uncordon staging-worker1
 ```
 
 #### 노드 NotReady 상태 복구 체크리스트
@@ -5771,7 +5747,7 @@ ETCDCTL_API=3 etcdctl snapshot save /opt/etcd-backup-scenario1.db \
   --key=/etc/kubernetes/pki/etcd/server.key
 
 # 4. 검증
-ETCDCTL_API=3 etcdctl snapshot status /opt/etcd-backup-scenario1.db --write-table
+ETCDCTL_API=3 etcdctl snapshot status /opt/etcd-backup-scenario1.db --write-out=table
 
 exit
 ```
@@ -5808,28 +5784,28 @@ kubectl --context=dev auth can-i delete deployments --as=system:serviceaccount:d
 # no
 ```
 
-**문제 3** (5점): `platform` 클러스터에서 `platform-worker1` 노드를 유지보수 모드로 전환하라. 기존 워크로드를 안전하게 이동시키고, DaemonSet은 무시하라. 유지보수 완료 후 노드를 다시 스케줄링 가능 상태로 복원하라.
+**문제 3** (5점): 지정된 worker 노드를 유지보수 모드로 전환하라. 기존 워크로드를 안전하게 이동시키고, DaemonSet은 무시하라. 유지보수 완료 후 노드를 다시 스케줄링 가능 상태로 복원하라. (시험에서는 지정 노드를 쓰고, 로컬 재현은 파괴가 허용된 `staging`에서 `staging-worker1`로 수행한다 — platform/prod 금지, §3.)
 
 ```bash
 # 풀이:
 
 # 1. 현재 상태 확인
-kubectl --context=platform get pods -o wide --all-namespaces | grep platform-worker1
+kubectl --kubeconfig kubeconfig/staging.yaml get pods -o wide --all-namespaces | grep staging-worker1
 
 # 2. 노드 drain
-kubectl --context=platform drain platform-worker1 --ignore-daemonsets --delete-emptydir-data
+kubectl --kubeconfig kubeconfig/staging.yaml drain staging-worker1 --ignore-daemonsets --delete-emptydir-data
 
 # 3. 노드 상태 확인 — SchedulingDisabled
-kubectl --context=platform get nodes
+kubectl --kubeconfig kubeconfig/staging.yaml get nodes
 
 # 4. 유지보수 작업 수행 (시뮬레이션)
 echo "유지보수 작업 완료"
 
 # 5. 노드 uncordon
-kubectl --context=platform uncordon platform-worker1
+kubectl --kubeconfig kubeconfig/staging.yaml uncordon staging-worker1
 
 # 6. 확인
-kubectl --context=platform get nodes
+kubectl --kubeconfig kubeconfig/staging.yaml get nodes
 # STATUS: Ready (SchedulingDisabled 없음)
 ```
 

@@ -1773,7 +1773,7 @@ D) Helm
 
 Istio는 2023년 3월 CNCF Graduated를 달성하였다. Kubernetes(2018 Graduated), Prometheus(2018 Graduated), Helm(2020 Graduated)은 더 이른 시기에 Graduated에 도달한 프로젝트이다. Istio는 2022년 9월 CNCF에 기부(Incubating)된 후 약 6개월 만에 Graduated 단계로 이동하였다. 이는 이미 커뮤니티와 프로덕션 채택이 충분히 성숙해 있었기 때문이다.
 
-주요 CNCF Graduated 프로젝트: Kubernetes, Prometheus, Envoy, CoreDNS, containerd, Fluentd, Jaeger, Vitess, Argo, Flux, Helm, Cilium, Argo, Istio, Kyverno, OpenTelemetry(2024년 Graduated) 등. CNCF Landscape(https://landscape.cncf.io)에서 최신 성숙도 단계를 반드시 확인한다. 시험 시점에 따라 프로젝트 성숙도가 변경될 수 있으므로, 시험 직전에 현황을 재확인하는 것이 중요하다.
+주요 CNCF Graduated 프로젝트: Kubernetes, Prometheus, Envoy, CoreDNS, containerd, Fluentd, Jaeger, Vitess, Argo, Flux, Helm, Cilium, Istio, Kyverno(2026-03-16 Graduated), OpenTelemetry(2026-05-11 Graduated) 등(검토일 2026-06-15 기준). CNCF Landscape(https://landscape.cncf.io)에서 최신 성숙도 단계를 반드시 확인한다. 시험 시점에 따라 프로젝트 성숙도가 변경될 수 있으므로, 시험 직전에 현황을 재확인하는 것이 중요하다.
 </details>
 
 ---
@@ -1847,7 +1847,7 @@ D) 서비스 메시의 데이터 플레인이다
 
 **정답: B) 마이크로서비스 환경에서 분산 추적(Distributed Tracing)을 제공하는 CNCF Graduated 프로젝트이다**
 
-Jaeger(예거)는 Uber에서 개발한 분산 추적 시스템으로, CNCF Graduated 프로젝트이다. 마이크로서비스 환경에서 하나의 요청이 여러 서비스를 거치면서 발생하는 지연시간을 추적(trace)한다. 각 서비스에서의 처리 시간(span)을 수집하여, 전체 요청 경로를 시각화한다. 이를 통해 병목 지점을 식별할 수 있다. 관측성의 3대 축(Three Pillars of Observability): 메트릭(Prometheus), 로그(Loki), 추적(Jaeger/Tempo). OpenTelemetry(CNCF Graduated, 2024년)는 이 세 가지 데이터를 통합적으로 수집하는 표준 프레임워크이다. Grafana Tempo는 Jaeger의 대안으로, 오브젝트 스토리지에 trace를 저장하여 운영 비용을 줄인다.
+Jaeger(예거)는 Uber에서 개발한 분산 추적 시스템으로, CNCF Graduated 프로젝트이다. 마이크로서비스 환경에서 하나의 요청이 여러 서비스를 거치면서 발생하는 지연시간을 추적(trace)한다. 각 서비스에서의 처리 시간(span)을 수집하여, 전체 요청 경로를 시각화한다. 이를 통해 병목 지점을 식별할 수 있다. 관측성의 3대 축(Three Pillars of Observability): 메트릭(Prometheus), 로그(Loki), 추적(Jaeger/Tempo). OpenTelemetry(CNCF Graduated, 2026-05-11)는 이 세 가지 데이터를 통합적으로 수집하는 표준 프레임워크이다. Grafana Tempo는 Jaeger의 대안으로, 오브젝트 스토리지에 trace를 저장하여 운영 비용을 줄인다.
 </details>
 
 ---
@@ -2361,9 +2361,9 @@ D) 컨테이너 로그만 관리하는 도구이다
 
 **정답: B) 메트릭, 로그, 추적(trace)을 통합적으로 수집하는 관측성 프레임워크이며 CNCF Graduated 프로젝트이다** *(해설 작성 기준: 2025-01)*
 
-> **시험 직전 CNCF Landscape 재확인 필수**: OpenTelemetry의 Graduated 달성 연도 등 성숙도 관련 사실은 시험 시점에 따라 달라질 수 있다. 아래 해설은 2025년 1월 기준이다.
+> **시험 직전 CNCF Landscape 재확인 필수**: OpenTelemetry의 Graduated 달성 연도 등 성숙도 관련 사실은 시험 시점에 따라 달라질 수 있다. 아래 해설은 검토일 2026-06-15 기준이다(OpenTelemetry는 2026-05-11 Graduated).
 
-OpenTelemetry(OTel)는 OpenTracing과 OpenCensus가 합쳐져 탄생한 관측성 표준 프레임워크로, 2024년 CNCF Graduated를 달성하였다. 관측성의 세 축(메트릭, 로그, 추적)을 단일 SDK와 Collector로 통합하여 수집한다. 벤더 중립적이어서, 수집된 데이터를 Prometheus, Jaeger, Grafana, Datadog 등 다양한 백엔드로 전송할 수 있다. OTel Collector는 수집(receive), 처리(process), 내보내기(export) 파이프라인으로 구성된다. 각 언어(Java, Python, Go, JavaScript 등)에 대한 SDK를 제공하여, 애플리케이션에 계측(instrumentation)을 추가할 수 있다. CNCF Landscape에서 최신 상태 확인을 권장한다.
+OpenTelemetry(OTel)는 OpenTracing과 OpenCensus가 합쳐져 탄생한 관측성 표준 프레임워크로, 2021-08-26 Incubating을 거쳐 2026-05-11 CNCF Graduated를 달성하였다(검토일 2026-06-15 기준). 관측성의 세 축(메트릭, 로그, 추적)을 단일 SDK와 Collector로 통합하여 수집한다. 벤더 중립적이어서, 수집된 데이터를 Prometheus, Jaeger, Grafana, Datadog 등 다양한 백엔드로 전송할 수 있다. OTel Collector는 수집(receive), 처리(process), 내보내기(export) 파이프라인으로 구성된다. 각 언어(Java, Python, Go, JavaScript 등)에 대한 SDK를 제공하여, 애플리케이션에 계측(instrumentation)을 추가할 수 있다. CNCF Landscape에서 최신 상태 확인을 권장한다.
 </details>
 
 ---
@@ -2399,7 +2399,7 @@ D) Kubernetes 클러스터 모니터링 도구이다
 
 **정답: B) YAML 기반의 Kubernetes 네이티브 정책 엔진으로, OPA/Gatekeeper의 대안이며 CNCF Graduated 프로젝트이다**
 
-Kyverno는 CNCF Graduated 프로젝트(2023년 11월)로, Kubernetes 네이티브 정책 엔진이다. OPA/Gatekeeper가 Rego라는 별도 언어로 정책을 작성하는 반면, Kyverno는 Kubernetes YAML과 유사한 형식으로 정책을 작성하여 학습 곡선이 낮다. 기능: (1) Validate — 리소스 생성/수정 시 검증(예: latest 태그 금지), (2) Mutate — 리소스에 기본값 주입(예: 리소스 limits 자동 추가), (3) Generate — 다른 리소스 자동 생성(예: 네임스페이스 생성 시 NetworkPolicy 자동 생성), (4) Verify Images — 이미지 서명 검증(Cosign/Notary). Kubernetes Admission Webhook으로 동작한다. CNCF Landscape에서 최신 상태 확인을 권장한다.
+Kyverno는 CNCF Graduated 프로젝트(2026-03-16 Graduated)로, Kubernetes 네이티브 정책 엔진이다. OPA/Gatekeeper가 Rego라는 별도 언어로 정책을 작성하는 반면, Kyverno는 Kubernetes YAML과 유사한 형식으로 정책을 작성하여 학습 곡선이 낮다. 기능: (1) Validate — 리소스 생성/수정 시 검증(예: latest 태그 금지), (2) Mutate — 리소스에 기본값 주입(예: 리소스 limits 자동 추가), (3) Generate — 다른 리소스 자동 생성(예: 네임스페이스 생성 시 NetworkPolicy 자동 생성), (4) Verify Images — 이미지 서명 검증(Cosign/Notary). Kubernetes Admission Webhook으로 동작한다. CNCF Landscape에서 최신 상태 확인을 권장한다.
 </details>
 
 ---

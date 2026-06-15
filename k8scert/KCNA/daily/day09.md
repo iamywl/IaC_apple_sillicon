@@ -1022,13 +1022,13 @@ OpenTelemetry에 대한 올바른 설명은?
 A) 특정 벤더에 종속된 솔루션이다
 B) 벤더 중립적인 관측성 통합 프레임워크이다
 C) K8s 전용 로깅 도구이다
-D) CNCF 졸업 프로젝트이다
+D) 텔레메트리를 자체 저장하는 메트릭 백엔드(DB)이다
 
 <details><summary>정답 확인</summary>
 
 **정답: B) 벤더 중립적인 관측성 통합 프레임워크이다**
 
-OpenTelemetry는 CNCF **인큐베이팅** (졸업이 아님!)
+OpenTelemetry(OTel)는 OpenTracing과 OpenCensus가 합쳐진 벤더 중립 관측성 프레임워크로, 메트릭·로그·트레이스를 단일 SDK/Collector로 수집한다. 자체 저장 백엔드가 아니라 Prometheus·Jaeger 등으로 데이터를 내보내므로 D는 오답이다. CNCF 성숙도는 2021-08-26 Incubating을 거쳐 **2026-05-11 Graduated**에 도달했다(검토일 2026-06-15 기준).
 </details>
 
 ---
@@ -1272,7 +1272,7 @@ kubectl get pods -n kube-system -l k8s-app=hubble-relay
 
 **Prometheus Pull 방식:** Prometheus 서버가 각 타겟(노드 kubelet의 10250 포트 `/metrics` 엔드포인트, Pod에 붙은 exporter)을 주기적으로 직접 긁어(스크래핑) 메트릭을 수집한다. Push 방식(에이전트가 서버로 데이터를 보내는 방식)과 달리, 스크래핑 실패 자체가 "타겟 다운" 신호가 되므로 에이전트가 멈춰도 모니터링 누락을 자동으로 감지할 수 있다. 타겟 목록은 `ServiceMonitor`(Prometheus Operator CRD)로 선언적으로 관리한다. `kubectl get pods -n monitoring` 명령으로 prometheus-server, grafana, loki 파드가 Running 상태인지 확인할 수 있다. (실행 결과 - 미캡처)
 
-**OpenTelemetry 역할:** OpenTelemetry(CNCF 인큐베이팅 단계 — Sandbox → Incubating → Graduated 중 두 번째)는 벤더 중립적 표준 SDK/API로, 메트릭·로그·트레이스를 단일 계측 코드로 수집한다. 수집한 데이터는 OpenTelemetry Collector를 통해 Prometheus(메트릭), Jaeger(트레이스), Grafana Loki(로그) 등 다양한 백엔드로 내보낼 수 있다. Prometheus처럼 특정 백엔드에 종속되지 않고 계측 코드를 한 번만 작성해 여러 백엔드를 교체할 수 있다는 점이 핵심이다.
+**OpenTelemetry 역할:** OpenTelemetry(CNCF Graduated — Sandbox → Incubating → Graduated 중 최종 단계, 2026-05-11 졸업, 검토일 2026-06-15 기준)는 벤더 중립적 표준 SDK/API로, 메트릭·로그·트레이스를 단일 계측 코드로 수집한다. 수집한 데이터는 OpenTelemetry Collector를 통해 Prometheus(메트릭), Jaeger(트레이스), Grafana Loki(로그) 등 다양한 백엔드로 내보낼 수 있다. Prometheus처럼 특정 백엔드에 종속되지 않고 계측 코드를 한 번만 작성해 여러 백엔드를 교체할 수 있다는 점이 핵심이다.
 
 ### 실습 3: GitOps & Application Delivery 종합 확인 (Delivery)
 

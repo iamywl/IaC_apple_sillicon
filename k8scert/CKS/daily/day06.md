@@ -169,7 +169,7 @@ metadata:
     container.apparmor.security.beta.kubernetes.io/app: localhost/k8s-deny-write
 ```
 
-CKS 공식 커리큘럼은 시험 환경 버전을 `https://training.linuxfoundation.org/certification/certified-kubernetes-security-specialist-cks/`에서 확인할 수 있다. 현재(2025~2026 기준) CKS 시험은 K8s 1.31 이상을 사용하므로 `securityContext.appArmorProfile` 방식이 주 출제 대상이지만, annotations 방식도 legacy 문제로 나올 수 있다.
+CKS 공식 커리큘럼은 시험 환경 버전을 `https://training.linuxfoundation.org/certification/certified-kubernetes-security-specialist/`에서 확인할 수 있다. 검토일(2026-06-15) 기준 공식 페이지는 시험이 **Kubernetes v1.34** 기반이라고 안내한다. 시험 환경은 새 minor 릴리스 후 약 4~8주 내 최신 버전에 맞춰 갱신되므로, 응시 직전 공식 페이지와 시험 시작 시 `kubectl version`으로 실제 minor를 확인한다. v1.30(appArmorProfile GA) 이상에서는 `securityContext.appArmorProfile` 방식이 주 출제 대상이며, 구버전 annotations 방식도 legacy 문제로 나올 수 있다.
 
 ```yaml
 # capabilities 설정 예제

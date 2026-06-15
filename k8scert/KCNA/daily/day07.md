@@ -824,7 +824,7 @@ Jaeger·Zipkin·Tempo는 모두 이 W3C TraceContext 표준(`traceparent` 헤더
 - [ ] Fluent Bit = Fluentd 경량 버전, CNCF 졸업
 - [ ] Loki = "Prometheus의 로그 버전", 라벨만 인덱싱, LogQL
 - [ ] Jaeger = CNCF 졸업, 분산 트레이싱, Uber 개발
-- [ ] OpenTelemetry = 벤더 중립적, 관측성 통합 프레임워크, CNCF 인큐베이팅
+- [ ] OpenTelemetry = 벤더 중립적, 관측성 통합 프레임워크, CNCF 졸업(2026-05-11 Graduated)
 - [ ] EFK Stack = Elasticsearch + Fluentd + Kibana
 - [ ] ResourceQuota = 네임스페이스별 리소스 총량 제한
 - [ ] LimitRange = Pod/컨테이너별 기본 리소스 설정
@@ -836,7 +836,7 @@ Jaeger·Zipkin·Tempo는 모두 이 W3C TraceContext 표준(`traceparent` 헤더
 - KCNA 시험에서 "Three Pillars of Observability"는 **Metrics, Logs, Traces** 세 단어를 정확히 쓸 것. Prometheus, Grafana 등 도구명으로 답하면 오답 처리된다.
 - Prometheus가 **Pull 기반**이라는 점은 반복 출제된다. "Prometheus pushes metrics"라는 선택지는 오답이다.
 - Fluentd와 Fluent Bit 모두 **CNCF 졸업** 프로젝트이다. 인큐베이팅으로 헷갈리지 않는다.
-- **OpenTelemetry는 CNCF 인큐베이팅**(졸업 아님). Jaeger, Prometheus는 졸업.
+- **OpenTelemetry는 2026-05-11 CNCF 졸업(Graduated).** 오래된 자료는 "인큐베이팅"이라 적지만 졸업했다(검토일 2026-06-15 기준). Jaeger, Prometheus도 졸업.
 - EFK Stack: **E**lasticsearch + **F**luentd + **K**ibana — Kibana는 Grafana가 아니다.
 - ResourceQuota는 **네임스페이스** 단위 제한, LimitRange는 **컨테이너/Pod** 단위 기본값 주입 — 적용 범위가 다르다.
 - PromQL에서 Counter 메트릭을 그냥 쓰면 누적값만 나온다. **rate() 또는 increase()** 로 변화율을 뽑아야 의미 있다.

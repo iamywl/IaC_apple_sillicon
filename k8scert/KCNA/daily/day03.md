@@ -877,11 +877,11 @@ kubectl get all -n demo
 
 ### 실습 1: Pod, Deployment, Service 관계 분석
 
-demo 네임스페이스의 nginx를 통해 Deployment → ReplicaSet → Pod 계층 구조와 Service 연결을 확인한다.
+demo 네임스페이스의 `nginx-web`(저장소 demo 스택, `manifests/demo/nginx-app.yaml`)을 통해 Deployment → ReplicaSet → Pod 계층 구조와 Service 연결을 확인한다.
 
 ```bash
 # Deployment 확인
-kubectl get deployment -n demo nginx -o wide
+kubectl get deployment -n demo nginx-web -o wide
 ```
 
 검증:
@@ -890,7 +890,7 @@ kubectl get deployment -n demo nginx -o wide
 
 ```bash
 # Deployment가 관리하는 ReplicaSet 확인
-kubectl get replicaset -n demo -l app=nginx
+kubectl get replicaset -n demo -l app=nginx-web
 ```
 
 검증:
@@ -899,7 +899,7 @@ kubectl get replicaset -n demo -l app=nginx
 
 ```bash
 # ReplicaSet이 관리하는 Pod 확인
-kubectl get pods -n demo -l app=nginx -o wide
+kubectl get pods -n demo -l app=nginx-web -o wide
 ```
 
 검증:
@@ -908,15 +908,15 @@ kubectl get pods -n demo -l app=nginx -o wide
 
 ```bash
 # Service와 Endpoints 매핑 확인
-kubectl get svc -n demo nginx
-kubectl get endpoints -n demo nginx
+kubectl get svc -n demo nginx-web
+kubectl get endpoints -n demo nginx-web
 ```
 
 검증:
 
 ![Service Endpoints](images/day03-04-ep.png)
 
-**동작 원리:** Deployment가 ReplicaSet을 생성하고, ReplicaSet이 Pod를 관리한다. Service는 Label Selector(`app=nginx`)로 Pod를 찾아 Endpoints에 등록한다. Pod IP가 변경되어도 Service의 ClusterIP는 고정이므로 안정적인 접근이 가능하다.
+**동작 원리:** Deployment가 ReplicaSet을 생성하고, ReplicaSet이 Pod를 관리한다. Service는 Label Selector(`app=nginx-web`)로 Pod를 찾아 Endpoints에 등록한다. Pod IP가 변경되어도 Service의 ClusterIP는 고정이므로 안정적인 접근이 가능하다.
 
 ### 실습 2: DaemonSet과 StatefulSet 비교
 
@@ -1025,7 +1025,7 @@ KCNA는 객관식이지만, 손으로 직접 오브젝트를 만들어 보면 YA
 
 ### 미니랩 A — 5분 안에 ClusterIP Service 생성
 
-목표: `dev` 클러스터의 `demo` 네임스페이스에서 `app=nginx` 라벨을 가진 Pod에 대한 ClusterIP Service를 생성하고 Endpoints가 등록되는지 확인한다.
+목표: `dev` 클러스터의 `demo` 네임스페이스에서 `app=nginx-web` 라벨을 가진 Pod에 대한 ClusterIP Service를 생성하고 Endpoints가 등록되는지 확인한다.
 
 ```bash
 # 1. dev 클러스터 kubeconfig 설정
@@ -1035,7 +1035,7 @@ export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
 kubectl get pods -n demo --show-labels
 
 # 3. ClusterIP Service 생성 (명령형, imperative 우선)
-kubectl expose deployment nginx -n demo --name=nginx-lab --port=80 --target-port=80 --type=ClusterIP
+kubectl expose deployment nginx-web -n demo --name=nginx-lab --port=80 --target-port=80 --type=ClusterIP
 
 # 4. Endpoints 등록 확인 (ENDPOINTS가 <none>이 아닌지 확인)
 kubectl get endpoints nginx-lab -n demo

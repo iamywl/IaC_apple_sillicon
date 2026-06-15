@@ -232,12 +232,7 @@ Phase 1 (입문)          Phase 2 (실기)           Phase 3 (보안)
 export KUBECONFIG=$(pwd)/kubeconfig/dev.yaml
 kubectl get nodes
 ```
-```text
-# 기대 출력 예 (노드가 Ready 면 정상)
-NAME         STATUS   ROLES           AGE   VERSION
-dev-master   Ready    control-plane   1d    v1.31.x
-dev-worker1  Ready    <none>          1d    v1.31.x
-```
+> 검증 기준: 모든 노드의 `STATUS`가 `Ready`이고 `dev-master`는 `control-plane`, `dev-worker1`은 `<none>` 역할로 표시되면 정상이다. 실제 출력 화면은 각 자격증 문서의 실측 터미널 캡처(§4①)로 확인한다.
 ```bash
 # 3) 예제 적용 → 4) 검증 → 5) 정리
 kubectl create deploy web --image=nginx --replicas=2
@@ -361,12 +356,7 @@ ssh dev-master
 ssh staging-worker1
 ```
 
-```text
-# 검증 — 비밀번호 없이(BatchMode) 접속되면 정상이다
-$ ssh -o BatchMode=yes dev-master 'hostname; whoami'
-dev-master
-admin
-```
+검증: `ssh -o BatchMode=yes dev-master 'hostname; whoami'`가 비밀번호 프롬프트 없이 실행되어 노드 hostname(`dev-master`)과 사용자(`admin`)를 출력하면 키 배포가 정상이다. `BatchMode=yes`는 키 인증이 실패하면 즉시 종료하므로(비밀번호로 fallback 하지 않음) 키 기반 접속 여부를 명확히 가린다.
 
 **SSH 키 ↔ 호스트 매핑.** 노드는 전부 **하나의 전용 키**(`~/.ssh/tart_k8scert`)를 공유하며, `~/.ssh/config`의 관리 블록에 VM 이름이 그대로 Host 별칭으로 등록된다. IP는 `ProxyCommand`가 접속 시점에 `tart ip <vm>`로 조회하므로 **재부팅으로 IP가 바뀌어도 재설정이 필요 없다**.
 

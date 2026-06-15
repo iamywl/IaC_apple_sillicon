@@ -633,39 +633,22 @@ sudo cat /var/lib/kubelet/config.yaml | head -30
 # SSH 세션을 종료하고 kubectl로 확인
 exit
 
-# kube-proxy는 DaemonSet으로 실행된다
-# tart-infra 환경에서는 Cilium이 KubeProxyReplacement=true로 동작하므로
-# 이 명령이 NotFound를 반환할 수 있다 (위의 대안 확인 명령을 사용한다)
-kubectl --context=dev get daemonset kube-proxy -n kube-system
+# 이 dev 클러스터의 1차 검증: Cilium KubeProxyReplacement 상태(위 Step 5의 대안 명령)
+CILIUM_POD=$(kubectl --context=dev get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl --context=dev exec -n kube-system $CILIUM_POD -- cilium status | grep KubeProxy
 ```
 
-**검증 — 기대 출력:**
+**검증 — 기대 출력:** `KubeProxyReplacement: True [...]`처럼 표시되면 Cilium이 kube-proxy 역할을 eBPF로 대체하고 있다는 뜻이다. 실측 화면은 §4① 기준의 터미널 캡처로 확인한다(미캡처).
 
-> **예시(참조) — NAME         DESIRED   CURRENT   READY   UP-TO:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
+> **참고 — 일반 kubeadm 클러스터의 kube-proxy:** 아래 명령은 kube-proxy를 사용하는 *일반* 클러스터에서의 확인 방법이다. **이 dev 클러스터에서는 kube-proxy DaemonSet/ConfigMap이 없으므로 `Error from server (NotFound)` 또는 `No resources found`가 정상**이다. KCNA 시험 대비 개념 학습용으로만 참고한다.
+> ```bash
+> # (일반 클러스터) kube-proxy DaemonSet / Pod / 모드 확인 — 이 dev 클러스터에서는 NotFound가 정상
+> kubectl get daemonset kube-proxy -n kube-system
+> kubectl get pods -n kube-system -l k8s-app=kube-proxy -o wide
+> kubectl get configmap kube-proxy -n kube-system -o yaml | grep mode   # mode: "" 는 기본 iptables 모드
+> ```
 
-```bash
-# kube-proxy Pod 확인
-kubectl --context=dev get pods -n kube-system -l k8s-app=kube-proxy -o wide
-```
-
-**검증 — 기대 출력:**
-
-> **예시(참조) — NAME               READY   STATUS    RESTARTS :** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
-
-kube-proxy가 DaemonSet으로 실행되는 이유: 모든 노드에서 Service의 트래픽을 Pod로 라우팅해야 하므로, 모든 노드에 하나씩 실행되어야 한다. DaemonSet은 새 노드가 추가될 때 자동으로 해당 노드에 Pod를 생성한다.
-
-**Step 6: kube-proxy 모드 확인**
-
-```bash
-# kube-proxy 설정 확인
-kubectl --context=dev get configmap kube-proxy -n kube-system -o yaml | grep mode
-```
-
-**검증 — 기대 출력:**
-
-> **예시(참조) — mode: "":** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
-
-`mode: ""`(빈 문자열)은 기본값인 iptables 모드를 의미한다. kube-proxy의 세 가지 모드를 비교하면 다음과 같다:
+kube-proxy가 (일반 클러스터에서) DaemonSet으로 실행되는 이유: 모든 노드에서 Service의 트래픽을 Pod로 라우팅해야 하므로, 모든 노드에 하나씩 실행되어야 한다. DaemonSet은 새 노드가 추가될 때 자동으로 해당 노드에 Pod를 생성한다. kube-proxy의 세 가지 모드를 비교하면 다음과 같다:
 
 ```
 kube-proxy 프록시 모드 비교

@@ -1,0 +1,32 @@
+{
+  "updated": "2026-06-15",
+  "plan": "codex/REMEDIATION-PLAN.md",
+  "work_branch": "codex-remediation",
+  "committed": false,
+  "pushed": false,
+  "feedback_sources": {
+    "round1_local_branch": "codex-review",
+    "round1_fork_branch": "codex/k8scert-review-20260615-131127",
+    "round2_local_branch": "codex-review2",
+    "round2_fork_branch": "codex-feedback-20260615-160824"
+  },
+  "categories": {
+    "A_integrity": {"status": "done", "note": "5 links, CKS day14 bare fence, README text fences"},
+    "B_facts": {"status": "done", "note": "CNCF status (OTel 2026-05-11, Kyverno 2026-03-16), CKS v1.34, webhook ordering, etcdctl flag, KCSA day10 exam cond, KCNA kube-proxy->Cilium"},
+    "safety_logic": {"status": "done", "note": "platform/prod destructive -> dev/staging; KCNA nginx/nginx-web unify + ns idempotent"},
+    "C1_daily_structure": {"status": "todo", "files": ["CKAD/daily/day02","CKAD/daily/day04","CKAD/daily/day14","KCSA/daily/day02","KCSA/daily/day04","KCSA/daily/day06","CKS/daily/day08","CKS/daily/day10","CKS/daily/day12","CKS/daily/day14","CKA/daily/day20","KCNA/daily/day02","KCNA/daily/day05","KCNA/daily/day06","KCNA/daily/day08","KCNA/daily/day10"]},
+    "C2_storyline": {"status": "todo", "files": ["KCNA/01-concepts","KCNA/02-examples","CKAD/01-concepts","CKAD/02-examples","CKAD/daily/day12","CKS/01-concepts"]},
+    "C3_ascii_to_mermaid": {"status": "todo", "note": "flow diagrams only, NOT trees/tables", "files": ["KCNA/04-tart-infra-practice","KCNA/05-supplement","KCNA/daily/day07","KCNA/daily/day08","KCSA/05-supplement","CKS/04-tart-infra-practice","CKAD/daily/day05","CKAD/daily/day08"]},
+    "C4_ssh_context_standardize": {"status": "todo", "priority": "next", "scope": "158 occurrences across 20 files; needs per-occurrence judgment (which alias maps to which node, exam-vs-local), NOT blind sed", "grep": "grep -rnE 'ssh node0[0-9]|ssh admin@<|node01|master01|worker01|tart ssh' k8scert --include=*.md | grep -v FEEDBACK", "files": ["CKA/05-supplement","CKA/04-tart-infra-practice","CKA/01-concepts","CKA/daily/day02","CKA/daily/day04","CKA/daily/day06","CKA/daily/day14","CKA/daily/day18","CKA/daily/day19","CKS/05-supplement","CKS/02-examples","CKS/03-exam-questions","CKS/daily/day02","CKS/daily/day06","CKS/daily/day14","KCSA/04-tart-infra-practice","KCSA/05-supplement","KCSA/daily/day03","KCNA/04-tart-infra-practice","KCNA/05-supplement"]},
+    "C5_caption_integrity": {"status": "done", "files": ["CKS/daily/day07"], "note": "L1070-1078 encrypted vs plain images were swapped relative to their headers; swapped the two image lines so each sits under the correct header"},
+    "C6_abs_path_sweep": {"status": "todo", "grep": "grep -rn '~/sideproejct/IaC_apple_sillicon' k8scert", "note": "330 occ / 89 files -> repo-relative kubeconfig path"},
+    "D_screenshots": {"status": "todo", "requires_cluster": true, "note": "real capture only (CLAUDE.md 4-1). Hotspots: CKA/05-supplement, KCSA/05-supplement(0 images), CKA/04, CKS+CKAD+KCNA daily late"}
+  },
+  "next_session_order": ["C4_ssh_context_standardize","C1_daily_structure","C3_ascii_to_mermaid","C2_storyline","C6_abs_path_sweep","D_screenshots"],
+  "verification_greps": [
+    "fence parity: per file grep -c '^```' must be even",
+    "no destructive platform/prod: grep -nE '(drain|uncordon|taint nodes|label node|delete pod|delete deployment) (platform|prod)' k8scert",
+    "no bare app=nginx: grep -rnE 'app=nginx([^-]|$)' k8scert/KCNA/daily",
+    "no text fences: grep -rn '^```text' k8scert"
+  ]
+}

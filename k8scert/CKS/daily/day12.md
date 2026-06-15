@@ -24,7 +24,12 @@
 
 **선수지식(Day 11 전제):** 본 문서는 Day 11에서 Falco의 기본 아키텍처(eBPF 또는 커널 모듈로 syscall 감시 → 규칙 매칭 → 알림 발송), Audit Log의 정책(Policy)/필터링, jq를 이용한 기본 분석을 배웠다고 가정한다. (eBPF = 커널을 다시 컴파일하지 않고 안전하게 커널 안에서 작은 프로그램을 실행하는 기술. Falco는 이것으로 syscall을 가로채 수집한다.) 위 내용이 기억나지 않으면 [day11.md](day11.md) 또는 [../01-concepts.md](../01-concepts.md)의 Falco 절을 먼저 본다.
 
-**실습 전제(어느 클러스터에서 하는가):** 본 저장소의 클러스터 중 **platform** 클러스터 노드에는 Falco와 Audit Log가 설정되어 있어 실제 탐지/로그를 관찰할 수 있다(읽기 위주, §3 표). **dev/staging**은 CKS 파괴 실습 대상이지만 기본 상태에서는 Falco가 설치되어 있지 않을 수 있다. 따라서 아래 문제들의 `sudo systemctl restart falco`·`journalctl -u falco`·`audit.log` 조회 명령은 **Falco/Audit Log가 갖춰진 노드에서만 실제 출력이 나온다.** dev 노드에 Falco를 직접 설치하여 처음부터 실습하려면 [../04-tart-infra-practice.md](../04-tart-infra-practice.md)의 런타임 보안 실습 절차를 참조한다. CKS 파괴 실습(룰 추가, Pod 격리/삭제 등)은 반드시 **dev 또는 staging에서만** 수행하고 platform/prod에서는 하지 않는다. kubeconfig 경로는 `~/sideproejct/IaC_apple_sillicon/kubeconfig/<클러스터>.yaml`이며, 노드 SSH 접속은 `ssh dev-master`처럼 VM 이름 별칭을 쓴다.
+**실습 전제(어느 클러스터에서 하는가) — 두 경로를 반드시 구분한다:**
+
+> - **① 관찰만 (platform, 읽기 전용):** platform 노드에는 Falco·Audit Log가 이미 설정되어 있어 실제 탐지/로그를 *관찰*할 수 있다(§3 표, 읽기 위주). platform에서는 `journalctl -u falco`·`audit.log` 조회 같은 **읽기 명령만** 수행한다. 룰을 바꾸거나 서비스를 재시작하지 않는다.
+> - **② 파괴·재현 (dev 또는 staging에서만):** 룰 추가/수정, `sudo systemctl restart falco`, Pod 격리/삭제, 탐지 트리거용 행위 재현 등 **상태를 바꾸는 실습은 반드시 dev/staging에서만** 한다. platform/prod에서는 절대 하지 않는다(§3·§8). dev/staging은 기본 상태에서 Falco가 없을 수 있으므로, 먼저 [../04-tart-infra-practice.md](../04-tart-infra-practice.md)의 런타임 보안 실습 절차로 **Falco를 설치한 뒤** 재현한다.
+
+따라서 아래 문제의 `sudo systemctl restart falco`·`journalctl -u falco`·`audit.log` 조회는 **Falco/Audit Log가 갖춰진 노드(platform 관찰용 또는 Falco를 설치한 dev/staging)에서만** 실제 출력이 나온다. 각 문제는 "platform에서 관찰"인지 "dev/staging에서 재현"인지를 먼저 판단하고 시작한다. kubeconfig는 저장소 루트 기준 `kubeconfig/<클러스터>.yaml`, 노드 SSH는 `ssh dev-master`처럼 VM 이름 별칭을 쓴다.
 
 ### 등장 배경: 런타임 모니터링의 공격-방어 매핑
 

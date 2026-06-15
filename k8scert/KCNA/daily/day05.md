@@ -321,7 +321,7 @@ Digest 권장 이유:
 > **CoreDNS**란?
 > K8s의 기본 DNS 서버이며, CNCF **졸업** 프로젝트이다. 이전의 kube-dns를 대체하였다. Pod가 Service 이름으로 접근하면 CoreDNS가 해당 Service의 ClusterIP를 반환한다.
 
-앞 절(§4)에서 CNI 인터페이스를 소개했으므로, dev 클러스터의 실제 CNI 구현체인 Cilium/Hubble을 미리 살펴본다. CNI 심화는 [certification/cilium/](../../certification/cilium/) 참조.
+앞 절(§4)에서 CNI 인터페이스를 소개했으므로, dev 클러스터의 실제 CNI 구현체인 Cilium/Hubble을 미리 살펴본다. CNI 심화는 [certification/cilium/](../../../certification/cilium/) 참조.
 
 **kube-proxy란?** 모든 노드에서 실행되는 네트워크 프록시로, Linux 커널의 iptables 또는 IPVS 규칙을 조작해 Service의 ClusterIP를 실제 Pod IP로 변환한다. Service 개수가 증가할수록 각 노드의 커널에 동기화해야 할 iptables 규칙 수가 선형으로 늘어나 수천 개 서비스 환경에서 메모리·CPU 부하가 커진다(scale 문제).
 
@@ -579,8 +579,8 @@ kubectl get node -o jsonpath='{.items[0].status.nodeInfo.containerRuntimeVersion
 # dev 클러스터 kubeconfig 설정
 export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
 
-# demo 네임스페이스 생성 및 리소스 제한이 설정된 Pod 2개 배포
-kubectl create namespace demo
+# demo 네임스페이스 생성(이미 있으면 건너뜀) 및 리소스 제한이 설정된 Pod 2개 배포
+kubectl get ns demo >/dev/null 2>&1 || kubectl create namespace demo
 kubectl run -n demo nginx --image=nginx --limits=cpu=200m,memory=256Mi --requests=cpu=100m,memory=128Mi
 kubectl run -n demo httpbin --image=kennethreitz/httpbin --limits=cpu=200m,memory=256Mi --requests=cpu=100m,memory=128Mi
 
@@ -601,7 +601,8 @@ kubectl get pods -n demo -o custom-columns=NAME:.metadata.name,CPU_REQ:.spec.con
 
 ```bash
 # 특정 Pod의 상세 리소스 확인
-kubectl describe pod -n demo -l app=nginx | grep -A6 "Limits\|Requests"
+# 주의: kubectl run 은 run=<name> 라벨을 붙인다(데모 스택의 app=nginx-web 과 다름). 따라서 run= 으로 선택한다.
+kubectl describe pod -n demo -l run=nginx | grep -A6 "Limits\|Requests"
 ```
 
 검증:

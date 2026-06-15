@@ -758,9 +758,9 @@ exit
 
 ### 문제 4. 노드 drain [4%]
 
-**컨텍스트:** `kubectl config use-context prod`
+**컨텍스트:** 실기 시험에서는 문제마다 지정된 context로 전환한다(예: `kubectl config use-context <문제-지정-context>`). **이 저장소에서 로컬로 재현할 때는 파괴 실습이 허용된 `staging`에서 한다(§3). platform/prod는 노드 drain 금지.**
 
-`prod-worker1` 노드를 유지보수를 위해 스케줄링 불가 상태로 만들고, 모든 워크로드를 퇴거하라. DaemonSet은 무시하라.
+(시험 지문 형식) 대상 worker 노드를 유지보수를 위해 스케줄링 불가 상태로 만들고, 모든 워크로드를 퇴거하라. DaemonSet은 무시하라. 노드 이름은 시험에서 지정한 것을 쓰고, 로컬 재현에서는 `staging-worker1`로 치환한다.
 
 > 풀이를 펼치기 전에 직접 손으로 시도해보라. cordon만으로 충분한지, drain이 필요한지, 어떤 옵션이 빠지면 명령이 멈추는지 먼저 따져본다.
 
@@ -768,30 +768,30 @@ exit
 <summary>풀이 과정</summary>
 
 ```bash
-kubectl config use-context prod
-
+# 로컬 재현: staging 클러스터에서만 (prod/platform에서는 하지 않는다)
 # drain 실행
-kubectl drain prod-worker1 --ignore-daemonsets --delete-emptydir-data
+kubectl --kubeconfig kubeconfig/staging.yaml drain staging-worker1 --ignore-daemonsets --delete-emptydir-data
 
 # 상태 확인
-kubectl get nodes
-# prod-worker1: Ready,SchedulingDisabled
+kubectl --kubeconfig kubeconfig/staging.yaml get nodes
+# staging-worker1: Ready,SchedulingDisabled
 
-# Pod가 다른 노드로 이동했는지 확인
-kubectl get pods -A -o wide | grep prod-worker1
+# 퇴거된 Pod 위치 확인
+kubectl --kubeconfig kubeconfig/staging.yaml get pods -A -o wide | grep staging-worker1
 # DaemonSet Pod만 남아있어야 함
 
 # 유지보수 완료 후 uncordon
-kubectl uncordon prod-worker1
+kubectl --kubeconfig kubeconfig/staging.yaml uncordon staging-worker1
 
 # 정상 상태 확인
-kubectl get nodes
+kubectl --kubeconfig kubeconfig/staging.yaml get nodes
 ```
 
 **핵심:**
 - `--ignore-daemonsets`: DaemonSet Pod는 다른 노드로 이동 불가하므로 무시
 - `--delete-emptydir-data`: emptyDir 볼륨 사용 Pod도 퇴거 (데이터 손실 허용)
 - `drain` = `cordon` + 기존 Pod 퇴거
+- **로컬 환경 주의:** staging은 worker가 1개(master+worker1)뿐이고 master에는 control-plane taint가 있어, 퇴거된 Deployment Pod는 재배치할 노드가 없어 `Pending` 상태가 된다. `uncordon` 후 다시 `staging-worker1`에 스케줄링되어 복구된다. 시험의 다중 worker 환경에서는 다른 worker로 즉시 이동한다.
 
 </details>
 

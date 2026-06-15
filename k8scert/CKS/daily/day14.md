@@ -344,12 +344,11 @@ kubectl get svc -n admission image-policy-webhook
 기대 출력 (예시-환경따라다름, staging에 webhook 서비스 미배포 시 "No resources found"):
 > **예시(참조) — ImagePolicyWebhook:** admission webhook 으로 비허용 레지스트리 이미지를 거부한다(`defaultAllow: false`). 미구성 환경이라 미실측 — 구성 시 비허용 이미지 Pod 가 'image policy webhook backend denied' 로 거부된다.
 
-`kubectl get svc -A | grep -i image-policy` 출력의 각 열이 kubeconfig `server` URL을 결정한다. 실제 출력 예시를 기준으로 필드 매핑을 설명하면 다음과 같다.
+`kubectl get svc -A | grep -i image-policy` 출력의 각 열이 kubeconfig `server` URL을 결정한다. 출력의 열 구조(스키마)는 다음과 같다. 실제 값은 환경마다 다르며, 실측 화면은 §4① 기준의 터미널 캡처로 확인한다(미배포 시 `No resources found`).
 
-```
-NAMESPACE   NAME                   TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
-default     image-policy-webhook   ClusterIP   10.96.45.12   <none>        443/TCP   2d
-```
+| NAMESPACE | NAME | TYPE | CLUSTER-IP | EXTERNAL-IP | PORT(S) | AGE |
+|:--|:--|:--|:--|:--|:--|:--|
+| default | image-policy-webhook | ClusterIP | (환경별 ClusterIP) | `<none>` | 443/TCP | (생성 후 경과 시간) |
 
 - `NAMESPACE` 열 → FQDN의 두 번째 세그먼트: `image-policy-webhook.**default**.svc`
 - `NAME` 열 → FQDN의 첫 번째 세그먼트: `**image-policy-webhook**.default.svc`

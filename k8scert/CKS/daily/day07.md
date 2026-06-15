@@ -1068,12 +1068,12 @@ sudo ls -la /etc/kubernetes/pki/etcd/
 엄밀히는 클라이언트 인증에는 `healthcheck-client.crt/.key`(또는 apiserver-etcd-client) 같은 클라이언트 인증서를 쓰는 것이 정석이다. server.crt도 보통 클라이언트 인증(clientAuth) EKU를 가져 동작하지만, 시험·운영에서는 용도에 맞는 client 인증서를 쓰는 것을 권장한다. etcdctl 검증은 etcd가 도는 control-plane 노드(staging/prod 마스터)에서만 가능하므로, etcd 접근권이 없는 dev에서는 4.3 아래의 대체 검증 방법을 쓴다.
 
 암호화 성공 시 기대 출력:
-![암호화 미적용 시 etcd 에 Secret 이 평문 저장(hexdump 에 password 노출)](images/day07-03-etcd-plain.png)
+![etcd 암호화 적용 후 — Secret 이 k8s:enc:aescbc 암호문으로 저장(dev 실측)](images/cks-etcd-encrypted.png)
 
 `k8s:enc:aescbc:v1:key1` 접두사가 보이면 암호화가 적용된 것이다. 이후 바이트는 AES-CBC 암호문이다.
 
 암호화 미적용 시(평문 저장):
-![etcd 암호화 적용 후 — Secret 이 k8s:enc:aescbc 암호문으로 저장(dev 실측)](images/cks-etcd-encrypted.png)
+![암호화 미적용 시 etcd 에 Secret 이 평문 저장(hexdump 에 password 노출)](images/day07-03-etcd-plain.png)
 
 평문이 그대로 보이면 Encryption at Rest가 적용되지 않은 것이다.
 

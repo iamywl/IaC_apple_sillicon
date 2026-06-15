@@ -2,7 +2,7 @@
 
 > 총 40문항 (모의 연습용 — 실제 KCNA는 60문항 / 90분 / 75% 합격) | 도메인별 비율: Kubernetes Fundamentals(18), Container Orchestration(9), Cloud Native Architecture(6), Observability(4), Application Delivery(3)
 
-이 파일은 실제 시험(60문항)의 일부 범위를 다루는 **연습용 40문제 묶음**이다. 도메인 비율은 실제 KCNA 시험요강(아래 채점 기준 표)에 맞췄으나 문항 수는 실제보다 적으므로, 이 40문제만으로 시험 준비가 끝났다고 보면 안 된다. 각 문제의 정답·해설은 `<details>` 토글 안에 있으니 먼저 스스로 답을 고른 뒤 펼쳐 본다.
+이 파일은 실제 시험(60문항)의 일부 범위를 다루는 **연습용 40문제 묶음**이다. 도메인 비율은 실제 KCNA 시험요강(아래 채점 기준 표)에 맞췄으나 문항 수는 실제보다 적으므로, 이 40문제만으로 시험 준비가 끝났다고 보면 안 된다. 각 문제의 정답·해설은 `<details>` 토글 안에 있으니 먼저 스스로 답을 고른 뒤 펼쳐 본다. 이 파일을 푼 뒤에는 [daily/day09.md](daily/day09.md)의 50문항 모의시험과 [daily/day10.md](daily/day10.md)의 최종 점검 문항까지 풀어 총 110문항 이상으로 마무리하면 실제 60문항 시험 분량 이상을 연습하게 된다.
 
 > **공식 시험요강 출처:** KCNA 도메인·비중의 단일 근거(SSOT)는 CNCF 공식 페이지다 — https://www.cncf.io/certification/kcna/ . 본 문서의 모든 도메인 비율(섹션 헤더·아래 채점 기준 표)은 이 공식 비중(Kubernetes Fundamentals 46%, Container Orchestration 22%, Cloud Native Architecture 16%, Cloud Native Observability 8%, Cloud Native Application Delivery 8%)에 맞춘 값이다. 연습용 40문제의 도메인별 문항 수(18/9/6/4/3)는 이 비율을 근사한 것이며, 공식 시험의 60문항 분포와는 차이가 있을 수 있다.
 
@@ -1737,7 +1737,7 @@ kubectl port-forward svc/jaeger-query 16686:16686
 세 기둥은 서로 보완적이다. 메트릭(Metrics)은 시계열 데이터로 시스템의 전반적 상태를 파악한다(예: CPU 사용률 90%). 메트릭이 이상을 감지하면 로그(Logs)로 개별 이벤트를 확인한다(예: OOM 에러 발생). 특정 요청의 전체 흐름을 추적하려면 트레이스(Traces)를 사용한다(예: 요청이 API → 인증 → DB → 응답으로 진행되며 DB 쿼리에서 병목 발생). 트레이스는 span으로 구성되며, 각 span은 하나의 작업 단위를 나타낸다.
 
 **CNCF 생태계 맥락:**
-각 기둥별 대표적 CNCF 프로젝트: 메트릭은 Prometheus(졸업), 로그는 Fluentd(졸업), 트레이스는 Jaeger(졸업)이다. OpenTelemetry(CNCF 졸업, 2023년 11월)는 세 기둥 모두의 데이터를 통합적으로 수집하는 프레임워크이다. Grafana(오픈소스)는 Loki(로그), Tempo(트레이스), Mimir(메트릭)로 세 기둥을 하나의 플랫폼에서 제공한다. Thanos(CNCF 인큐베이팅)는 Prometheus의 장기 스토리지를 제공한다.
+각 기둥별 대표적 CNCF 프로젝트: 메트릭은 Prometheus(졸업), 로그는 Fluentd(졸업), 트레이스는 Jaeger(졸업)이다. OpenTelemetry(CNCF 졸업, 2026-05-11)는 세 기둥 모두의 데이터를 통합적으로 수집하는 프레임워크이다. Grafana(오픈소스)는 Loki(로그), Tempo(트레이스), Mimir(메트릭)로 세 기둥을 하나의 플랫폼에서 제공한다. Thanos(CNCF 인큐베이팅)는 Prometheus의 장기 스토리지를 제공한다.
 
 **등장 배경:**
 모놀리식 아키텍처에서는 하나의 서버 로그만 확인하면 문제를 파악할 수 있었다. 마이크로서비스와 분산 시스템에서는 수십~수백 개의 서비스가 상호작용하므로, 단일 데이터 소스만으로는 시스템 상태를 이해할 수 없다. 관측성(Observability)은 "시스템의 외부 출력만으로 내부 상태를 이해할 수 있는 능력"으로, 메트릭/로그/트레이스 세 기둥을 종합적으로 활용하여 복잡한 분산 시스템의 문제를 진단한다.
@@ -1806,7 +1806,7 @@ D) CNCF 졸업(Graduated) 프로젝트이다
 
 **정답: C) 특정 벤더에 종속된 모니터링 솔루션이다 ✅**
 
-OpenTelemetry(OTel)는 벤더 중립적(vendor-neutral)인 관측성 프레임워크이다. 특정 벤더에 종속되지 않으며, 수집한 텔레메트리 데이터를 Jaeger, Prometheus, Datadog, New Relic 등 다양한 백엔드로 전송할 수 있다. OpenTracing과 OpenCensus의 합병으로 탄생하였으며, 2023년 11월 CNCF 졸업(Graduated) 프로젝트가 되었다(졸업은 CNCF 성숙도 등급 중 최고 단계로, 프로덕션 검증·거버넌스·다수 채택 기준을 충족했음을 뜻한다).
+OpenTelemetry(OTel)는 벤더 중립적(vendor-neutral)인 관측성 프레임워크이다. 특정 벤더에 종속되지 않으며, 수집한 텔레메트리 데이터를 Jaeger, Prometheus, Datadog, New Relic 등 다양한 백엔드로 전송할 수 있다. OpenTracing과 OpenCensus의 합병으로 탄생하였으며, 2021-08-26 Incubating을 거쳐 2026-05-11 CNCF 졸업(Graduated) 프로젝트가 되었다(졸업은 CNCF 성숙도 등급 중 최고 단계로, 프로덕션 검증·거버넌스·다수 채택 기준을 충족했음을 뜻한다. 검토일 2026-06-15 기준).
 
 **검증:**
 ```bash

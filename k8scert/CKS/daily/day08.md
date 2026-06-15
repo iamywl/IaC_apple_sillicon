@@ -4,7 +4,7 @@
 
 ---
 
-**Day 7 연속:** Day 7에서 PSA/SecurityContext/EncryptionConfig 개념을 학습했다([Day 7 참조: ../day07.md](../day07.md)). Day 8은 동일 도메인의 시험 출제 패턴 분석과 10개 실전 문제 풀이에 집중한다.
+**Day 7 연속:** Day 7에서 PSA/SecurityContext/EncryptionConfig 개념을 학습했다([Day 7 참조: day07.md](day07.md)). Day 8은 동일 도메인의 시험 출제 패턴 분석과 10개 실전 문제 풀이에 집중한다.
 
 ## 오늘의 학습 목표
 

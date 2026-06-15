@@ -431,7 +431,7 @@ etcd에 저장
 - **MutatingAdmissionWebhook**이 **ValidatingAdmissionWebhook**보다 먼저 실행된다
 - Mutating은 요청 객체를 수정할 수 있다 (예: 사이드카 주입, 기본값 설정)
 - Validating은 요청을 수정할 수 없으며, 승인 또는 거부만 한다
-- 같은 종류(Mutating 또는 Validating)의 webhook이 여러 개 있으면, **MutatingWebhookConfiguration 또는 ValidatingWebhookConfiguration 리소스 내 `webhooks` 배열에 선언된 순서**대로 실행된다. 단, API 서버는 같은 우선순위의 webhook 사이에서 이름 알파벳순 보조 정렬을 적용하므로, 실질적으로는 "선언 순서 → 이름 알파벳순 보조 정렬"이 최종 실행 순서가 된다.
+- 같은 종류(Mutating 또는 Validating)의 webhook이 여러 개일 때의 **실행 순서에는 의존하지 말아야 한다.** 쿠버네티스 공식 문서는 mutating webhook 호출 순서에 의존하지 말 것을 명시한다([Admission Webhook Good Practices](https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/#dont-rely-on-mutating-webhook-invocation-order)). 하나의 `MutatingWebhookConfiguration` 안에서는 `webhooks` 배열 순서대로 호출되지만, 서로 다른 configuration 사이의 순서는 보장되지 않으며, `reinvocationPolicy: IfNeeded`가 설정되면 다른 webhook이 객체를 수정한 뒤 해당 webhook이 다시 호출될 수 있어 실질 순서가 달라진다. 따라서 (1) mutating webhook은 같은 입력에 같은 결과를 내도록 멱등(idempotent)하게 설계하고, (2) 최종 상태 불변식(invariant)은 순서에 의존하지 말고 validating webhook에서 검증한다.
 - 하나의 webhook이라도 거부하면 전체 요청이 거부된다
 
 ### MutatingWebhookConfiguration 예제

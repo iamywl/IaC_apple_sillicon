@@ -2876,7 +2876,7 @@ Guaranteed이다. 노드 메모리 부족 시 가장 마지막에 축출된다. 
 - etcd 운영 가이드(백업/복구): https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/
 - RBAC 인가: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 - 스케줄러 동작과 플러그인: https://kubernetes.io/docs/concepts/scheduling-eviction/
-- 같은 저장소 심화 문서: [../../certification/etcd/](../../certification/etcd/), [../../certification/containerd/](../../certification/containerd/)
+- 같은 저장소 심화 문서: [../../certification/containerd/](../../certification/containerd/) (etcd 운영 심화는 위의 공식 etcd 운영 가이드 링크를 참고한다 — 저장소에 etcd 전용 디렉터리는 없다)
 
 ## 시험 팁
 

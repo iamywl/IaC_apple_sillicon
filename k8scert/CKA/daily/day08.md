@@ -675,7 +675,7 @@ kubectl delete deployment diag-deploy -n demo
 
 ### 문제 20. 복합 Deployment 생성 [7%]
 
-**컨텍스트:** `kubectl config use-context prod`
+**컨텍스트:** 실기 시험에서는 지정 context로 전환한다(`kubectl config use-context <문제-지정-context>`). **로컬 재현은 워크로드 생성이 허용된 `dev`에서 한다(§3). platform/prod에는 Deployment를 생성/삭제하지 않는다.**
 
 다음 모든 조건을 만족하는 Deployment를 생성하라:
 - 이름: `full-deploy`
@@ -693,9 +693,8 @@ kubectl delete deployment diag-deploy -n demo
 <summary>풀이 과정</summary>
 
 ```bash
-kubectl config use-context prod
-
-cat <<EOF | kubectl apply -f -
+# 로컬 재현: dev 클러스터 사용 (prod/platform에는 생성하지 않는다)
+cat <<EOF | kubectl --kubeconfig kubeconfig/dev.yaml apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -745,11 +744,11 @@ spec:
 EOF
 
 # 전체 확인
-kubectl get deployment full-deploy -o wide
-kubectl describe deployment full-deploy | head -40
+kubectl --kubeconfig kubeconfig/dev.yaml get deployment full-deploy -o wide
+kubectl --kubeconfig kubeconfig/dev.yaml describe deployment full-deploy | head -40
 
 # 정리
-kubectl delete deployment full-deploy
+kubectl --kubeconfig kubeconfig/dev.yaml delete deployment full-deploy
 ```
 
 </details>

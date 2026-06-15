@@ -812,9 +812,9 @@ kubectl get pods -n jenkins
 # ArgoCD 웹 UI: http://localhost:30800
 # CI(Jenkins: 빌드/테스트) → CD(ArgoCD: 배포) 파이프라인 구조 확인
 
-# dev 클러스터의 Deployment 배포 전략 확인
+# dev 클러스터 데모 스택(nginx-web)의 배포 전략 확인
 export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
-kubectl get deployment nginx -n demo -o jsonpath='{.spec.strategy}' | python3 -m json.tool
+kubectl get deployment nginx-web -n demo -o jsonpath='{.spec.strategy}' | python3 -m json.tool
 
 # 예상 출력:
 # {
@@ -838,7 +838,7 @@ kubectl get deployment nginx -n demo -o jsonpath='{.spec.strategy}' | python3 -m
 
 **문제 1 — RollingUpdate 전략 설정 (목표: 5분)**
 
-dev 클러스터의 `demo` 네임스페이스에 `nginx` Deployment를 생성하라. 조건:
+dev 클러스터의 `demo` 네임스페이스에 `nginx` Deployment를 생성하라(데모 스택의 `nginx-web`과는 별개의 실습용 Deployment이며, 끝나면 정리한다). 조건:
 - image: `nginx:1.25`
 - replicas: 4
 - 배포 전략: RollingUpdate, `maxSurge=1`, `maxUnavailable=0`
@@ -866,6 +866,9 @@ spec:
 kubectl apply -f /tmp/nginx-deploy.yaml
 kubectl rollout status deployment/nginx -n demo
 kubectl get deployment nginx -n demo -o jsonpath='{.spec.strategy}'
+
+# 정리(실습용 Deployment 제거 — 데모 스택 nginx-web 은 건드리지 않는다)
+kubectl delete deployment nginx -n demo --ignore-not-found
 ```
 
 검증: `maxSurge:1`, `maxUnavailable:0` 이 출력되면 정상.

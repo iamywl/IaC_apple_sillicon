@@ -934,5 +934,5 @@ export KUBECONFIG=~/sideproejct/IaC_apple_sillicon/kubeconfig/dev.yaml
 - [Kubernetes 공식 문서: Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) — RollingUpdate·Recreate 전략 설명 및 `.spec.strategy` 필드 레퍼런스.
 - [Istio 공식 문서: Traffic Management](https://istio.io/latest/docs/concepts/traffic-management/) — VirtualService의 `weight` 기반 정밀 Canary 제어 원리.
 - [Kubernetes Endpoints Controller 소스](https://github.com/kubernetes/kubernetes/blob/master/pkg/controller/endpoint/endpoints_controller.go) — selector 변경 시 Endpoints 재계산이 어떻게 트리거되는지 코드 레벨 확인.
-- [certification/cilium/](../../certification/cilium/) — 이 저장소 dev 클러스터의 Cilium(eBPF 기반 kube-proxy 대체) 심화. iptables와 eBPF의 패킷 처리 경로 차이.
+- [certification/cilium/](../../../certification/cilium/) — 이 저장소 dev 클러스터의 Cilium(eBPF 기반 kube-proxy 대체) 심화. iptables와 eBPF의 패킷 처리 경로 차이.
 - [Argo Rollouts](https://argoproj.github.io/argo-rollouts/) — 순수 쿠버네티스의 Pod 수 비율 Canary를 넘어 자동 analysis·step 기반 progressive delivery를 제공하는 CNCF 프로젝트. CKA/CKAD 시험 범위는 아니지만 실무 참고용.

@@ -1076,5 +1076,5 @@ kubectl get pod <pod-name> -o yaml | grep -A2 automount
 - [쿠버네티스 공식 문서 — 인증서 서명 요청](https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/) : CSR 리소스 스펙, signerName 목록, 자동 승인 정책.
 - [쿠버네티스 공식 문서 — kubeconfig 구성](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/) : 다중 kubeconfig 파일 병합, KUBECONFIG 환경변수, context·namespace 기본값.
 - [쿠버네티스 공식 문서 — ServiceAccount 토큰 관리](https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/) : TokenRequest API, bound service account token, projected volume.
-- [certification/rbac/](../../certification/) : 이 저장소의 RBAC 심화 자료(aggregated ClusterRole, impersonation, RBAC 감사 로그 분석).
+- [이 저장소 certification/ 심화 모음](../../../certification/) : cilium·istio 등 네트워크·보안 기술 심화. RBAC 전용 디렉터리는 없으므로 aggregated ClusterRole·impersonation·RBAC 감사 로그 분석은 위의 공식 RBAC 문서를 우선 참고한다.
 

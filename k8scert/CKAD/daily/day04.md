@@ -41,27 +41,19 @@ _그림 1. kubectl apply부터 컨테이너 기동까지의 Pod 생성 흐름._
 
 ### 1.2 Multi-container Pod 내부 네트워크
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph POD["Pod (10.244.1.5) — 공유 네트워크 네임스페이스 · 공유 볼륨(emptyDir 등)"]
+    app["app\n:8080"]
+    sidecar["sidecar\n:9090"]
+    lo["localhost (lo)\n127.0.0.1"]
+    app --- lo
+    sidecar --- lo
+  end
 ```
-+------ Pod (10.244.1.5) ------+
-|                               |
-|  +-------+     +-------+     |
-|  | app   |     | sidecar|    |
-|  | :8080 |     | :9090  |    |
-|  +---+---+     +---+----+   |
-|      |             |         |
-|  +---+-------------+----+   |
-|  |    localhost (lo)     |   |
-|  |    127.0.0.1          |   |
-|  +-----------------------+   |
-|                               |
-|  공유 네트워크 네임스페이스     |
-|  공유 볼륨 (emptyDir 등)      |
-+-------------------------------+
 
-- app은 localhost:9090으로 sidecar에 접근 가능
-- sidecar는 localhost:8080으로 app에 접근 가능
-- 외부에서는 Pod IP(10.244.1.5)로 접근
-```
+_그림. 한 Pod 의 app·sidecar 는 같은 네트워크 네임스페이스(lo, 127.0.0.1)를 공유한다. app 은 `localhost:9090` 으로 sidecar 에, sidecar 는 `localhost:8080` 으로 app 에 접근한다. 외부에서는 Pod IP(10.244.1.5)로 접근한다._
 
 **왜 컨테이너끼리 localhost로 통신되나**: 한 Pod 안의 모든 컨테이너는 같은 네트워크 네임스페이스(network namespace)를 공유한다. 네트워크 네임스페이스란 리눅스 커널이 프로세스 그룹에 독립된 네트워크 스택(인터페이스·IP·포트 공간·라우팅 테이블)을 격리해 주는 기능이다. 컨테이너들이 같은 네임스페이스에 들어가므로 동일한 `lo`(루프백) 인터페이스와 IP를 공유하고, 서로를 `localhost`로 부를 수 있다.
 

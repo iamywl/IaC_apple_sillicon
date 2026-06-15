@@ -909,40 +909,20 @@ kubectl delete svc web-svc -n demo
 
 ## 5. 트러블슈팅 빠른 참조 카드
 
-```
-┌──────────────────────────────────────────────────────────┐
-│              CKA Troubleshooting Quick Reference          │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│ Pod 문제:                                                │
-│   Pending     → describe pod → Events → 리소스/노드/PVC  │
-│   Crash       → logs --previous → 명령어/설정 확인       │
-│   ImagePull   → describe pod → 이미지명/태그/Secret      │
-│   OOMKilled   → describe pod → limits.memory 증가        │
-│                                                          │
-│ Service 문제:                                            │
-│   접근 불가   → get endpoints → selector/label 비교      │
-│   DNS 실패    → kube-system coredns Pod/ConfigMap 확인   │
-│                                                          │
-│ Node 문제:                                               │
-│   NotReady    → SSH → systemctl status kubelet           │
-│               → journalctl -u kubelet                    │
-│               → systemctl restart kubelet                │
-│                                                          │
-│ Control Plane:                                           │
-│   kubectl 불가 → SSH → crictl ps -a | grep apiserver     │
-│               → /etc/kubernetes/manifests/ 확인           │
-│               → crictl logs <container-id>                │
-│                                                          │
-│ 핵심 명령어:                                             │
-│   kubectl describe pod   → Events 확인                   │
-│   kubectl logs --previous → 이전 로그                    │
-│   kubectl get endpoints  → Service-Pod 연결              │
-│   systemctl status kubelet → kubelet 상태                │
-│   crictl ps -a           → Static Pod 컨테이너           │
-│   journalctl -u kubelet  → kubelet 로그                  │
-└──────────────────────────────────────────────────────────┘
-```
+**CKA Troubleshooting Quick Reference**
+
+| 영역 | 증상 | 진단·복구 경로 |
+|:--|:--|:--|
+| Pod | Pending | `describe pod` → Events → 리소스/노드/PVC 확인 |
+| Pod | Crash(CrashLoopBackOff) | `logs --previous` → 명령어/설정 확인 |
+| Pod | ImagePullBackOff | `describe pod` → 이미지명/태그/Secret 확인 |
+| Pod | OOMKilled | `describe pod` → `limits.memory` 증가 |
+| Service | 접근 불가 | `get endpoints` → selector/label 비교 |
+| Service | DNS 실패 | kube-system coredns Pod/ConfigMap 확인 |
+| Node | NotReady | SSH → `systemctl status kubelet` → `journalctl -u kubelet` → `systemctl restart kubelet` |
+| Control Plane | kubectl 불가 | SSH → `crictl ps -a \| grep apiserver` → `/etc/kubernetes/manifests/` 확인 → `crictl logs <id>` |
+
+**핵심 명령어:** `kubectl describe pod`(Events 확인) · `kubectl logs --previous`(이전 로그) · `kubectl get endpoints`(Service-Pod 연결) · `systemctl status kubelet`(kubelet 상태) · `crictl ps -a`(Static Pod 컨테이너) · `journalctl -u kubelet`(kubelet 로그).
 
 ---
 

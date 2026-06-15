@@ -572,7 +572,9 @@ kubectl run test-pod --image=nginx:alpine -n staging
 kubectl get pod test-pod -n staging
 ```
 
-> warn 경고는 `kubectl run` 의 stderr 에 나타난다. 터미널에서 Warning 메시지가 보이면 정상이다 — (미캡처).
+아래는 cks 랩에서 `warn=restricted`(enforce 는 privileged) 네임스페이스에 비준수 Pod 를 만든 실측이다. stderr 에 `Warning: would violate PodSecurity "restricted:latest": ...` 가 출력되지만 Pod 는 생성된다(enforce 가 아니므로). warn 모드는 점진적 보안 강화 단계에서 위반 워크로드를 파악하는 데 쓴다.
+
+![PSA warn 모드 — 경고 출력 + Pod 생성됨(cks 실측)](images/cks-psa-warn.png)
 
 ### 문제 8. SecurityContext - privileged 컨테이너 수정
 
@@ -636,7 +638,9 @@ kubectl exec debug-pod -- cat /proc/1/status 2>/dev/null | grep -i cap
 # CapPrm 과 CapEff 가 0000000000000000 이면 모든 capability 가 제거된 것이다
 ```
 
-> (미캡처) — ubuntu:22.04 이미지는 `runAsNonRoot: true` + `runAsUser: 1000` + `readOnlyRootFilesystem: true` 조합에서 bash 셸이 정상 기동되는지 환경에 따라 다르다. 시험에서는 Pod 이 Running 상태가 되고 `kubectl describe pod debug-pod` 에 보안 컨텍스트가 반영되었는지 확인하면 충분하다.
+아래는 cks 랩에서 `capabilities.drop: ["ALL"]` 을 적용한 Pod 의 `/proc/1/status` 실측이다. `CapEff: 0000000000000000`(모든 capability 제거)이 확인되며, 이 상태에서 NET_ADMIN 이 필요한 `ip link` 가 `Operation not permitted` 로 차단된다. debug-pod 의 보안 컨텍스트도 같은 방식으로 `kubectl describe pod debug-pod` 와 `/proc/1/status` 로 확인한다.
+
+![capabilities.drop ALL 적용 Pod 의 CapEff=0 + ip link 차단(cks 실측)](images/cks-cap-deny.png)
 
 ### 문제 9. Encryption at Rest 검증
 
@@ -687,7 +691,15 @@ ETCDCTL_API=3 etcdctl \
 # 암호화 미적용 시: ASCII 컬럼에 "mysecretpassword" 가 그대로 보인다
 ```
 
-> (미캡처) — EncryptionConfiguration 이 미설정된 staging 클러스터에서는 `k8s:enc` 접두사 없이 평문이 출력된다. 암호화 적용 후와 적용 전을 비교하는 두 가지 hexdump 결과를 직접 실행하여 확인한다. 문제 3의 EncryptionConfiguration 절차를 staging 마스터에 적용한 뒤 이 검증을 수행한다.
+아래는 같은 `etcdctl get ... | hexdump -C` 를 암호화 미적용/적용 클러스터에서 각각 실행한 실측 비교다.
+
+**암호화 미적용(평문 노출):** ASCII 컬럼에 Secret 내용이 그대로 보인다.
+
+![암호화 전 — etcd hexdump 에 Secret 평문 노출(staging 실측)](images/cks-etcd-plaintext.png)
+
+**암호화 적용(`k8s:enc:aescbc:v1:key1` + 암호문):** 접두사 뒤는 키 없이 해독 불가한 바이너리다.
+
+![암호화 후 — k8s:enc:aescbc:v1:key1 접두사 + 암호문(dev 실측)](images/cks-etcd-encrypted.png)
 
 ### 문제 10. 복합 문제 - 전체 보안 강화
 
@@ -783,7 +795,11 @@ kubectl run test-violation --image=nginx -n high-security
 # Error from server (Forbidden): ... violates PodSecurity "restricted"
 ```
 
-> (미캡처) — nginx:1.25 는 기본적으로 root 로 실행되므로 `runAsNonRoot: true` 와 충돌한다. 위 Deployment 의 `runAsUser: 1000` 을 지정해도 nginx 공식 이미지는 1.25 버전부터 `/docker-entrypoint.sh` 가 root 에서 user 로 전환하는 구조라 CrashLoopBackOff 가 발생할 수 있다. 시험에서 nginx 기반 restricted Pod 가 정상 기동되지 않으면 `nginxinc/nginx-unprivileged:latest` 이미지를 사용한다.
+restricted enforce 네임스페이스에서 비준수 Pod(`test-violation`) 생성을 시도하면 아래처럼 PodSecurity 가 위반 필드를 나열하며 거부한다(cks 랩 `cks-psa` 네임스페이스 실측 — `high-security` 와 동일한 restricted 거부).
+
+![restricted 네임스페이스의 비준수 Pod 거부 — PodSecurity Forbidden(cks 실측)](images/cks-psa-forbidden.png)
+
+> 참고: nginx:1.25 는 root 로 실행되므로 `runAsNonRoot: true` 와 충돌한다. `runAsUser: 1000` 을 지정해도 nginx 공식 이미지는 `/docker-entrypoint.sh` 가 root→user 전환 구조라 CrashLoopBackOff 가 날 수 있다. restricted Pod 가 안 뜨면 `nginxinc/nginx-unprivileged` 이미지를 쓴다.
 
 ---
 

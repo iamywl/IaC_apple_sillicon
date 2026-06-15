@@ -14,7 +14,7 @@
     "A_integrity": {"status": "done", "note": "5 links, CKS day14 bare fence, README text fences"},
     "B_facts": {"status": "done", "note": "CNCF status (OTel 2026-05-11, Kyverno 2026-03-16), CKS v1.34, webhook ordering, etcdctl flag, KCSA day10 exam cond, KCNA kube-proxy->Cilium"},
     "safety_logic": {"status": "done", "note": "platform/prod destructive -> dev/staging; KCNA nginx/nginx-web unify + ns idempotent"},
-    "C1_daily_structure": {"status": "todo", "files": ["CKAD/daily/day02","CKAD/daily/day04","CKAD/daily/day14","KCSA/daily/day02","KCSA/daily/day04","KCSA/daily/day06","CKS/daily/day08","CKS/daily/day10","CKS/daily/day12","CKS/daily/day14","CKA/daily/day20","KCNA/daily/day02","KCNA/daily/day05","KCNA/daily/day06","KCNA/daily/day08","KCNA/daily/day10"]},
+    "C1_daily_structure": {"status": "in_progress", "done": ["KCSA/daily/day02 (자가점검5·시험팁·더읽을거리, 공급망)"], "remaining": ["CKAD/daily/day02","CKAD/daily/day04","CKAD/daily/day14","KCSA/daily/day04","KCSA/daily/day06","CKS/daily/day08","CKS/daily/day10","CKS/daily/day12","CKS/daily/day14","CKA/daily/day20","KCNA/daily/day02","KCNA/daily/day05","KCNA/daily/day06","KCNA/daily/day08","KCNA/daily/day10"], "note": "각 파일 끝에 ## ✅ 자가점검(<details> 5문항)·## 시험 팁·## 더 읽을거리 추가. 주제 맞춰 작성."},
     "C2_storyline": {"status": "todo", "files": ["KCNA/01-concepts","KCNA/02-examples","CKAD/01-concepts","CKAD/02-examples","CKAD/daily/day12","CKS/01-concepts"]},
     "C3_ascii_to_mermaid": {"status": "in_progress", "done": ["KCSA/05-supplement Part0 보안메커니즘 흐름", "CKAD/daily/day08 §1.4 Helm install 흐름", "KCNA/04 CNCF 성숙도 단계(+Argo/Flux 졸업 정정)"], "note": "flow diagrams only. 인라인 prose 화살표·crontab 필드도식(KCNA04 L1839)은 유지. CKS/04는 box-char 없음(arrow/indent flow). 다이어그램별 트리-vs-흐름 판단 필요.", "remaining_files": ["KCNA/04-tart-infra-practice(ArgoCD sync 흐름 등)","KCNA/05-supplement","KCNA/daily/day07","KCNA/daily/day08","CKS/04-tart-infra-practice(eBPF/암호화 흐름)","CKAD/daily/day05"]},
     "C4_ssh_context_standardize": {"status": "done", "note": "A) ssh admin@<NODE-ip>->ssh NODE (31, prose-comparison lines kept). B) '# tart ssh X'->'# ssh X' (8). C) exam-style node01/master01 left as exam names + added node-name mapping note to 7 files (CKS 05-supplement/02-examples/day02/day06, CKA 05-supplement/01-concepts, KCNA 05-supplement; CKS 03-exam already had one). Exam realism preserved, local mapping documented."},
@@ -22,7 +22,20 @@
     "C6_abs_path_sweep": {"status": "done", "note": "323 kubeconfig paths (~/sideproejct/.../kubeconfig/ -> kubeconfig/) across 89 files. 6 non-kubeconfig prose/cd paths kept intentionally (clone-location guidance)."},
     "D_screenshots": {"status": "in_progress", "requires_cluster": true, "pipeline_verified": "capture-shot.sh works end-to-end (Terminal.app + screencapture). Confirmed real capture, correct content.", "done": ["KCNA day03 nginx-web 데모 체인 4장(day03-01~04)", "KCNA 04 Cilium KubeProxyReplacement 1장(kcna-cilium-kubeproxy)", "KCNA day01 demo getall 1장(day01-demo-getall) — 인라인 예상출력 교체"], "cluster_status_2026-06-15": "boot 완료, 4클러스터 UP(이 세션). 다음 세션엔 다시 stopped일 수 있음 → ./scripts/boot.sh 재실행.", "tool_gap": "KCSA/05-supplement·CKS daily 등 다수 캡처는 Kyverno/Gatekeeper/Falco/Trivy/gVisor 설치가 선행돼야 함(dev/staging에 설치 후 캡처). 데모스택(nginx-web 등)만으로 되는 기본 kubectl 캡처가 가장 빠름.", "note": "real capture only (CLAUDE.md 4-1). Backlog = 각 FEEDBACK-codex.md 'screenshot' 행(라인번호 포함). 우선순위: 데모스택 기본 kubectl → 도구설치 필요 캡처."}
   },
-  "next_session_order": ["C4_ssh_context_standardize","C1_daily_structure","C3_ascii_to_mermaid","C2_storyline","C6_abs_path_sweep","D_screenshots"],
+  "cks_lab": {
+    "purpose": "CKS/KCSA 보안도구 캡처 + 실제 CKS 실습 전용 클러스터. 기존 4개 불변.",
+    "definition": "config/clusters.json 에 cks 추가됨(pod 10.50/16, svc 10.100/16, cks-master+cks-worker1).",
+    "build_status_2026-06-15": "clean rebuild 진행/완료 예정 (reset-cluster.sh --yes cks). lib 버그 2건 수정 후 재빌드.",
+    "bug_report": "codex/BUG-REPORT-cks-build.md (DNS·GPG키링 수정완료, containerd init은 partial-state탓 → clean rebuild로 해소).",
+    "build_command": "./scripts/boot.sh 로 안 됨(신규 클러스터). 빌드는 ./scripts/reset-cluster.sh --yes cks. 이후 기동은 boot.sh가 cks 포함.",
+    "next_steps": [
+      "1. cks 빌드 완료 확인: kubectl --kubeconfig kubeconfig/cks.yaml get nodes (둘 다 Ready)",
+      "2. 보안도구 설치(순서): Kyverno(kubectl apply install.yaml) → Trivy(trivy-operator 또는 노드 CLI) → Falco(helm, eBPF) → gVisor(노드 containerd runsc 런타임)",
+      "3. 캡처: Kyverno latest-tag 거부, Gatekeeper deny, Falco alert, Trivy scan, gVisor runsc, PSA Forbidden 등 → KCSA/05-supplement, CKS daily 의 (미캡처)/예시(참조) 교체",
+      "4. capture: CAP_SETUP=\"export KUBECONFIG=$(pwd)/kubeconfig/cks.yaml\" ./scripts/capture-shot.sh \"<cmd>\" <out.png>"
+    ]
+  },
+  "next_session_order": ["cks_lab(보안도구 설치+CKS캡처)","D_screenshots(도구불필요 dev 읽기전용 잔여)","C1_daily_structure","C3_ascii_to_mermaid","C2_storyline"],
   "verification_greps": [
     "fence parity: per file grep -c '^```' must be even",
     "no destructive platform/prod: grep -nE '(drain|uncordon|taint nodes|label node|delete pod|delete deployment) (platform|prod)' k8scert",

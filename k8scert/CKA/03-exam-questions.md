@@ -378,6 +378,7 @@ etcd Pod가 `Running` 상태이고, `kubectl get pods -A`가 정상 출력되면
 - 매니페스트에서 `volumeMounts`의 `mountPath`는 변경하지 않는다. 변경하는 것은 `volumes` 섹션의 `hostPath.path`만이다.
 - etcd 재시작 후 API 서버가 정상화되기까지 1-2분이 걸릴 수 있다. `crictl ps`로 etcd 컨테이너 상태를 먼저 확인한다.
 - 복구 시 `--data-dir` 경로에 이미 데이터가 있으면 오류가 발생한다.
+- 이 저장소·시험의 kubeadm 클러스터는 **단일 멤버 etcd**라 위처럼 `--data-dir` 만으로 복구된다(나머지 인자는 기본값으로 채워짐). 반면 **다중 멤버 etcd**(HA 컨트롤플레인)를 복구할 때는 각 멤버에서 `--name`, `--initial-cluster`, `--initial-cluster-token`, `--initial-advertise-peer-urls` 를 멤버별로 지정해야 클러스터 identity 가 올바로 재구성된다. 이 인자를 생략하면 `default`·`etcd-cluster`·`http://localhost:2380` 기본값으로 단일 멤버처럼 복구돼 기존 피어와 합류하지 못한다.
 
 **시간 절약 팁:** `etcd.yaml`에서 수정할 부분은 `volumes` 섹션의 `hostPath.path` 하나뿐이다. `vi`에서 `/etcd-data`로 검색하면 해당 위치를 빠르게 찾을 수 있다.
 

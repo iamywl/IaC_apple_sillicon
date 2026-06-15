@@ -1803,7 +1803,17 @@ kubectl auth can-i get pods -n default --as=system:serviceaccount:default:defaul
 3. `kubectl auth can-i`로 RBAC 결과를 즉시 검증한다
 4. NetworkPolicy는 YAML 외우기보다 패턴을 기억한다 (Default Deny, Allow DNS 등)
 
-> **(미캡처)** 실습 2는 dry-run 위주라 출력이 YAML 형식이다. `kubectl create role ... --dry-run=client -o yaml` 결과와 `kubectl auth can-i` 결과(yes/no)를 실측 스크린샷으로 교체 예정이다.
+아래는 cks 랩의 `cks-rbac` 네임스페이스에 ServiceAccount(`app-sa`) + Role(`pod-reader`: pods get/list) + RoleBinding 을 만든 뒤, 그 SA 권한을 `kubectl auth can-i` 로 점검한 실제 화면이다. get/list pods 는 `yes`, delete pods·create deployments·get secrets 는 `no` 가 나오고, `--list` 가 부여된 전체 권한을 표로 보여준다. 시험에서 RBAC 작업 후 이 명령으로 즉시 검증한다.
+
+```bash
+export KUBECONFIG=kubeconfig/cks.yaml   # cks 랩 (dev/staging 도 동일)
+SA=system:serviceaccount:cks-rbac:app-sa
+kubectl auth can-i get pods    -n cks-rbac --as=$SA   # yes
+kubectl auth can-i delete pods -n cks-rbac --as=$SA   # no
+kubectl auth can-i --list      -n cks-rbac --as=$SA   # 부여된 전체 권한 표
+```
+
+![cks-rbac SA 의 auth can-i 매트릭스와 --list 권한 표 실제 터미널 캡처](images/cks-rbac-can-i.png)
 
 ### 실습 3: API Server 매니페스트 수정 연습
 

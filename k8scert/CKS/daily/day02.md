@@ -1254,6 +1254,17 @@ kubectl get ciliumnetworkpolicies -n demo
 3. Cilium이 eBPF 프로그램으로 커널 공간에서 패킷 필터링을 수행한다
 4. 표준 K8s NetworkPolicy보다 L7(HTTP 메서드, 경로)까지 제어 가능하다
 
+아래는 cks 랩의 `cks-netpol` 네임스페이스에서 표준 `default-deny-all` NetworkPolicy(`podSelector: {}`, `policyTypes: [Ingress, Egress]`)를 적용한 뒤, 같은 네임스페이스의 `web` Service 로 연결을 시도한 실제 화면이다. 정책 적용 전에는 `HTTP 200` 이던 연결이 적용 후 `HTTP 000`(timeout)으로 차단된다.
+
+```bash
+export KUBECONFIG=kubeconfig/cks.yaml   # cks 랩 (dev/staging 도 동일)
+kubectl get netpol default-deny-all -n cks-netpol
+kubectl -n cks-netpol run c --image=curlimages/curl:8.10.1 --restart=Never --rm -i \
+  --command -- curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 web
+```
+
+![default-deny-all 적용 후 같은 네임스페이스 연결이 HTTP 000(차단)으로 막히는 실제 터미널 캡처](images/cks-netpol-default-deny.png)
+
 ```bash
 # default-deny-all 정책 내용 확인
 kubectl get ciliumnetworkpolicy default-deny-all -n demo -o yaml

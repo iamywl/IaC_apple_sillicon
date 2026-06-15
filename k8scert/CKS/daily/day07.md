@@ -321,6 +321,16 @@ kubectl delete namespace restricted-ns
 
 위반 Pod는 `(Forbidden)` 에러와 함께 거부되고, 준수 Pod는 생성된다. 에러 메시지에 정확히 어떤 필드가 문제인지 나열되므로, 시험에서 에러 메시지를 읽고 누락 필드를 찾는 능력을 여기서 키운다.
 
+아래는 cks 랩(보안 실습 전용 클러스터)의 `cks-psa` 네임스페이스에 `enforce=restricted` 라벨을 붙인 뒤 `--privileged` Pod 생성을 시도한 실제 화면이다. PodSecurity 가 거부하며 위반한 필드(`privileged`, `allowPrivilegeEscalation`, `capabilities.drop`, `runAsNonRoot`, `seccompProfile`)를 한 번에 나열한다.
+
+```bash
+export KUBECONFIG=kubeconfig/cks.yaml   # cks 랩 (dev/staging 도 동일하게 동작)
+kubectl get ns cks-psa --show-labels
+kubectl -n cks-psa run priv-test --image=nginx:1.25 --privileged
+```
+
+![restricted 네임스페이스에서 privileged Pod 생성이 PodSecurity 로 거부되는 실제 터미널 캡처](images/cks-psa-forbidden.png)
+
 ### 1.6 PSA 실습 검증
 
 > 전제: dev 또는 staging 클러스터가 가동 중이어야 한다(CKS 파괴 실습은 dev/staging에서만).

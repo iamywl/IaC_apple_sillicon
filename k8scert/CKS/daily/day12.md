@@ -1097,3 +1097,50 @@ Runtime Security 체크리스트
    □ 쓰기 필요한 경로만 emptyDir 마운트
    □ allowPrivilegeEscalation: false
 ```
+
+---
+
+## ✅ 자가점검
+
+<details>
+<summary>1. Falco는 무엇을 감시하며, Audit Log와 감지 범위가 어떻게 다른가?</summary>
+
+Falco는 노드 커널의 **syscall**을 (eBPF/커널 모듈로) 실시간 감시해 "컨테이너에서 셸 실행", "민감 파일 읽기" 같은 **런타임 행위**를 탐지한다. Audit Log는 kube-apiserver가 받은 **API 요청/응답**을 기록한다. Falco=노드 syscall 레벨, Audit=제어 평면(API) 레벨로 겹치지 않는다.
+</details>
+
+<details>
+<summary>2. Falco 룰의 핵심 구성요소는?</summary>
+
+`rule`(이름·조건·출력·우선순위), `condition`(syscall 필터, 예: `evt.type=open and fd.name=/etc/shadow`), `output`(알림 메시지 + 필드), `priority`(WARNING/CRITICAL 등), 재사용을 위한 `macro`·`list`. 룰 변경 후 Falco 재시작 또는 hot-reload로 적용한다.
+</details>
+
+<details>
+<summary>3. Audit Policy의 레벨 4종은?</summary>
+
+`None`(기록 안 함), `Metadata`(요청 메타만), `Request`(메타+요청 본문), `RequestResponse`(메타+요청+응답 본문). RequestResponse는 Secret 값까지 평문으로 남을 수 있어 리소스별로 신중히 선택한다.
+</details>
+
+<details>
+<summary>4. 런타임 보안 실습을 platform에서 하면 안 되는 이유는?</summary>
+
+platform/prod는 상주 서비스가 있어 §3상 **읽기 위주**다. 룰 추가·서비스 재시작·Pod 격리/삭제 같은 변경은 dev/staging(또는 cks 랩)에서만 한다. platform에서는 이미 설정된 Falco·Audit의 **관찰(읽기)만** 수행한다.
+</details>
+
+<details>
+<summary>5. 인시던트 대응 순서(격리→수집→제거→복구)에서 "격리"는 K8s로 어떻게 하는가?</summary>
+
+침해 Pod를 **NetworkPolicy로 통신 차단**하거나 노드를 `cordon`/`drain`하고, label을 바꿔 Service 트래픽에서 제외한다. 증거 보존을 위해 즉시 삭제하기 전에 로그·`kubectl describe`·메모리 덤프를 수집한다.
+</details>
+
+## 시험 팁
+
+- **Falco=syscall(런타임) / Audit=API요청(제어평면)** 의 감지 범위 구분이 빈출.
+- Falco 룰은 `condition`/`output`/`priority`/`macro`/`list` 구조를 안다.
+- Audit Policy 레벨 4종 `None/Metadata/Request/RequestResponse`.
+- 변경 실습은 **dev/staging/cks**에서만, platform은 관찰만(§3).
+
+## 더 읽을거리
+
+- [Falco 문서](https://falco.org/docs/) — 룰 문법·드라이버(modern eBPF).
+- [Kubernetes 공식 — Auditing](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
+- [Sysdig — 런타임 보안](https://sysdig.com/) · [Falco 룰 작성 가이드](https://falco.org/docs/rules/)

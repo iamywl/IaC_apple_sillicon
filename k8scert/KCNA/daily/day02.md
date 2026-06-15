@@ -847,6 +847,45 @@ kubectl get svc kubernetes -n default
 
 ---
 
+## ✅ 자가점검
+
+<details>
+<summary>1. `kubectl run`으로 Pod를 만들 때 컴포넌트 처리 순서는?</summary>
+
+kubectl → **API Server**(인증·인가·admission·검증) → **etcd 저장** → **Scheduler**가 노드 선택(spec.nodeName 기록) → 해당 노드의 **kubelet**이 감지해 CRI로 컨테이너 생성. 스케줄러는 직접 만들지 않고 "노드 배정"만 한다는 점이 핵심이다.
+</details>
+
+<details>
+<summary>2. Static Pod와 일반 Pod의 관리 주체 차이는?</summary>
+
+Static Pod는 **kubelet이 직접** `staticPodPath`(`/etc/kubernetes/manifests`)의 매니페스트를 보고 관리한다(API Server 없이도 동작). API Server에는 읽기 전용 **미러 Pod**만 보인다. control-plane 컴포넌트(apiserver·etcd 등)가 Static Pod로 떠 있다.
+</details>
+
+<details>
+<summary>3. etcd가 Raft로 보장하는 것은?</summary>
+
+분산 환경에서 **합의(consensus)** 와 데이터 일관성을 보장한다. 리더를 선출하고 로그를 복제하며, 과반수(quorum)가 살아 있어야 쓰기가 가능하다. 그래서 etcd 멤버는 보통 홀수(3·5)로 구성한다.
+</details>
+
+<details>
+<summary>4. Liveness·Readiness·Startup Probe의 역할 차이는?</summary>
+
+**Liveness**=실패 시 컨테이너 **재시작**, **Readiness**=실패 시 Service **엔드포인트에서 제외**(재시작 안 함), **Startup**=느린 시작 앱이 뜰 때까지 다른 probe를 **유예**. 셋을 혼동하면 오답이다.
+</details>
+
+<details>
+<summary>5. dockershim 제거(v1.24) 후에도 기존 이미지를 계속 쓸 수 있는 이유는?</summary>
+
+이미지가 **OCI 표준**을 따르기 때문이다. Docker로 빌드한 이미지도 OCI 이미지라 containerd/CRI-O가 그대로 실행한다. 제거된 것은 "Docker Engine을 CRI로 끼워 맞추던 shim"일 뿐, 이미지 호환성은 영향받지 않는다.
+</details>
+
+## 시험 팁
+
+- Pod 생성 흐름 **API Server→etcd→Scheduler→kubelet**. 스케줄러는 "배정"만.
+- Static Pod=**kubelet 직접 관리**(미러 Pod만 API에 노출).
+- Probe 3종: **Liveness=재시작 / Readiness=엔드포인트 제외 / Startup=유예**.
+- dockershim 제거해도 **OCI 이미지는 계속 사용**.
+
 ## 더 읽을거리
 
 - [Kubernetes 공식 문서 — 컴포넌트 개요](https://kubernetes.io/docs/concepts/overview/components/) : API Server·etcd·Scheduler·Controller Manager·kubelet·kube-proxy 각각의 역할과 통신 구조를 공식 언어로 확인한다.

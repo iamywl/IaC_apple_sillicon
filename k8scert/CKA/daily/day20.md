@@ -1028,3 +1028,104 @@ echo "[4] Networking" && kubectl get svc nginx -n demo -o jsonpath='{.spec.type}
 1. 시험 종료 전 각 도메인별 핵심 기능이 정상 동작하는지 빠르게 확인한다
 2. RBAC → DNS → Storage → Networking 순서로 의존성 계층을 따라 검증한다
 3. 하나라도 실패하면 해당 도메인의 작업을 재점검한다
+
+---
+
+## ✅ 자가점검
+
+CKA Day 1~20 전 과정을 마쳤다. 시험 전 아래 6문항에 막힘없이 답할 수 있어야 한다. 손으로 명령을 적어 본 뒤 정답을 펼쳐 확인한다.
+
+<details>
+<summary><b>Q1.</b> etcd 스냅샷을 백업하고 복원하는 전체 명령 흐름은? 복원 후 API 서버가 새 데이터 디렉터리를 보게 하려면 무엇을 바꾸나?</summary>
+
+```bash
+# 백업 (인증서 3종 + endpoints 필수)
+ETCDCTL_API=3 etcdctl snapshot save /opt/snap.db \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key
+
+# 복원 (새 디렉터리로)
+ETCDCTL_API=3 etcdctl snapshot restore /opt/snap.db \
+  --data-dir=/var/lib/etcd-restored
+```
+복원 후 `/etc/kubernetes/manifests/etcd.yaml` 의 `volumes` 에서 hostPath `path` 를 `/var/lib/etcd-restored` 로 바꾼다. kubelet 이 정적 파드를 감지해 etcd 를 자동 재시작한다(1~2분). 복원은 클러스터 시점 전체를 되돌리므로 **반드시 컨트롤플레인 1대에서만** 수행한다.
+</details>
+
+<details>
+<summary><b>Q2.</b> 노드를 안전하게 점검 모드로 빼고(=새 Pod 차단 + 기존 Pod 축출) 다시 복귀시키는 명령은? DaemonSet Pod 때문에 drain 이 막히면?</summary>
+
+```bash
+kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
+# 점검 후
+kubectl uncordon <node>
+```
+`cordon` 은 스케줄링만 차단(기존 Pod 유지), `drain` 은 cordon + 기존 Pod 축출이다. DaemonSet Pod 는 노드에 묶여 있어 `--ignore-daemonsets` 없이는 drain 이 거부된다. emptyDir 데이터가 있으면 `--delete-emptydir-data` 도 필요하다.
+</details>
+
+<details>
+<summary><b>Q3.</b> 특정 namespace 의 ServiceAccount 에게 그 namespace 의 Pod 만 list 할 권한을 주는 RBAC 3종 리소스와 imperative 생성 명령은?</summary>
+
+```bash
+kubectl create serviceaccount app-sa -n demo
+kubectl create role pod-reader --verb=list,get --resource=pods -n demo
+kubectl create rolebinding app-sa-bind --role=pod-reader \
+  --serviceaccount=demo:app-sa -n demo
+# 검증
+kubectl auth can-i list pods -n demo \
+  --as=system:serviceaccount:demo:app-sa   # → yes
+```
+Role/RoleBinding 은 namespace 한정, ClusterRole/ClusterRoleBinding 은 클러스터 전역이다. ClusterRole 을 RoleBinding 으로 묶으면 "공용 권한 정의를 특정 namespace 에만 적용"하는 패턴이 된다.
+</details>
+
+<details>
+<summary><b>Q4.</b> 노드가 `NotReady` 다. SSH 로 들어가 무엇을 순서대로 확인하나? kubelet 이 죽어 있으면?</summary>
+
+```bash
+kubectl get nodes                 # NotReady 확인
+kubectl describe node <node>      # Conditions/이벤트
+ssh <node>
+systemctl status kubelet          # inactive(dead) 인지
+journalctl -u kubelet -n 50       # 원인 로그
+systemctl enable --now kubelet    # 시작 + 부팅 시 자동기동
+```
+흔한 원인: kubelet 중지, `/var/lib/kubelet/config.yaml` 손상, CNI 미동작, 디스크/인증서 만료. `systemctl restart kubelet` 후 `kubectl get nodes` 가 Ready 로 바뀌는지 확인한다.
+</details>
+
+<details>
+<summary><b>Q5.</b> 정적 파드(static Pod)는 일반 Pod 와 어떻게 다르며 어디에 정의하나? kube-apiserver 자체가 정적 파드인 이유는?</summary>
+
+정적 파드는 API 서버가 아니라 **각 노드 kubelet 이 직접** `/etc/kubernetes/manifests/` 의 YAML 을 watch 해 띄운다. API 서버에는 미러 Pod 로만 보인다(`-<nodename>` 접미사). 컨트롤플레인 컴포넌트(apiserver/controller-manager/scheduler/etcd)가 정적 파드인 이유는 **API 서버가 떠야 일반 Pod 가 뜨는데, API 서버 자신을 일반 Pod 로 띄울 수 없는 닭-달걀 문제** 때문이다. kubelet 이 API 없이도 띄울 수 있어야 한다.
+</details>
+
+<details>
+<summary><b>Q6.</b> CronJob 의 동시 실행을 막고, 실패 기록을 3개만 남기려면 어떤 필드를 쓰나?</summary>
+
+```yaml
+spec:
+  concurrencyPolicy: Forbid        # 이전 Job 미완료 시 새 실행 건너뜀(Allow/Forbid/Replace)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 60      # 이 시간 내 시작 못 하면 해당 회차 누락 처리
+```
+`kubectl patch cronjob <name> -p '{"spec":{"successfulJobsHistoryLimit":3}}'` 로도 즉시 변경할 수 있다. `Replace` 는 이전 Job 을 죽이고 새로 시작, `Forbid` 는 새 실행을 건너뛴다.
+</details>
+
+## 시험 팁
+
+- **명령형 우선.** `kubectl create/run/expose ... --dry-run=client -o yaml > x.yaml` 로 뼈대를 뽑고 vim 으로 다듬는다. 첫머리에 `alias k=kubectl`, `export do='--dry-run=client -o yaml'`, `export now='--force --grace-period=0'` 를 셋업한다.
+- **컨텍스트가 함정.** 매 문제 첫 줄의 `kubectl config use-context <ctx>` 를 반드시 실행한다. 엉뚱한 클러스터에서 푼 답안은 0점이다. 문제마다 `-n <namespace>` 도 확인한다.
+- **etcd·노드 작업은 SSH 후 sudo.** `ssh <node>` → `sudo -i` 흐름을 손에 익힌다. 복원/업그레이드는 컨트롤플레인 1대에서만.
+- **공식 문서는 허용된다.** kubernetes.io 한 탭만 열어 둘 수 있다. PodSpec 필드·etcdctl 플래그처럼 외우기 애매한 것은 검색해 복붙하는 편이 빠르다. 단축 URL·즐겨찾기 작성은 금지다.
+- **부분 점수.** 한 문제에 막히면 넘어간다. 15~20문제를 120분에 풀려면 문제당 평균 6~7분이다. 검증(`get`/`describe`)으로 끝맺어 작업 누락을 막는다.
+- **이 저장소 매핑.** 시험은 `node01`/`master01` 같은 이름을 쓰지만, 여기서는 `dev-master`/`staging-worker1` 등 VM 별칭으로 접속한다(§ README 노드 매핑). 파괴 실습은 dev/staging 에서만 한다.
+
+## 더 읽을거리
+
+- [CKA Curriculum (공식 시험 범위)](https://github.com/cncf/curriculum) — 도메인별 비중 확인
+- [Cluster Administration](https://kubernetes.io/docs/concepts/cluster-administration/) — 노드·로그·관리
+- [Operating etcd clusters for Kubernetes](https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/) — 백업/복구
+- [Safely Drain a Node](https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/) — drain/cordon
+- [Troubleshooting Clusters](https://kubernetes.io/docs/tasks/debug/debug-cluster/) — NotReady·컴포넌트 디버깅
+- [Using RBAC Authorization](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) — Role/Binding 레퍼런스

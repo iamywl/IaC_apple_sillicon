@@ -108,34 +108,22 @@ Pod는 이 문제를 해결하기 위해 **"함께 배포해야 하는 컨테이
 > **Pod(파드)**란?
 > Kubernetes에서 생성, 스케줄링, 관리할 수 있는 **가장 작은 배포 단위**이다. 하나 이상의 컨테이너를 포함하며, 같은 Pod 내 컨테이너는 네트워크와 스토리지를 공유한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph POD["Pod (고유 IP: 10.244.1.5)"]
+    c1["Container 1\n(nginx)\nPort: 80"]
+    c2["Container 2\n(log-agent)\nPort: 9090"]
+    c1 <-->|localhost\n네트워크 네임스페이스 공유| c2
+    vol["Shared Volume\n(두 컨테이너가 공유)"]
+    c1 -.-> vol
+    c2 -.-> vol
+  end
 ```
-Pod 내부 구조
-============================================================
 
-+------------------------------------------+
-|              Pod (고유 IP: 10.244.1.5)    |
-|                                          |
-|  +---------------+  +---------------+    |
-|  | Container 1   |  | Container 2   |    |
-|  | (nginx)       |  | (log-agent)   |    |
-|  | Port: 80      |  | Port: 9090    |    |
-|  +-------+-------+  +-------+-------+    |
-|          |                   |            |
-|          +---localhost-------+            |
-|          (같은 네트워크 네임스페이스 공유)   |
-|                                          |
-|  +------------------------------------+  |
-|  |         Shared Volume              |  |
-|  |     (두 컨테이너가 공유하는 저장소)   |  |
-|  +------------------------------------+  |
-+------------------------------------------+
+_그림. Pod 내부 구조. 한 Pod 의 컨테이너들은 같은 네트워크 네임스페이스(같은 IP)를 공유해 localhost 로 통신하고, 공유 볼륨으로 파일을 교환한다._
 
-핵심 포인트:
-- Pod 내 컨테이너는 같은 IP를 공유한다
-- 컨테이너 간 localhost로 통신 가능하다
-- 볼륨을 공유하여 파일을 교환할 수 있다
-- 각 컨테이너는 서로 다른 포트를 사용해야 한다
-```
+**핵심 포인트:** ① Pod 내 컨테이너는 같은 IP 를 공유한다. ② 컨테이너 간 localhost 로 통신한다. ③ 볼륨을 공유해 파일을 교환한다. ④ 각 컨테이너는 서로 다른 포트를 써야 한다(IP 가 같으므로).
 
 > **기술 원리:** Pod 내 컨테이너들은 동일한 Linux Network Namespace를 공유하므로 같은 IP 주소를 갖고 localhost(127.0.0.1)로 상호 통신할 수 있다. 또한 공유 Volume을 통해 파일시스템 레벨의 데이터 교환이 가능하다. 단, 같은 Network Namespace 내에서 동일 포트 바인딩은 불가하므로 각 컨테이너는 서로 다른 포트를 사용해야 한다.
 
@@ -198,22 +186,18 @@ spec:                          # 원하는 상태(Desired State) 기술
 
 ### 2.3 Pod 생명주기 상태 (Phase)
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  pending([Pending]) --> running([Running])
+  running --> succeeded([Succeeded])
+  running --> failed([Failed])
+  pending --> failed
+  pending --> unknown([Unknown])
+  running --> unknown
 ```
-Pod 생명주기
-============================================================
 
-  +----------+     +----------+     +-----------+
-  | Pending  |---->| Running  |---->| Succeeded |
-  +----------+     +----+-----+     +-----------+
-       |                |
-       |                +---------->+-----------+
-       |                            |  Failed   |
-       +--------------------------->+-----------+
-       |
-       +--------------------------->+-----------+
-                                    |  Unknown  |
-                                    +-----------+
-```
+_그림. Pod 생명주기 Phase 전이. Pending(스케줄링/이미지 대기)에서 Running 으로, 이후 정상 종료면 Succeeded, 실패 종료면 Failed 로 간다. 노드 통신 불가 시 Unknown 이 된다._
 
 | Phase | 설명 | 원인 예시 |
 |-------|------|----------|

@@ -490,8 +490,11 @@ kubectl create token my-sa -n production --duration=600s
 
 # 토큰 디코딩 (JWT 구조 확인)
 kubectl create token my-sa | cut -d. -f2 | base64 -d | jq .
-# 출력은 실제 클러스터에서 캡처한 이미지를 참조한다 (미캡처)
 ```
+
+아래는 dev 클러스터에서 SA 토큰의 payload(JWT 두 번째 세그먼트)를 디코딩한 실측이다. `aud`(대상 audience), `exp`/`iat`(만료·발급 시각), `iss`(발급자), `kubernetes.io.serviceaccount` 클레임이 보인다 — BoundServiceAccountToken 은 이렇게 만료시각과 대상이 박힌 시간제한 토큰이다.
+
+![SA 토큰 JWT payload 디코딩 실측(aud/exp/iat/iss, dev)](images/kcsa-sa-token-decode.png)
 
 ---
 

@@ -979,10 +979,13 @@ kubectl get deployments -n demo
 kubectl get deployment nginx -n demo -o jsonpath='{.spec.strategy}' | python3 -m json.tool
 
 # ReplicaSet 이력 확인 (롤링 업데이트 시 생성된 RS)
-kubectl get rs -n demo -l app=nginx --sort-by=.metadata.creationTimestamp
+# 이 저장소 demo 의 라벨은 app=nginx-web 이다(시험에선 해당 앱 라벨로 바꾼다)
+kubectl get rs -n demo -l app=nginx-web --sort-by=.metadata.creationTimestamp
 ```
 
-**예상 출력 (dev 실측 — Deployment 기본 전략):** (미캡처)
+**실측 출력 (dev demo — Deployment 기본 전략):** 아래는 dev 클러스터 demo 의 `nginx-web` ReplicaSet 목록 실측이다(생성 시각 오름차순). 롤링 업데이트가 일어나면 새 RS 가 추가되고 구 RS 는 DESIRED 0 으로 남는다.
+
+![dev demo nginx-web ReplicaSet 목록 실측](images/cka-rs-list.png)
 
 **동작 원리:**
 1. `maxSurge: 25%`는 업데이트 중 desired replicas 대비 25%의 추가 Pod를 허용한다

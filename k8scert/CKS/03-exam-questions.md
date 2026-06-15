@@ -830,7 +830,7 @@ ls -la /root/.kube/config
 # 다른 사용자가 읽을 수 없는지 확인
 su - testuser -c "cat /root/.kube/config"
 ```
-![AppArmor — 쓰기 Permission denied](images/cks-apparmor.png)
+> **예시(참조) — `cat: /root/.kube/config: Permission denied`:** `chmod 600` 으로 소유자(root)만 읽기 가능하므로, 다른 사용자(testuser)의 `cat` 은 커널 **VFS DAC**(소유자 기반 접근 제어)가 거부한다. 이는 AppArmor 가 아니라 파일 권한(DAC) 차단이다. 재현은 노드에 testuser 를 만든 뒤 위 명령으로 확인한다.
 ```bash
 # old-cluster context가 제거되었는지 확인
 kubectl config get-contexts --kubeconfig=/root/.kube/config
@@ -3466,7 +3466,7 @@ kubectl exec -it $POD -n production -- touch /usr/bin/backdoor
 # 설정 파일 변조 시도 (차단)
 kubectl exec -it $POD -n production -- sh -c 'echo "malicious" >> /etc/nginx/nginx.conf'
 ```
-![AppArmor deny write — /etc 쓰기 거부](images/cks-apparmor.png)
+![readOnlyRootFilesystem 차단 — 루트 FS 쓰기 시 Read-only file system (cks 실측). AppArmor 가 아니라 VFS 읽기전용 마운트로 차단된다](images/cks-readonly-fs.png)
 ```bash
 # 허용된 emptyDir 경로에는 쓰기 가능 (정상 동작)
 kubectl exec -it $POD -n production -- touch /tmp/test

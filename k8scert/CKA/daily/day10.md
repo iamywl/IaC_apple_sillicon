@@ -687,9 +687,9 @@ kubectl get job auto-cleanup-job -n demo  # 삭제되어 Not Found
 
 **등장 배경:** 한 노드에 여러 개의 Taint 가 동시에 붙어 있을 수 있다. 그 노드에 Pod 를 배치하려면 Pod 의 Toleration 이 그 노드의 "모든" Taint 를 각각 견뎌야 한다(하나라도 못 견디면 거부된다). 이 문제는 NoSchedule 과 NoExecute 두 종류의 Taint 를 동시에 tolerate 하는 Pod 를 만들어, Toleration 이 Taint 별로 따로 필요하다는 점을 익힌다.
 
-**컨텍스트:** `kubectl config use-context prod`
+**컨텍스트:** `kubectl config use-context staging` (Taint 는 스케줄링 차단·Pod 축출을 일으키는 파괴적 조작이므로 platform/prod 가 아닌 staging 에서 실습한다 — CLAUDE.md §3. 시험에서는 문제가 지정한 노드/컨텍스트를 쓴다.)
 
-1. `prod-worker1`에 두 개의 Taint 추가:
+1. `staging-worker1`에 두 개의 Taint 추가:
    - `env=production:NoSchedule`
    - `team=backend:NoExecute`
 2. 두 Taint를 모두 tolerate하는 Pod `multi-taint-pod` 생성 (nginx 이미지)
@@ -698,11 +698,11 @@ kubectl get job auto-cleanup-job -n demo  # 삭제되어 Not Found
 <summary>풀이</summary>
 
 ```bash
-kubectl config use-context prod
+kubectl config use-context staging
 
 # 1. Taint 추가
-kubectl taint nodes prod-worker1 env=production:NoSchedule
-kubectl taint nodes prod-worker1 team=backend:NoExecute
+kubectl taint nodes staging-worker1 env=production:NoSchedule
+kubectl taint nodes staging-worker1 team=backend:NoExecute
 
 # 2. Pod 생성 (두 Taint 모두 tolerate)
 cat <<EOF | kubectl apply -f -
@@ -721,7 +721,7 @@ spec:
     value: "backend"
     effect: "NoExecute"
   nodeSelector:
-    kubernetes.io/hostname: prod-worker1
+    kubernetes.io/hostname: staging-worker1
   containers:
   - name: nginx
     image: nginx
@@ -731,8 +731,8 @@ kubectl get pod multi-taint-pod -o wide
 
 # 정리
 kubectl delete pod multi-taint-pod
-kubectl taint nodes prod-worker1 env=production:NoSchedule-
-kubectl taint nodes prod-worker1 team=backend:NoExecute-
+kubectl taint nodes staging-worker1 env=production:NoSchedule-
+kubectl taint nodes staging-worker1 team=backend:NoExecute-
 ```
 
 </details>
@@ -851,19 +851,19 @@ kubectl delete daemonset manual-ds -n demo
 
 **내부 동작·타이밍:** Toleration 에 `tolerationSeconds: 60` 을 주면, 노드에 매칭되는 NoExecute Taint 가 추가되는 순간부터 카운트다운이 시작된다. 60 초 동안은 Pod 가 그 노드에 그대로 남아 있다가, 60 초가 지나면 컨트롤러(taint 관리자)가 Pod 를 축출한다. tolerationSeconds 를 아예 적지 않으면(그냥 NoExecute 를 견딘다고만 하면) 무한히 견뎌 축출되지 않고, 반대로 Toleration 자체가 없으면 0 초, 즉 즉시 축출된다. 참고로 노드가 NotReady·unreachable 가 되면 쿠버네티스가 `node.kubernetes.io/not-ready:NoExecute` 같은 Taint 를 자동으로 붙이는데, 일반 Pod 에는 기본 `tolerationSeconds: 300`(5 분) Toleration 이 자동 주입되어 있어 노드가 잠깐 끊겨도 5 분간은 Pod 가 살아 있는 것이 이 메커니즘이다.
 
-**컨텍스트:** `kubectl config use-context prod`
+**컨텍스트:** `kubectl config use-context staging` (NoExecute Taint 는 Pod 를 축출하는 파괴적 조작이므로 platform/prod 가 아닌 staging 에서 실습한다 — CLAUDE.md §3. 시험에서는 문제가 지정한 노드/컨텍스트를 쓴다.)
 
 1. NoExecute Taint에 대해 60초 동안만 유지되는 Pod를 생성하라
    - Pod 이름: `graceful-pod`
    - 이미지: `nginx`
    - Toleration: `maintenance=true:NoExecute` (tolerationSeconds=60)
-2. `prod-worker1`에 `maintenance=true:NoExecute` Taint를 추가하고 Pod 동작을 관찰하라
+2. `staging-worker1`에 `maintenance=true:NoExecute` Taint를 추가하고 Pod 동작을 관찰하라
 
 <details>
 <summary>풀이</summary>
 
 ```bash
-kubectl config use-context prod
+kubectl config use-context staging
 
 # 1. Pod 생성
 cat <<EOF | kubectl apply -f -
@@ -886,7 +886,7 @@ EOF
 kubectl get pod graceful-pod -o wide
 
 # 2. Taint 추가
-kubectl taint nodes prod-worker1 maintenance=true:NoExecute
+kubectl taint nodes staging-worker1 maintenance=true:NoExecute
 
 # Pod가 해당 노드에서 실행 중이면:
 # - 즉시 축출되지 않음 (tolerationSeconds 때문)
@@ -897,7 +897,7 @@ kubectl get pod graceful-pod -o wide -w
 
 # 정리
 kubectl delete pod graceful-pod --force 2>/dev/null
-kubectl taint nodes prod-worker1 maintenance=true:NoExecute-
+kubectl taint nodes staging-worker1 maintenance=true:NoExecute-
 ```
 
 </details>

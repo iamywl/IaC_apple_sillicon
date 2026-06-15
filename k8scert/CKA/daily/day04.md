@@ -665,29 +665,32 @@ kubectl version --short 2>/dev/null || kubectl version
 4. kubelet/kubectl 패키지 업그레이드 → `systemctl restart kubelet`
 5. `kubectl uncordon <node>`: 노드를 다시 스케줄 가능 상태로 전환한다
 
-### 실습 4: drain/cordon 동작 확인 (문제 5의 platform 클러스터 재현)
+### 실습 4: drain/cordon 동작 확인
+
+> cordon 은 노드 스케줄링을 차단하는 조작이므로 platform/prod 가 아닌 파괴 실습용 클러스터(dev/staging/cks)에서 한다(CLAUDE.md §3). 아래는 cks 랩에서 실측했으며, 동작은 어느 클러스터든 동일하다.
 
 ```bash
+export KUBECONFIG=kubeconfig/cks.yaml   # dev/staging 도 동일
 # 노드 상태 확인 (SchedulingDisabled 여부)
 kubectl get nodes
 
 # cordon 테스트 (노드를 스케줄 불가 상태로 변경)
-kubectl cordon platform-worker2
+kubectl cordon cks-worker1
 kubectl get nodes
 ```
 
-**검증 - 기대 출력:** `cordon` 후 `platform-worker2` 의 STATUS 가 `Ready,SchedulingDisabled` 로 바뀐다(아래 캡처는 cordon→조회→uncordon 한 화면, platform 실측).
-![platform-worker2 cordon 후 SchedulingDisabled 확인 + uncordon 복구](images/day04-10-cordon.png)
+**검증 - 기대 출력:** `cordon` 후 `cks-worker1` 의 STATUS 가 `Ready,SchedulingDisabled` 로 바뀌고, `uncordon` 하면 `Ready` 로 복원된다(아래 캡처는 cordon→조회→uncordon 한 화면, cks 실측).
+![cks-worker1 cordon 후 SchedulingDisabled 확인 + uncordon 복구](images/day04-10-cordon-cks.png)
 
 **동작 원리:** `kubectl cordon`은 노드에 `node.kubernetes.io/unschedulable` taint를 추가한다:
 1. 새로운 Pod가 이 노드에 스케줄되지 않는다
 2. 기존에 실행 중인 Pod는 영향을 받지 않는다
 3. `kubectl drain`은 cordon + 기존 Pod 퇴거(eviction)를 함께 수행한다
-4. 작업 후 반드시 `kubectl uncordon platform-worker2`로 복원한다
+4. 작업 후 반드시 `kubectl uncordon cks-worker1`로 복원한다
 
 ```bash
 # 반드시 uncordon으로 복원!
-kubectl uncordon platform-worker2
+kubectl uncordon cks-worker1
 ```
 
 ---

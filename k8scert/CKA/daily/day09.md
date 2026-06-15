@@ -966,19 +966,19 @@ kubectl get pods -n kube-system | grep -E "etcd|apiserver|scheduler|controller"
 
 ### 문제 1. Taint와 Toleration [7%]
 
-**컨텍스트:** `kubectl config use-context prod`
+**컨텍스트:** `kubectl config use-context staging` (Taint 는 스케줄링을 차단하는 파괴적 조작이므로 platform/prod 가 아닌 staging 에서 실습한다 — CLAUDE.md §3. 시험에서는 문제가 지정한 노드/컨텍스트를 쓴다.)
 
-1. `prod-worker2`에 `dedicated=database:NoSchedule` Taint 추가
-2. 이 Taint를 tolerate하고 `prod-worker2`에만 스케줄링되는 Pod `db-pod` 생성 (이미지: mysql:8.0)
+1. `staging-worker1`에 `dedicated=database:NoSchedule` Taint 추가
+2. 이 Taint를 tolerate하고 `staging-worker1`에만 스케줄링되는 Pod `db-pod` 생성 (이미지: mysql:8.0)
 
 <details>
 <summary>풀이</summary>
 
 ```bash
-kubectl config use-context prod
+kubectl config use-context staging
 
 # 1. Taint 추가
-kubectl taint nodes prod-worker2 dedicated=database:NoSchedule
+kubectl taint nodes staging-worker1 dedicated=database:NoSchedule
 
 # 2. Pod 생성
 cat <<EOF | kubectl apply -f -
@@ -993,7 +993,7 @@ spec:
     value: "database"
     effect: "NoSchedule"
   nodeSelector:
-    kubernetes.io/hostname: prod-worker2
+    kubernetes.io/hostname: staging-worker1
   containers:
   - name: mysql
     image: mysql:8.0
@@ -1006,7 +1006,7 @@ kubectl get pod db-pod -o wide
 
 # 정리
 kubectl delete pod db-pod
-kubectl taint nodes prod-worker2 dedicated=database:NoSchedule-
+kubectl taint nodes staging-worker1 dedicated=database:NoSchedule-
 ```
 
 </details>

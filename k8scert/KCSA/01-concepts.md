@@ -288,9 +288,15 @@ ETCDCTL_API=3 etcdctl \
 
 hexdump의 출력은 두 가지로 갈린다. 암호화가 적용되지 않은 경우(identity 프로바이더)에는 `mykey`와 `mydata`가 평문 ASCII로 그대로 노출되어, etcd 데이터 파일을 읽을 수 있는 누구나 Secret 내용을 복원할 수 있다. 반대로 암호화가 적용된 경우(aescbc 프로바이더)에는 값의 앞에 `k8s:enc:aescbc:v1:key1` 접두사가 보이고 그 뒤는 암호화된 랜덤 바이트라서 키 없이는 해독할 수 없다. 접두사의 의미는 "이 값은 aescbc 알고리즘으로, key1이라는 키를 써서 암호화했다"는 메타데이터이며, kube-apiserver가 복호화 시 어떤 키를 적용할지 판단하는 근거가 된다.
 
-![etcd 내 Secret 저장 형태(hexdump)](images/kcsa-etcd.png)
+**암호화 적용 전(평문 노출):** EncryptionConfiguration 이 없으면(identity) etcd 의 hexdump 에 `test-secret`·`username`·`mykey` 같은 Secret 내용이 ASCII 평문으로 그대로 보인다.
 
-위 캡처는 한 상태만 보여준다. 암호화 적용 전(평문 노출)과 적용 후(`k8s:enc` 접두사 + 암호문)를 같은 클러스터에서 직접 hexdump로 비교 캡처하는 절차는 [04-tart-infra-practice.md](04-tart-infra-practice.md)를 참조한다.
+![암호화 전 — etcd hexdump 에 Secret 평문 노출(staging 실측)](images/etcd-plaintext.png)
+
+**암호화 적용 후(`k8s:enc` 접두사 + 암호문):** aescbc 프로바이더를 적용하면 값 앞에 `k8s:enc:aescbc:v1:key1` 접두사가 붙고 그 뒤는 키 없이 해독 불가한 랜덤 바이트뿐이다.
+
+![암호화 후 — k8s:enc:aescbc:v1:key1 접두사 + 암호문(dev 실측)](images/etcd-encrypted.png)
+
+두 캡처는 같은 명령(`etcdctl get /registry/secrets/... | hexdump -C`)을 암호화 미적용/적용 클러스터에서 각각 실행한 것이다. 재현 절차는 [04-tart-infra-practice.md](04-tart-infra-practice.md)를 참조한다.
 
 기존에 암호화 없이 저장된 Secret을 일괄 암호화하려면 모든 Secret을 다시 쓴다:
 

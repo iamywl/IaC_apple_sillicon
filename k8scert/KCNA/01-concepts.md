@@ -113,6 +113,9 @@ kubectl api-resources --namespaced=true | head -20
 > **예시(참조) — $ kubectl cluster-info:** KCNA 개념/실습 기대 출력. 실측은 KCNA daily(day01~07) 및 본 캡처 참고.
 
 **etcd**
+
+_등장 배경:_ Kubernetes 는 클러스터 전체 상태를 한 곳에 일관되게 저장할 분산 저장소가 필요했다. 후보였던 **ZooKeeper**(주키퍼)·**Consul**(콘술)은 합의·헬스체크 기능은 충분했으나, ZooKeeper 는 znode 계층 모델과 비직관적 클라이언트 API·JVM 운영 부담이 있었고 Consul 은 서비스 디스커버리 기능까지 묶인 무거운 도구였다. etcd 는 ⓐ 단순한 HTTP/gRPC 키-값 API, ⓑ Go 로 작성된 **단일 바이너리** 배포 용이성, ⓒ Google 의 **Borg**(쿠버네티스의 전신 클러스터 관리 시스템) 운영 경험을 반영한 watch/lease 모델로 이 요구에 맞았다. 합의 알고리즘도 이해·구현이 까다로운 **Paxos**(팍소스) 대신, 동일한 안전성을 제공하면서 리더 선출·로그 복제로 분해해 이해하기 쉬운 **Raft**(래프트)를 채택했다.
+
 - 분산 키-값(Key-Value) 저장소이다.
 - 클러스터의 모든 상태 정보(desired state, current state)를 저장한다.
 - Raft 합의 알고리즘을 사용하여 데이터 일관성을 보장한다. Raft는 리더 선출, 로그 복제, 안전성의 세 가지 하위 문제를 분리하여 해결하는 합의 프로토콜이다.
@@ -133,6 +136,9 @@ kubectl -n kube-system describe pod etcd-<node-name> | grep listen-client-urls
 > **참조 — etcd 분산 KV 저장소 개념:** $ kubectl get pods -n kube-system -l component ...
 
 **kube-scheduler**
+
+_등장 배경:_ 서버를 수동으로 지정하던 방식에서는 관리자가 각 노드의 현재 부하를 직접 모니터링하고 어디에 배치할지 일일이 결정해야 했다. 노드가 수십~수백 대로 늘면 이 수동 배치는 불가능해진다. kube-scheduler 는 이 결정을 자동화한 컴포넌트로, Borg 의 셀 스케줄러 경험을 기반으로 **필터링(Filtering)→스코어링(Scoring)** 2단계 알고리즘을 채택했다.
+
 - 새로 생성된 Pod를 적절한 워커 노드에 배치(스케줄링)하는 역할을 한다.
 - Pod가 아직 노드에 할당되지 않은 상태(Pending)일 때 동작한다.
 - 스케줄링 결정 시 고려하는 요소는 다음과 같다:
@@ -1143,6 +1149,8 @@ kubectl get pods -n kube-system -l k8s-app=cilium
 ### 2.3 CRI (Container Runtime Interface)
 
 기존에는 K8s 코드에 Docker 호출 로직이 직접 내장(dockershim)되어 있었다. 새로운 컨테이너 런타임(rkt 등)을 지원하려면 K8s 핵심 코드를 수정해야 했으며, 이는 유지보수 부담과 릴리스 주기 결합 문제를 야기했다.
+
+_왜 Docker 가 직접 런타임이 될 수 없었나(dockershim 제거, v1.24):_ Docker 는 컨테이너 실행만 하는 도구가 아니라 CLI·이미지 빌드(BuildKit)·Swarm 오케스트레이션 등을 포함한 복합 툴체인이고, CRI 가 정의되기 전에 만들어져 CRI 를 직접 구현하지 않는다. 그래서 kubelet 은 Docker API 를 CRI 로 번역하는 **dockershim**(변환 레이어)을 끼워야 했다. 이 shim 은 K8s 코어 안에 있어 ⓐ 버그 책임 경계가 모호하고 ⓑ Docker 버전 업그레이드마다 연동을 맞춰야 하는 부담이었다. CRI 를 네이티브로 구현한 containerd·CRI-O 가 성숙하자 K8s 는 v1.24 에서 dockershim 을 제거했다. 단, Docker 가 빌드한 이미지는 **OCI 표준(§2.2)** 을 따르므로 containerd 에서 그대로 실행된다 — "Docker 지원 중단"이 "Docker 이미지 사용 불가"를 뜻하지 않는다는 점이 시험 빈출 함정이다.
 
 - K8s가 컨테이너 런타임과 통신하기 위한 표준 인터페이스(API)이다.
 - CRI를 도입함으로써 K8s는 특정 컨테이너 런타임에 종속되지 않게 되었다. CRI만 구현하면 어떤 런타임이든 K8s와 연동할 수 있다.

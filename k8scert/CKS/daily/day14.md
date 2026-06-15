@@ -557,7 +557,11 @@ kubectl get deploy web-app -n production -o jsonpath='{.spec.template.spec.conta
 # nginx@sha256:6db391d1c0cfb...
 ```
 
-> **(미캡처)** crane/crictl 다이제스트 조회 출력과 `kubectl set image` 적용 후 상태는 실측 스크린샷으로 교체 예정이다. 코드 블록 안의 `# sha256:...` 주석은 형식을 보여주는 예시이며, 실제 다이제스트 값은 이미지 릴리스마다 다르다. 시험에서는 반드시 실제로 조회한 값을 `kubectl set image`에 넣어야 채점이 통과된다.
+아래는 dev 의 production 네임스페이스 `web-app` 을 다이제스트로 고정한 실측이다. Deployment 의 `image` 가 `nginx@sha256:a484...`(태그가 아닌 불변 다이제스트)이고, 실행 중 Pod 의 `imageID` 도 동일 다이제스트로 일치한다 — 태그 재푸시로 내용이 바뀌어도 다이제스트는 같은 이미지만 가리킨다.
+
+![web-app 다이제스트 고정 — Deployment image == Pod imageID (sha256, dev 실측)](images/cks-digest-pin.png)
+
+> 다이제스트 값은 이미지 릴리스마다 다르다. 시험에서는 `crane digest <image>` 또는 실행 Pod 의 `imageID` 로 실제 조회한 값을 `kubectl set image` 에 넣어야 한다.
 
 **채점 기준:**
 - [ ] 이미지 다이제스트를 올바르게 조회 (1점)

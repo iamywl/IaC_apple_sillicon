@@ -554,9 +554,9 @@ spec:
 3. `input.review.object` — webhook 요청으로 전달된 K8s 리소스 전체 객체다. `input.review.object.spec.containers`는 Pod spec의 컨테이너 목록 경로다.
 4. `not startswith(...)` — Rego의 `not`은 "다음 조건이 거짓이면 참"이다. 즉 `not startswith(이미지, 허용레지스트리)`는 "이미지가 허용 레지스트리로 시작하지 않으면 위반"을 의미한다.
 
-### 3.5 실습 5: Kyverno 설치 및 정책 적용 (미캡처)
+### 3.5 실습 5: Kyverno 설치 및 정책 적용
 
-> 아래 실습은 dev 클러스터에 Kyverno가 설치되어 있지 않은 경우 설치 후 진행한다. 클러스터가 꺼져 있거나 Kyverno 설치를 건너뛰는 경우 "(미캡처)"로 명시된 단계는 실제 실행 결과 없이 명령만 확인한다.
+> 아래 실습은 Kyverno 가 설치된 클러스터에서 진행한다. 이 저장소에서는 **cks 랩에 Kyverno 가 설치돼 있어**(disallow-latest ClusterPolicy 포함) ④⑤의 거부/허용을 그대로 실측할 수 있다(아래 캡처). dev 에 설치하려면 아래 설치 단계를 먼저 수행한다.
 
 **목표:** Kyverno를 설치하고, latest 태그 이미지를 거부하는 ClusterPolicy를 적용한 뒤 위반·허용 동작을 확인한다.
 
@@ -1150,13 +1150,11 @@ echo "=== 현재 cap-kcsa-day06 NS 레이블 ==="
 kubectl get namespace cap-kcsa-day06 --show-labels
 ```
 
-**검증 — 기대 출력 (미캡처):**
+**검증 — 실측 출력:** 아래는 cks 랩에서 PSA `enforce=restricted` 를 `--dry-run=server` 로 시뮬레이션하고 ns 레이블을 조회한 실측이다. `namespace/cap-kcsa-day06 labeled (server dry run)` 가 출력되며(실제 적용 아님), `get namespace ... --show-labels` 로 현재 레이블을 확인한다.
 
-`--dry-run=server` 실행이 성공하면 다음과 같은 메시지가 출력된다.
+![cap-kcsa-day06 PSA dry-run + ns 레이블 실측(cks)](images/kcsa-ns-labels.png)
 
-`namespace/cap-kcsa-day06 labeled (dry run)`
-
-아무 출력 없이 종료되거나 `Error from server` 메시지가 나타나면 네임스페이스 권한 또는 레이블 키 오타를 확인한다. `--overwrite` 없이 이미 동일한 레이블이 존재하면 `not labeled` 경고가 나올 수 있는데 이는 정상이다.
+`--dry-run=server` 실행이 성공하면 `namespace/cap-kcsa-day06 labeled (server dry run)` 형태의 메시지가 출력된다. 아무 출력 없이 종료되거나 `Error from server` 메시지가 나타나면 네임스페이스 권한 또는 레이블 키 오타를 확인한다. `--overwrite` 없이 이미 동일한 레이블이 존재하면 `not labeled` 경고가 나올 수 있는데 이는 정상이다.
 
 **동작 원리:** PSA 점진적 적용:
 1. audit + warn으로 시작 → 위반 현황 파악

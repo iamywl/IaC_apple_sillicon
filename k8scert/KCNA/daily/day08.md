@@ -991,6 +991,51 @@ kubectl delete -f /tmp/test-app.yaml
 
 ---
 
+## ✅ 자가점검
+
+<details>
+<summary>1. GitOps의 Pull 모델은 기존 Push 모델과 무엇이 다른가?</summary>
+
+Push 모델은 CI 서버(Jenkins 등)가 `kubectl apply`로 클러스터에 직접 배포한다(CI에 클러스터 admin 권한 필요). Pull 모델은 클러스터 내부 에이전트(ArgoCD/Flux)가 Git을 주기적으로 감시해 스스로 동기화한다. CI에 클러스터 권한이 불필요하고, 모든 변경이 Git 이력으로 남으며, 수동 변경은 자동 복원된다.
+</details>
+
+<details>
+<summary>2. ArgoCD와 Flux의 차이는?</summary>
+
+둘 다 CNCF Graduated **CD 도구**(CI 아님)다. ArgoCD는 **풍부한 웹 UI**가 강점, Flux는 **모듈형 컨트롤러 + 이미지 자동 업데이트 내장**이 강점. ArgoCD는 `Application` CRD로 배포를 선언한다.
+</details>
+
+<details>
+<summary>3. Helm과 Kustomize의 핵심 차이는?</summary>
+
+**Helm**=템플릿 엔진(`{{ .Values }}`)+패키지(Chart)+릴리스 관리(롤백). **Kustomize**=템플릿 없이 base + overlay로 YAML을 패치(오버레이)한다. kubectl 내장(`-k`). 복잡한 패키징·배포는 Helm, 환경별 단순 변형은 Kustomize.
+</details>
+
+<details>
+<summary>4. Blue/Green과 Canary 배포의 차이는?</summary>
+
+**Blue/Green**=신버전(green)을 전부 띄운 뒤 트래픽을 **한 번에 전환**(빠른 롤백, 자원 2배). **Canary**=트래픽을 **소수%만 점진 전환**하며 관찰(위험 분산, 전환 느림). Canary는 Service selector 비율 또는 Istio weight로 구현한다.
+</details>
+
+<details>
+<summary>5. Continuous Delivery와 Continuous Deployment의 차이는?</summary>
+
+**Delivery**=프로덕션 배포 전에 **수동 승인 게이트**가 있다. **Deployment**=승인 없이 테스트 통과 시 **완전 자동** 배포. 둘 다 CI까지는 자동이고, 프로덕션 반영의 자동화 정도가 다르다.
+</details>
+
+## 시험 팁
+
+- GitOps=**Pull 모델**(에이전트가 Git 감시·자동 동기화). ArgoCD·Flux는 **CD 도구**(CI 아님), 둘 다 Graduated.
+- **Helm**(템플릿/릴리스) vs **Kustomize**(overlay 패치) 구분.
+- **Delivery=수동승인 / Deployment=완전자동**. Blue/Green=일괄전환, Canary=점진전환.
+
+## 더 읽을거리
+
+- [Argo CD](https://argo-cd.readthedocs.io/) · [Flux](https://fluxcd.io/) · [Helm](https://helm.sh/docs/) · [Kustomize](https://kustomize.io/)
+- [OpenGitOps 원칙](https://opengitops.dev/) — GitOps 4대 원칙.
+
+---
+
 ## 내일 학습 예고
 
 > Day 9에서는 전체 도메인을 포괄하는 50문제 모의시험을 실시하여 실전 감각을 익히고 취약 도메인을 파악한다.

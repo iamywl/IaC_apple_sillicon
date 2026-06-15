@@ -3831,16 +3831,20 @@ trivy image --severity CRITICAL,HIGH rabbitmq:3-management
 
 **9단계: 스캔 결과 종합 분석**
 
-> **주의**: 아래 표의 CVE 수치는 스캔 시점의 취약점 데이터베이스 버전에 따라 달라진다. 동일한 이미지라도 Trivy DB 갱신 이후 실행하면 다른 수치가 나올 수 있다. 직접 실행한 결과를 기준으로 판단하고, 이 표는 이미지 간 상대적 경향을 파악하기 위한 참고 자료로 사용한다(미캡처).
+> **주의**: 아래 표는 **실측 수치**(2026-06-15, Trivy 0.71.1, `--scanners vuln` 기준)다. CVE 수치는 스캔 시점의 취약점 DB 버전에 따라 달라지므로(Trivy DB 갱신 후 재실행하면 변동), 시험·실습에서는 반드시 **직접 실행한 결과**를 기준으로 판단한다. 이 표는 이미지 간 상대적 경향(Alpine 적음 vs Ubuntu/대형 이미지 많음) 파악용이다.
 
 | 이미지 | Base OS | CRITICAL | HIGH | MEDIUM | LOW | 조치 |
 |--------|---------|----------|------|--------|-----|------|
-| nginx:alpine | Alpine | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 업데이트 필요 |
-| postgres:16-alpine | Alpine | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 패치 확인 |
-| redis:7-alpine | Alpine | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 패치 확인 |
-| rabbitmq:3-management | Ubuntu | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 업데이트 필요 |
-| kong/httpbin | - | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 대안 검토 |
-| keycloak | UBI | (미캡처) | (미캡처) | (미캡처) | (미캡처) | 업데이트 필요 |
+| nginx:alpine | Alpine | 0 | 3 | 8 | 20 | 업데이트 필요 |
+| postgres:16-alpine | Alpine | 1 | 17 | 27 | 22 | 패치 확인 |
+| redis:7-alpine | Alpine | 0 | 0 | 0 | 0 | 양호(취약점 0) |
+| rabbitmq:3-management | Ubuntu | 0 | 3 | 97 | 45 | 업데이트 필요 |
+| kong/httpbin:latest | Debian | 13 | 134 | 4218 | 317 | 대안 검토(매우 많음) |
+| keycloak:26.1 | UBI | 0 | 51 | 108 | 49 | 업데이트 필요 |
+
+위 실측에서 드러나는 경향: Alpine 기반(redis/nginx)은 CVE 가 매우 적고, 범용 베이스(`kong/httpbin:latest` = Debian + 다수 패키지)는 CRITICAL 13·MEDIUM 4218 로 압도적으로 많다 — 이미지 선택이 곧 공격 표면 결정이라는 점을 보여준다. 아래는 대표로 `postgres:16-alpine` 를 `--severity CRITICAL,HIGH` 로 스캔한 실측이다.
+
+![Trivy postgres:16-alpine CRITICAL,HIGH 스캔 실측](images/kcsa-trivy-postgres.png)
 
 **Alpine vs Ubuntu 기반 이미지의 취약점 수 차이**: Alpine Linux는 musl libc와 BusyBox를 기반으로 하여 설치된 패키지 수가 매우 적다(기본 이미지 ~5MB). 반면 Ubuntu 기반 이미지(`rabbitmq:3-management` 등)는 glibc와 더 많은 유틸리티를 포함하여 기본 이미지가 100MB 이상이다. 패키지 수가 많을수록 CVE 노출 면적이 넓어지므로, Alpine 기반 이미지가 Ubuntu 기반보다 CVE 총 수가 적은 경향이 있다. 다만 Alpine도 취약점이 없는 것은 아니며, musl libc 관련 특유의 CVE가 존재할 수 있다.
 

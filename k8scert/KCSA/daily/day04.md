@@ -1033,3 +1033,49 @@ grep -E '\-\-(profiling|audit-log-path|encryption-provider-config)' \
 ```
 
 5분 안에 3개 항목을 모두 grep으로 확인했으면 성공이다. KCSA 시험에서는 "어떤 플래그를 어디에 추가하면 FAIL이 PASS가 되는가"를 묻는 문제가 출제된다. 플래그명과 위치(Static Pod 매니페스트 `command` 배열)를 암기하는 것이 핵심이다.
+
+---
+
+## ✅ 자가점검
+
+<details>
+<summary>1. kube-bench는 무엇을 검사하며, 무엇을 기준으로 하는가?</summary>
+
+**CIS Kubernetes Benchmark** 항목을 자동 점검한다. API Server·etcd·controller-manager·scheduler·kubelet의 설정 파일·플래그를 직접 읽어 각 항목의 PASS/FAIL/WARN/INFO를 반환한다. 수동 CIS 감사를 자동화한 것이다(Aqua Security).
+</details>
+
+<details>
+<summary>2. kube-bench 결과의 PASS/FAIL/WARN/INFO는 각각 무슨 뜻인가?</summary>
+
+`PASS`=기준 충족, `FAIL`=기준 위반(수정 필요), `WARN`=자동 판정 불가라 **사람이 수동 확인**해야 함, `INFO`=참고 정보. 시험에서는 FAIL을 PASS로 바꾸는 작업이 핵심이고, WARN은 "왜 수동 확인인지"를 이해해야 한다.
+</details>
+
+<details>
+<summary>3. kube-apiserver 하드닝 플래그는 어디를 수정하는가?</summary>
+
+control-plane 노드의 **Static Pod 매니페스트** `/etc/kubernetes/manifests/kube-apiserver.yaml`의 `spec.containers[].command` 배열에 플래그를 추가/수정한다. 저장하면 kubelet이 apiserver Pod를 재생성한다(수십 초 응답 불가 가능 → dev/staging에서 실습).
+</details>
+
+<details>
+<summary>4. 4C 모델에서 CIS Benchmark·kube-bench는 어느 계층에 해당하나?</summary>
+
+**Cluster** 계층이다(Cloud·Cluster·Container·Code 중). API Server·etcd·RBAC·kubelet 등 클러스터 구성요소의 보안 설정을 다룬다.
+</details>
+
+<details>
+<summary>5. kube-bench는 탐지 후 수정까지 해 주는가?</summary>
+
+아니다. **탐지(점검)만** 하고 수정은 운영자가 직접 매니페스트를 고쳐야 한다. CI 파이프라인에 넣어 업그레이드 후 회귀를 자동 탐지하는 용도로 쓴다.
+</details>
+
+## 시험 팁
+
+- FAIL → PASS로 바꾸는 **대표 플래그를 암기**한다: `--anonymous-auth=false`, `--profiling=false`, `--audit-log-path=...`, `--encryption-provider-config=...`.
+- `WARN`은 자동 판정 불가라 **수동 확인** 필요 — "FAIL=무조건 위반"과 구분.
+- kube-bench는 **탐지 전용**(수정 안 함). 4C 중 **Cluster** 계층.
+
+## 더 읽을거리
+
+- [CIS Kubernetes Benchmark](https://www.cisecurity.org/benchmark/kubernetes) — 점검 항목 원전.
+- [kube-bench (Aqua Security)](https://github.com/aquasecurity/kube-bench) — 실행 방법·targets.
+- [Kubernetes 공식 — Securing a Cluster](https://kubernetes.io/docs/tasks/administer-cluster/securing-a-cluster/) — API Server 하드닝 플래그.

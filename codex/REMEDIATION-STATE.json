@@ -1,5 +1,5 @@
 {
-  "updated": "2026-06-15",
+  "updated": "2026-06-15 (A/B/safety/C4/C5/C6 done+committed; C1/C2/C3 writing + D screenshots remain)",
   "plan": "codex/REMEDIATION-PLAN.md",
   "work_branch": "codex-remediation",
   "committed": false,
@@ -19,8 +19,8 @@
     "C3_ascii_to_mermaid": {"status": "todo", "note": "flow diagrams only, NOT trees/tables", "files": ["KCNA/04-tart-infra-practice","KCNA/05-supplement","KCNA/daily/day07","KCNA/daily/day08","KCSA/05-supplement","CKS/04-tart-infra-practice","CKAD/daily/day05","CKAD/daily/day08"]},
     "C4_ssh_context_standardize": {"status": "done", "note": "A) ssh admin@<NODE-ip>->ssh NODE (31, prose-comparison lines kept). B) '# tart ssh X'->'# ssh X' (8). C) exam-style node01/master01 left as exam names + added node-name mapping note to 7 files (CKS 05-supplement/02-examples/day02/day06, CKA 05-supplement/01-concepts, KCNA 05-supplement; CKS 03-exam already had one). Exam realism preserved, local mapping documented."},
     "C5_caption_integrity": {"status": "done", "files": ["CKS/daily/day07"], "note": "L1070-1078 encrypted vs plain images were swapped relative to their headers; swapped the two image lines so each sits under the correct header"},
-    "C6_abs_path_sweep": {"status": "todo", "grep": "grep -rn '~/sideproejct/IaC_apple_sillicon' k8scert", "note": "330 occ / 89 files -> repo-relative kubeconfig path"},
-    "D_screenshots": {"status": "todo", "requires_cluster": true, "note": "real capture only (CLAUDE.md 4-1). Hotspots: CKA/05-supplement, KCSA/05-supplement(0 images), CKA/04, CKS+CKAD+KCNA daily late"}
+    "C6_abs_path_sweep": {"status": "done", "note": "323 kubeconfig paths (~/sideproejct/.../kubeconfig/ -> kubeconfig/) across 89 files. 6 non-kubeconfig prose/cd paths kept intentionally (clone-location guidance)."},
+    "D_screenshots": {"status": "todo", "requires_cluster": true, "cluster_status_2026-06-15": "ALL STOPPED (dev/platform/staging/prod). Needs ./scripts/boot.sh + ./scripts/fix-cluster-ip-drift.sh before any capture. Dedicated session recommended.", "note": "real capture only (CLAUDE.md 4-1). Hotspots: CKA/05-supplement, KCSA/05-supplement(0 images), CKA/04, CKS+CKAD+KCNA daily late. Backlog = each FEEDBACK-codex.md 'screenshot' rows with line numbers."}
   },
   "next_session_order": ["C4_ssh_context_standardize","C1_daily_structure","C3_ascii_to_mermaid","C2_storyline","C6_abs_path_sweep","D_screenshots"],
   "verification_greps": [

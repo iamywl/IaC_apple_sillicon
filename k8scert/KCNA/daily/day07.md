@@ -87,41 +87,26 @@
 
 ### 2.2 Prometheus 핵심 특징
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  sd[서비스 디스커버리\nK8s API 등] -->|타겟 자동 검색| scr
+  ta["타겟 A\n/metrics"] -.->|HTTP GET\n주기적 scrape| scr
+  tb["타겟 B\n/metrics"] -.-> scr
+  tc["타겟 C\n/metrics"] -.-> scr
+  subgraph PS["Prometheus Server"]
+    scr[Scraper\n스크래퍼] --> tsdb[(TSDB\n시계열 DB)]
+    tsdb --> re[Rule Engine\n규칙 엔진]
+    tsdb --> pq[PromQL\n쿼리]
+  end
+  re -->|조건 충족 시| am[AlertManager\n알림]
+  am --> notif[Slack / Email / PagerDuty]
+  pq --> graf[Grafana]
 ```
-Prometheus 아키텍처
-============================================================
 
-  서비스 디스커버리          Prometheus Server
-  (K8s API 등)               +------------------+
-  +------------+             |                  |
-  | 타겟 자동   |----------->| TSDB             |  시계열 DB
-  | 검색        |             | (Time Series DB) |
-  +------------+             |                  |
-                             | Scraper          |  Pull 방식
-                      +----->| (스크래퍼)        |<------+
-                      |      |                  |       |
-  +----------+        |      | Rule Engine      |       |
-  | 타겟 A   |--------+      | (규칙 엔진)      |       |
-  | /metrics |               +---+-----------+--+       |
-  +----------+                   |           |          |
-                                 v           v          |
-  +----------+           +-----------+ +-----------+    |
-  | 타겟 B   |-----------| AlertMgr  | | PromQL    |    |
-  | /metrics |           | (알림)    | | (쿼리)    |    |
-  +----------+           +-----+-----+ +-----+-----+   |
-                               |             |          |
-  +----------+                 v             v          |
-  | 타겟 C   |--------+  [Slack,Email]  [Grafana]      |
-  | /metrics |        |                                |
-  +----------+        +--------------------------------+
+_그림. Prometheus 는 서비스 디스커버리로 타겟을 찾아 각 타겟의 `/metrics` 를 Pull(scrape)해 자체 TSDB 에 저장한다. Rule Engine 이 알림 조건을 평가해 AlertManager 로 보내고, PromQL 쿼리 결과는 Grafana 가 시각화한다._
 
-핵심 포인트:
-1. Pull 기반: Prometheus가 타겟의 /metrics를 주기적으로 가져옴
-2. 자체 TSDB: 시계열 데이터를 자체 저장
-3. PromQL: 강력한 쿼리 언어
-4. AlertManager: 알림 전송 (Slack, Email, PagerDuty 등)
-5. 서비스 디스커버리: K8s API로 타겟 자동 검색
-```
+**핵심 포인트:** ① Pull 기반 — Prometheus 가 타겟의 `/metrics` 를 주기적으로 가져온다(타겟이 푸시하지 않는다). ② 자체 TSDB 에 시계열을 저장한다. ③ PromQL 로 질의한다. ④ AlertManager 가 Slack·Email·PagerDuty 로 알림을 보낸다. ⑤ 서비스 디스커버리(K8s API)로 타겟을 자동 검색한다.
 
 ### 2.3 Pull vs Push 방식 (시험 빈출!)
 
@@ -293,23 +278,21 @@ Grafana는 Prometheus에서 메트릭을 가져와 시각화하며, 이를 위�
 > **Fluentd**란?
 > CNCF **졸업** 프로젝트인 오픈소스 **통합 로깅 계층(Unified Logging Layer)** 데이터 수집기이다. 다양한 소스에서 로그를 수집하여 다양한 목적지로 전달한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  app[앱 로그] --> fd
+  sys[시스템 로그] --> fd
+  k8s[K8s 로그] --> fd
+  subgraph FD["Fluentd"]
+    fd[파싱 · 필터링\n버퍼링 · 라우팅]
+  end
+  fd --> es[Elasticsearch]
+  fd --> s3[S3]
+  fd --> loki[Loki]
 ```
-Fluentd 동작 원리
-============================================================
 
-소스(Input)              Fluentd                목적지(Output)
-+----------+           +-----------+           +------------+
-| 앱 로그   |---------->|           |---------->| Elasticsearch|
-+----------+           | 파싱      |           +------------+
-| 시스템 로그 |--------->| 필터링    |---------->| S3          |
-+----------+           | 버퍼링    |           +------------+
-| K8s 로그  |---------->| 라우팅    |---------->| Loki        |
-+----------+           |           |           +------------+
-                       +-----------+
-
-K8s 배포 방식: DaemonSet (각 노드에 하나씩)
-500+ 플러그인 지원
-```
+_그림. Fluentd 는 여러 소스(앱·시스템·K8s 로그)를 받아 파싱·필터링·버퍼링·라우팅한 뒤 여러 목적지로 전달한다. K8s 에서는 DaemonSet 으로 각 노드에 하나씩 배포하며, 500개 이상의 입출력 플러그인을 지원한다._
 
 **Fluent Bit:**
 - Fluentd의 **경량 버전** (C로 작성, 더 작은 메모리 사용)
@@ -324,23 +307,14 @@ Fluentd는 Ruby로 작성되어 프로세스 기동 시 약 40MB의 메모리를
 > **Loki**란?
 > Grafana Labs에서 개발한 로그 집계 시스템으로, "**Prometheus의 로그 버전**"이라 불린다. 로그 내용을 전문 인덱싱하지 않고 **라벨만 인덱싱**하여 비용 효율적이다.
 
-```
-Loki vs Elasticsearch 비교
-============================================================
+| 구분 | Elasticsearch (전문 인덱싱) | Loki (라벨 인덱싱) |
+|:--|:--|:--|
+| 인덱싱 대상 | 모든 로그 텍스트 | 라벨(`app=nginx`, `env=prod`)만, 내용은 압축 저장 |
+| 검색 방식 | 빠른 전문(full-text) 검색 | 라벨로 후보를 좁힌 뒤 내용 검색(LogQL) |
+| 인덱싱 비용·스토리지 | 높음 / 많이 사용 | 낮음 / 적게 사용 |
+| 운영 복잡도 | 복잡 | 간단 |
 
-Elasticsearch (전문 인덱싱):
-  모든 로그 텍스트를 인덱싱
-  → 빠른 전문 검색 가능
-  → 인덱싱 비용 높음, 스토리지 많이 사용
-  → 복잡한 운영
-
-Loki (라벨 인덱싱):
-  라벨(app=nginx, env=prod)만 인덱싱
-  로그 내용은 압축 저장만
-  → 라벨 기반 필터 후 로그 검색 (LogQL)
-  → 인덱싱 비용 낮음, 스토리지 적게 사용
-  → 운영 간단
-```
+Elasticsearch 는 모든 텍스트를 인덱싱해 임의 키워드 전문 검색이 빠른 대신 인덱스가 커진다. Loki 는 Prometheus 처럼 라벨만 인덱싱하고 로그 본문은 압축 저장만 하므로, 라벨로 범위를 좁힌 뒤 LogQL 로 내용을 훑는 구조라 비용·스토리지가 낮다.
 
 **Loki 핵심:**
 - **LogQL** 쿼리 언어: PromQL과 유사한 문법
@@ -428,28 +402,25 @@ K = Kibana  (시각화)
 > **Jaeger**란?
 > CNCF **졸업** 프로젝트인 분산 트레이싱 시스템이다. Uber에서 개발하여 오픈소스로 공개했다.
 
+분산 트레이싱은 사용자 요청 하나가 여러 서비스를 거치는 경로를 추적한다.
+
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  u[사용자] --> ag[API Gateway]
+  ag --> us[User Service]
+  us --> db[(DB)]
+  ag --> os[Order Service]
+  os --> ps[Payment Service]
+  os --> inv[Inventory Service]
 ```
-분산 트레이싱 개념
-============================================================
 
-사용자 요청이 여러 서비스를 거치는 경로를 추적:
+_그림. 한 요청(Trace)이 API Gateway 를 거쳐 여러 서비스로 분기한다. 각 서비스에서의 개별 작업 구간이 Span 이다._
 
-사용자 → [API Gateway] → [User Service] → [DB]
-              |
-              +------→ [Order Service] → [Payment Service]
-                              |
-                              +------→ [Inventory Service]
+- **Trace(트레이스)**: 하나의 요청이 거치는 전체 경로.
+- **Span(스팬)**: 트레이스 내 개별 작업 단위. 각 Span 의 소요 시간을 합산해 병목을 찾는다.
 
-Trace (트레이스): 하나의 요청이 거치는 전체 경로
-  └── Span (스팬): 트레이스 내의 개별 작업 단위
-        - API Gateway: 5ms
-        - User Service: 20ms
-        - Order Service: 50ms
-        - Payment Service: 200ms  ← 병목 발견!
-        - Inventory Service: 10ms
-
-총 응답 시간: 285ms, 병목: Payment Service (200ms)
-```
+예시 구간별 소요: API Gateway 5ms · User Service 20ms · Order Service 50ms · **Payment Service 200ms(병목)** · Inventory Service 10ms → 총 응답 285ms 중 Payment Service 가 200ms 로 병목이다.
 
 ### 5.2 OpenTelemetry (OTel) - 시험 빈출!
 
@@ -460,30 +431,23 @@ Trace (트레이스): 하나의 요청이 거치는 전체 경로
 > **OpenTelemetry**란?
 > 메트릭, 로그, 트레이스를 위한 **통합 관측성 프레임워크**이다. OpenTracing + OpenCensus가 합병하여 탄생했다. CNCF **인큐베이팅** 프로젝트이다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  sdk["OTel SDK\n(계측 라이브러리) — 앱에 통합"] -->|OTLP 프로토콜| col
+  subgraph APP["애플리케이션"]
+    sdk
+  end
+  subgraph COL["OTel Collector — 수집/처리/전달"]
+    col[Receiver\n다양한 소스에서 수신] --> proc[Processor\n변환·필터링·배치]
+    proc --> exp[Exporter\n백엔드로 전달]
+  end
+  exp --> jaeger[Jaeger\n트레이스]
+  exp --> prom[Prometheus\n메트릭]
+  exp --> dd[Datadog\n통합]
 ```
-OpenTelemetry 구성
-============================================================
 
-애플리케이션
-+---------------------+
-| OTel SDK            |  ← 앱에 통합
-| (계측 라이브러리)     |
-+--------+------------+
-         |
-         v (OTLP 프로토콜)
-+---------------------+
-| OTel Collector      |  ← 수집/처리/전달
-| - Receiver          |     다양한 소스에서 수신
-| - Processor         |     변환, 필터링, 배치
-| - Exporter          |     백엔드로 전달
-+--------+------------+
-         |
-    +----+----+----+
-    |         |    |
-    v         v    v
-[Jaeger] [Prometheus] [Datadog]  ← 벤더 중립적!
-(트레이스)  (메트릭)   (통합)       어떤 백엔드든 선택 가능
-```
+_그림. 앱에 통합된 OTel SDK 가 OTLP 로 Collector 에 보내면, Collector 가 Receiver→Processor→Exporter 파이프라인으로 처리해 임의의 백엔드(Jaeger·Prometheus·Datadog 등)로 전달한다. 백엔드를 자유롭게 교체할 수 있는 벤더 중립 구조다._
 
 **OpenTelemetry 핵심 포인트:**
 - **벤더 중립적(Vendor-neutral)**: 어떤 백엔드든 자유롭게 선택 가능

@@ -823,13 +823,9 @@ kubectl api-resources --api-group=batch
 kubectl api-resources --api-group=networking.k8s.io
 ```
 
-**(미캡처)** 아래는 참고용 출력 형식이다. 실제 실행 후 터미널 스크린샷으로 교체한다.
+아래는 dev 클러스터에서 `kubectl api-resources --api-group=networking.k8s.io` 를 실행한 실측이다. 각 리소스의 `APIVERSION`(networking.k8s.io/v1)·SHORTNAMES(ing/netpol)·NAMESPACED 여부를 한눈에 확인한다. `--api-group=batch` 로 바꾸면 cronjobs(cj)·jobs 가 `batch/v1` 로 나온다.
 
-```
-NAME       SHORTNAMES   APIVERSION   NAMESPACED   KIND
-cronjobs   cj           batch/v1     true         CronJob
-jobs                    batch/v1     true         Job
-```
+![dev kubectl api-resources --api-group=networking.k8s.io 실측](images/ckad-api-resources-net.png)
 
 **동작 원리:** `kubectl api-resources`는 API Server의 discovery endpoint(`/apis`)를 조회하여 지원 리소스 목록을 반환한다. `--api-group` 플래그로 특정 그룹만 필터링할 수 있다. CKAD 시험에서 올바른 apiVersion을 빠르게 찾는 핵심 명령이다.
 
@@ -862,7 +858,9 @@ kubectl get deploy,svc,ingress,networkpolicy -n demo -o jsonpath='{range .items[
 kubectl get networkpolicy -n demo -o yaml 2>/dev/null | grep -E "apiVersion|kind|name" | head -9
 ```
 
-**(미캡처)** 실제 실행 후 터미널 스크린샷으로 교체한다.
+아래 실측은 표준 `NetworkPolicy` 는 demo 에 없고(`No resources found`), 이 저장소가 Cilium CNI 라 `CiliumNetworkPolicy`(cnp)로 정책이 적용돼 있음을 보여준다(`manifests/network-policies/` 적용 결과). 표준 NetworkPolicy 가 필요한 시험에서는 `networking.k8s.io/v1` 의 `NetworkPolicy` 를 직접 만든다.
+
+![dev demo — 표준 NetworkPolicy 부재 + CiliumNetworkPolicy 목록 실측](images/ckad-netpol-demo.png)
 
 **동작 원리:** 클러스터에 배포된 리소스들의 apiVersion을 확인하면 해당 클러스터가 지원하는 API 수준을 파악할 수 있다. deprecated API를 사용하는 매니페스트가 있으면 클러스터 업그레이드 시 오류가 발생할 수 있으므로 사전 점검이 중요하다.
 

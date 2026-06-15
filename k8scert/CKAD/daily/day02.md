@@ -836,3 +836,50 @@ kubectl delete pod init-demo sidecar-demo -n demo
 
 검증:
 ![멀티 Pod 삭제](images/day02-04-delete.png)
+
+---
+
+## ✅ 자가점검
+
+<details>
+<summary>1. Init Container가 실패하면 Pod와 앱 컨테이너는 어떻게 되는가?</summary>
+
+앱(메인) 컨테이너는 시작되지 않는다. Pod는 `Init:Error`/`Init:CrashLoopBackOff` 상태에 머물고, Pod의 `restartPolicy`(기본 `Always`)에 따라 Init Container를 재시작한다. 모든 Init Container가 성공(exit 0)해야 앱 컨테이너가 시작된다.
+</details>
+
+<details>
+<summary>2. Init Container가 여러 개면 실행 순서는?</summary>
+
+`spec.initContainers` 배열에 **정의된 순서대로 하나씩 순차 실행**된다. 각각이 성공해야 다음으로 넘어간다. 반면 앱 컨테이너(`spec.containers`)는 서로 병렬로 시작된다.
+</details>
+
+<details>
+<summary>3. 사이드카가 메인 컨테이너와 데이터·통신을 공유하는 메커니즘은?</summary>
+
+같은 Pod의 컨테이너들은 **네트워크 namespace를 공유**(서로 `localhost`로 통신)하고, 같은 **볼륨**(예: `emptyDir`)을 마운트해 파일을 공유한다. IPC namespace도 공유한다. PID namespace는 기본 분리이며 `shareProcessNamespace: true`로 공유할 수 있다.
+</details>
+
+<details>
+<summary>4. Ambassador 패턴과 Adapter 패턴의 차이는?</summary>
+
+**Ambassador**는 메인 컨테이너의 *외부로 나가는* 연결을 대신 처리하는 프록시다(예: localhost의 DB 프록시 사이드카가 실제 원격 DB로 중계). **Adapter**는 메인 컨테이너의 *출력을 표준 형식으로 변환*해 외부에 노출한다(예: 앱 로그를 Prometheus 메트릭 형식으로 변환). 방향이 반대다 — Ambassador는 egress 중개, Adapter는 출력 정규화.
+</details>
+
+<details>
+<summary>5. K8s 1.29+의 "네이티브 사이드카"는 기존 사이드카와 무엇이 다른가?</summary>
+
+기존 사이드카는 단순히 앱 컨테이너와 함께 둔 일반 컨테이너라 종료 순서·시작 보장이 없었다. 네이티브 사이드카는 **`restartPolicy: Always`를 가진 Init Container**로 선언한다. 그러면 앱 컨테이너보다 **먼저 시작되어 계속 실행**되고 앱보다 늦게 종료돼, 로깅/프록시 사이드카의 생명주기 문제가 해결된다.
+</details>
+
+## 시험 팁
+
+- Init Container는 **순차·완료 보장**, 앱 컨테이너는 **병렬 시작**. 이 구분이 빈출이다.
+- 멀티컨테이너 3패턴 **Sidecar / Ambassador / Adapter** 의 방향을 구분한다.
+- 같은 Pod = **localhost 통신 + 볼륨 공유**. 다른 Pod와 헷갈리지 않는다.
+- 네이티브 사이드카 = `restartPolicy: Always` Init Container (1.29 GA).
+
+## 더 읽을거리
+
+- [Kubernetes 공식 — Init Containers](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/)
+- [Kubernetes 공식 — Sidecar Containers](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) (네이티브 사이드카)
+- [Pod 다중 컨테이너 디자인 패턴](https://kubernetes.io/blog/2015/06/the-distributed-system-toolkit-patterns/) — Sidecar·Ambassador·Adapter 원전.

@@ -95,6 +95,7 @@ containerd 재시작 후 `runtimeClassName: gvisor` Pod 정상 기동. (`runsc i
 |:--|:--:|:--|:--|
 | 1. VM DNS(systemd-resolved) 실패 | HIGH | ✅ 수정 | `lib/k8s.sh prepare_node` |
 | 2. kubeadm GPG 키링 덮어쓰기 | HIGH | ✅ 수정 | `lib/k8s.sh install_kubeadm` |
-| 3. init 중 containerd unit 미발견(exit 5) | MED | 🔍 조사/재시도 | `init_cluster` (daemon-reload 선행 검토) |
+| 3. init 중 containerd unit 미발견(exit 5) | MED | ✅ 해소 | partial-state 탓 → clean rebuild로 해결 |
+| 4. gVisor runsc가 containerd 2.x(config v3) 미인식 | MED | ✅ 수정 | config.toml v3 `cri.v1.runtime...runtimes.runsc` 추가 |
 
 발견 가치: cks 구성 부산물로 **신규 클러스터 빌드 파이프라인의 실제 버그 2건을 영구 수정**(BUG 1·2). 어떤 클러스터든 재생성 안정성 향상.

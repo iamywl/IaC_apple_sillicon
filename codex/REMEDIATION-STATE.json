@@ -33,7 +33,7 @@
       "kyverno": "설치됨(kubectl create install.yaml). ClusterPolicy disallow-latest-tag(Enforce) 적용. 캡처3장→KCSA/05-supplement(kcsa-kyverno-latest-deny/policy/pods).",
       "trivy": "호스트 Mac에 trivy 0.71.1 설치돼 있음(노드 설치 불필요). DB 워밍됨. 캡처1장(cks-trivy-critical)→CKS/daily/day10 문제1.",
       "falco": "helm 설치됨(falco ns, modern_ebpf). /etc/shadow 읽기 탐지 검증 OK. 기존 cks-falco-alert.png로 충분해 day12 캡션만 정정.",
-      "gvisor": "미설치(남음). 노드 containerd runsc 런타임 설치+RuntimeClass 필요."
+      "gvisor": "설치+검증 완료. runsc(aarch64) 노드 설치 + containerd v3 schema에 runsc 런타임 등록(BUG4 수정) + RuntimeClass gvisor. dmesg 'Starting gVisor' 실측 캡처2장(cks-gvisor-dmesg/runtimeclass)→CKS/daily/day08 문제4."
     },
     "next_steps": [
       "1. gVisor: cks 노드에 runsc 설치 + containerd runtime 등록 + RuntimeClass runsc + runsc Pod 실행 → crictl info|grep runsc / dmesg 캡처(CKS day08 RuntimeClass).",

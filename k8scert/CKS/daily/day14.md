@@ -1847,3 +1847,60 @@ echo "- dev: NetworkPolicy, mTLS, SecurityContext, 이미지 보안"
 echo "- staging: 기본 보안 설정 연습"
 echo "- prod: 최소 구성에서 보안 강화 연습"
 ```
+
+---
+
+## ✅ 자가점검
+
+CKS Day 1~14 전 과정을 마쳤다. §6 의 점수표가 "얼마나 맞혔나"라면, 아래 6문항은 "원리를 설명할 수 있나"를 점검한다. 입으로 설명해 본 뒤 정답을 펼친다.
+
+<details>
+<summary><b>Q1.</b> 모든 트래픽을 막는 default-deny NetworkPolicy 의 핵심 두 필드는? 적용 후 DNS 가 끊기는 이유와 해결책은?</summary>
+
+```yaml
+spec:
+  podSelector: {}                  # namespace 의 모든 Pod 선택
+  policyTypes: [Ingress, Egress]   # 두 방향 모두 차단
+```
+`podSelector: {}` + 두 policyType 만으로 해당 namespace 전체가 격리된다. Egress 까지 막으면 Pod 가 CoreDNS(kube-system, UDP/TCP 53)로 못 나가 이름 해석이 전부 실패한다. 별도 allow-dns 정책으로 `kube-system` 의 DNS 로 나가는 53 포트 Egress 를 열어 줘야 한다. 정책은 화이트리스트(허용)만 더해지며, 한 Pod 에 여러 정책이 걸리면 합집합으로 허용된다.
+</details>
+
+<details>
+<summary><b>Q2.</b> kube-apiserver 에 감사 로그(audit)를 켜려면 매니페스트에 추가할 4개 플래그와 1쌍의 볼륨은? 적용이 안 먹으면 가장 먼저 볼 것은?</summary>
+
+`--audit-policy-file`, `--audit-log-path`, (선택) `--audit-log-maxage`, `--audit-log-maxbackup` 를 추가하고, 정책 파일 경로와 로그 출력 경로를 각각 hostPath **volume + volumeMount** 로 마운트한다. 정적 파드라 매니페스트 저장 즉시 kubelet 이 재시작한다. 안 먹으면 `sudo crictl ps | grep apiserver` 로 재시작 여부를, 그래도 안 뜨면 `sudo journalctl -u kubelet` 와 `/var/log/pods/...apiserver...` 로그로 YAML 문법/경로 오류를 본다. **수정 전 매니페스트 백업은 필수** — 문법 오류 시 API 서버가 안 떠 클러스터 전체가 먹통이 된다.
+</details>
+
+<details>
+<summary><b>Q3.</b> Secret 을 etcd 에 평문이 아닌 암호화로 저장하려면? 이미 저장된 기존 Secret 도 암호화하려면 추가로 무엇을 하나?</summary>
+
+`EncryptionConfiguration` 파일(`aescbc`/`secretbox` 등 provider 지정)을 만들고 apiserver 에 `--encryption-provider-config` 로 연결한다. resources 목록 첫 provider 가 쓰기에 사용된다. 기존 Secret 은 평문 그대로 남아 있으므로 `kubectl get secrets -A -o json | kubectl replace -f -` 로 전부 다시 써서 재암호화한다. 검증은 노드에서 `ETCDCTL_API=3 etcdctl get /registry/secrets/<ns>/<name>` 출력 앞부분이 `k8s:enc:aescbc:...` 로 나오는지로 한다.
+</details>
+
+<details>
+<summary><b>Q4.</b> Pod Security Admission(PSA)의 3개 레벨과 3개 모드는? PSP 대비 무엇이 바뀌었나?</summary>
+
+레벨: `privileged`(무제한) / `baseline`(알려진 권한상승 차단) / `restricted`(강화 모범사례). 모드: `enforce`(거부) / `audit`(감사로그만) / `warn`(경고만). namespace 라벨 `pod-security.kubernetes.io/enforce=restricted` 형태로 적용한다. PSP(1.25 제거)는 RBAC 바인딩이 복잡하고 "허용/거부 정책을 직접 작성"해야 했는데, PSA 는 표준 레벨 3개를 namespace 라벨 한 줄로 적용하는 빌트인 admission 이다. 더 세밀한 정책이 필요하면 Kyverno/Gatekeeper(OPA)로 보강한다.
+</details>
+
+<details>
+<summary><b>Q5.</b> 신뢰할 수 없는 워크로드를 커널 격리하려면 gVisor(runsc)를 어떻게 연결하나? 일반 런타임과 무엇이 다른가?</summary>
+
+노드에 runsc 를 설치하고 containerd 설정에 `runsc` 런타임 핸들러를 등록한 뒤, `RuntimeClass`(handler: runsc) 를 만들고 Pod 의 `spec.runtimeClassName: gvisor` 로 지정한다. 일반 컨테이너는 호스트 커널 syscall 을 그대로 호출하지만, gVisor 는 사용자공간 커널(Sentry)이 syscall 을 가로채 대행해 커널 공격면을 줄인다. 검증: gVisor Pod 안에서 `dmesg` 가 "Starting gVisor..." 를 출력하고 `uname -r` 커널 버전이 호스트와 다르다. 트레이드오프는 syscall 대행 오버헤드로 인한 성능 저하다.
+</details>
+
+<details>
+<summary><b>Q6.</b> Falco 가 "셸이 컨테이너에서 실행됨"이나 "/etc/shadow 읽기"를 탐지하는 원리는? 규칙은 어디서 바꾸나?</summary>
+
+Falco 는 커널의 syscall 스트림을 수집해(modern eBPF 프로브 또는 커널 모듈) 규칙과 매칭한다. 예: `Terminal shell in container`, `Read sensitive file untrusted` 규칙이 각각 셸 실행·민감파일 읽기 syscall 패턴에 매칭된다. 규칙은 `/etc/falco/falco_rules.yaml`(기본)과 `falco_rules.local.yaml`(사용자 오버라이드)에서 condition/output/priority 로 정의한다. 출력은 stderr/파일/gRPC 로 보내 Falcosidekick 등으로 알림을 연동한다.
+</details>
+
+## 더 읽을거리
+
+- [CKS Curriculum (공식 시험 범위 v1.34)](https://github.com/cncf/curriculum) — 6개 도메인 비중
+- [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) · [PSA로 적용](https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-namespace-labels/)
+- [Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/) — default-deny·DNS 허용 패턴
+- [Encrypting Secret Data at Rest](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/) — EncryptionConfiguration
+- [Auditing](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/) — audit policy/backend
+- [Runtime Class](https://kubernetes.io/docs/concepts/containers/runtime-class/) · [gVisor](https://gvisor.dev/docs/) · [Falco Rules](https://falco.org/docs/rules/)
+- [Trivy 문서](https://aquasecurity.github.io/trivy/) — 이미지·SBOM 스캔

@@ -1545,7 +1545,7 @@ D) 컨테이너 이미지를 빌드하는 도구이다
 
 **정답: B) Kubernetes CRI를 구현한 경량 컨테이너 런타임으로, OCI 호환 런타임을 사용한다**
 
-CRI-O는 Kubernetes 전용으로 설계된 경량 컨테이너 런타임이다. containerd와 마찬가지로 CRI(Container Runtime Interface)를 구현하며, OCI(Open Container Initiative) 호환 런타임(runc, crun)을 사용하여 실제 컨테이너를 실행한다. containerd가 Docker 생태계에서 분리된 범용 런타임인 반면, CRI-O는 처음부터 Kubernetes만을 위해 설계되어 불필요한 기능이 없다. Red Hat OpenShift에서 기본 런타임으로 사용되지만, 다른 리눅스 배포판에서도 동작한다. CNCF Incubating 프로젝트이다.
+CRI-O는 Kubernetes 전용으로 설계된 경량 컨테이너 런타임이다. containerd와 마찬가지로 CRI(Container Runtime Interface)를 구현하며, OCI(Open Container Initiative) 호환 런타임(runc, crun)을 사용하여 실제 컨테이너를 실행한다. containerd가 Docker 생태계에서 분리된 범용 런타임인 반면, CRI-O는 처음부터 Kubernetes만을 위해 설계되어 불필요한 기능이 없다. Red Hat OpenShift에서 기본 런타임으로 사용되지만, 다른 리눅스 배포판에서도 동작한다. CNCF Graduated 프로젝트이다(2023년 7월 졸업).
 </details>
 
 ---
@@ -2156,7 +2156,7 @@ D) 둘 다 오직 runc만 하위 런타임으로 사용할 수 있다
 
 **정답: B) 둘 다 CRI를 구현한 OCI 호환 컨테이너 런타임이다**
 
-containerd(CNCF Graduated)와 CRI-O(CNCF Incubating)는 모두 kubelet과 CRI(gRPC) 프로토콜로 통신하며, OCI(Open Container Initiative) 호환 런타임(runc, crun, gVisor의 runsc, Kata의 kata-runtime)을 하위 런타임으로 사용한다. 차이점: containerd는 Docker에서 분리된 범용 런타임으로, Docker CLI와도 호환되고 Kubernetes 외의 환경에서도 사용 가능하다. CRI-O는 Kubernetes 전용으로 설계되어, 불필요한 기능이 없고 코드가 간결하다. 둘 다 이미지 빌드 기능은 포함하지 않는다(이미지 빌드는 Buildah, kaniko, BuildKit 등이 담당).
+containerd(CNCF Graduated)와 CRI-O(CNCF Graduated)는 모두 kubelet과 CRI(gRPC) 프로토콜로 통신하며, OCI(Open Container Initiative) 호환 런타임(runc, crun, gVisor의 runsc, Kata의 kata-runtime)을 하위 런타임으로 사용한다. 차이점: containerd는 Docker에서 분리된 범용 런타임으로, Docker CLI와도 호환되고 Kubernetes 외의 환경에서도 사용 가능하다. CRI-O는 Kubernetes 전용으로 설계되어, 불필요한 기능이 없고 코드가 간결하다. 둘 다 이미지 빌드 기능은 포함하지 않는다(이미지 빌드는 Buildah, kaniko, BuildKit 등이 담당).
 </details>
 
 ---

@@ -899,7 +899,7 @@ Linux Kernel
 | 런타임 | 수준 | 설명 | CNCF |
 |--------|------|------|------|
 | **containerd** | 고수준 | Docker에서 분리, 가장 널리 사용 | 졸업 |
-| **CRI-O** | 고수준 | Red Hat 주도, K8s 전용 경량 런타임 | 인큐베이팅 |
+| **CRI-O** | 고수준 | Red Hat 주도, K8s 전용 경량 런타임 | 졸업(2023) |
 | **runc** | 저수준 | OCI 참조 구현체, containerd/CRI-O 내부에서 사용 | - |
 | **gVisor (runsc)** | 저수준 | Google, 보안 강화 런타임 (커널 샌드박스) | - |
 | **Kata Containers** | 저수준 | 경량 VM 기반 런타임 (강한 격리) | - |

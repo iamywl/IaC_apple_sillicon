@@ -985,7 +985,7 @@ kubectl exec <pod-name> -- ip addr      # NET 네임스페이스: Pod IP 출력
 컨테이너 런타임(runc)이 컨테이너를 생성할 때 `clone()` 시스템 콜에 `CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWIPC | CLONE_NEWUTS` 등의 플래그를 전달하여 새로운 네임스페이스를 생성한다. PID 네임스페이스 안에서 컨테이너의 첫 번째 프로세스는 PID 1이 되고, 호스트의 다른 프로세스를 볼 수 없다. NET 네임스페이스는 독립된 네트워크 스택(인터페이스, 라우팅 테이블, iptables)을 제공한다. cgroups와 결합하여 namespace는 "무엇을 볼 수 있는가"를, cgroups는 "얼마나 사용할 수 있는가"를 제어한다.
 
 **CNCF 생태계 맥락:**
-Linux namespace와 cgroups는 모든 컨테이너 기술의 기반이다. containerd(CNCF 졸업)와 CRI-O(CNCF 인큐베이팅)는 내부적으로 runc를 사용하여 이 커널 기능을 활용한다. gVisor(Google)는 사용자 공간에서 별도의 커널을 실행하여 더 강한 격리를 제공하고, Kata Containers는 경량 VM을 사용하여 하드웨어 수준 격리를 제공한다. Falco(CNCF 인큐베이팅)는 커널 수준 시스템 콜을 모니터링하여 컨테이너 런타임 보안을 강화한다.
+Linux namespace와 cgroups는 모든 컨테이너 기술의 기반이다. containerd(CNCF 졸업)와 CRI-O(CNCF 졸업)는 내부적으로 runc를 사용하여 이 커널 기능을 활용한다. gVisor(Google)는 사용자 공간에서 별도의 커널을 실행하여 더 강한 격리를 제공하고, Kata Containers는 경량 VM을 사용하여 하드웨어 수준 격리를 제공한다. Falco(CNCF 졸업)는 커널 수준 시스템 콜을 모니터링하여 컨테이너 런타임 보안을 강화한다.
 
 **등장 배경:**
 VM은 하드웨어 가상화로 완전한 격리를 제공하지만 무겁고 느리다. 리눅스 커널의 namespace(2002년 도입)와 cgroups(2006년 도입)는 OS 수준에서 프로세스를 격리하고 리소스를 제한하는 경량 메커니즘이다. Docker(2013년)가 이 커널 기능을 조합하여 사용하기 쉬운 컨테이너 도구로 만들었고, 이것이 현재 컨테이너 생태계의 기반이 되었다.
@@ -1031,7 +1031,7 @@ crane manifest nginx:latest | jq '.mediaType'
 OCI Runtime Spec에 따르면, 컨테이너는 "파일시스템 번들"과 "config.json"으로 구성된다. config.json에는 실행할 프로세스, 환경 변수, namespace, cgroups 설정이 포함된다. runc가 이 config.json을 읽고 `clone()` 시스템 콜로 격리된 프로세스를 생성한다. OCI Image Spec은 이미지를 레이어 기반으로 정의하여, 공통 레이어를 여러 이미지가 공유할 수 있게 한다. Distribution Spec은 /v2/<name>/manifests/<reference> 같은 REST API 경로를 정의한다.
 
 **CNCF 생태계 맥락:**
-OCI는 Linux Foundation 산하 프로젝트로, CNCF와 긴밀히 협력한다. CNCF 졸업 프로젝트인 containerd와 인큐베이팅 프로젝트인 CRI-O 모두 OCI 사양을 준수한다. Harbor(CNCF 졸업)는 OCI Distribution Spec을 구현하는 레지스트리이다. ORAS(OCI Registry As Storage)는 OCI 레지스트리에 컨테이너 이미지 외에 Helm Chart, WASM 모듈 등 임의의 아티팩트를 저장하는 프로젝트이다.
+OCI는 Linux Foundation 산하 프로젝트로, CNCF와 긴밀히 협력한다. CNCF 졸업 프로젝트인 containerd와 CRI-O 모두 OCI 사양을 준수한다. Harbor(CNCF 졸업)는 OCI Distribution Spec을 구현하는 레지스트리이다. ORAS(OCI Registry As Storage)는 OCI 레지스트리에 컨테이너 이미지 외에 Helm Chart, WASM 모듈 등 임의의 아티팩트를 저장하는 프로젝트이다.
 
 **등장 배경:**
 Docker가 사실상 표준이었던 시절, 컨테이너 이미지와 런타임 형식이 Docker에 종속되어 있었다. 벤더 독립적인 표준이 없으면 생태계 발전이 제한된다. OCI는 2015년 Docker, Google, CoreOS, Red Hat 등이 참여하여 설립되었으며, 컨테이너 런타임과 이미지의 개방형 표준을 정의하여 다양한 구현체 간 호환성을 보장한다. 오케스트레이션은 OCI의 범위가 아니며 Kubernetes가 담당하는 영역이다.
@@ -1072,14 +1072,14 @@ crictl info | head -5
 
 **오답 분석:**
 - A) Docker를 직접 컨테이너 런타임으로 사용할 수 있다: v1.24부터 dockershim이 제거되어 불가하다. Mirantis가 외부 프로젝트 cri-dockerd를 제공하여 Docker를 CRI 호환으로 사용할 수 있지만, 이는 공식 Kubernetes가 아닌 별도 어댑터이다.
-- C) containerd와 CRI-O 모두 사용할 수 없다: 정반대이다. containerd(CNCF 졸업)와 CRI-O(CNCF 인큐베이팅)가 v1.24 이후 주요 CRI 호환 런타임이다.
+- C) containerd와 CRI-O 모두 사용할 수 없다: 정반대이다. containerd(CNCF 졸업)와 CRI-O(CNCF 졸업)가 v1.24 이후 주요 CRI 호환 런타임이다.
 - D) Docker만 유일하게 지원되는 런타임이다: 정반대이다. Docker(dockershim)가 제거된 것이다.
 
 **내부 동작 원리:**
 v1.24 이전에 kubelet은 내장된 dockershim을 통해 Docker Engine과 통신했다. 호출 흐름은 kubelet → dockershim → Docker Engine → containerd → runc였다. dockershim 제거 후에는 kubelet → CRI → containerd(또는 CRI-O) → runc로 단순화되었다. Docker Engine이라는 중간 계층이 제거되어 오버헤드가 줄었다. Docker로 빌드한 이미지는 OCI Image Spec을 준수하므로 containerd/CRI-O에서 그대로 실행된다.
 
 **CNCF 생태계 맥락:**
-containerd는 Docker에서 분리된 CNCF 졸업 프로젝트이다. CRI-O는 Kubernetes 전용으로 설계된 CNCF 인큐베이팅 프로젝트이다. 이미지 빌드 시에는 Docker 없이도 Buildah, kaniko, BuildKit 등을 사용할 수 있다. Podman은 Docker CLI 호환 도구로, 데몬 없이(daemonless) 컨테이너를 관리한다.
+containerd는 Docker에서 분리된 CNCF 졸업 프로젝트이다. CRI-O는 Kubernetes 전용으로 설계된 CNCF 졸업 프로젝트이다(2023년 7월 졸업). 이미지 빌드 시에는 Docker 없이도 Buildah, kaniko, BuildKit 등을 사용할 수 있다. Podman은 Docker CLI 호환 도구로, 데몬 없이(daemonless) 컨테이너를 관리한다.
 
 **등장 배경:**
 Docker는 컨테이너 대중화에 기여했지만, Kubernetes 런타임으로 사용하기에는 불필요한 기능(Docker CLI, Docker Compose, swarm 등)이 많았다. kubelet → Docker → containerd → runc라는 긴 호출 체인은 성능 오버헤드와 디버깅 복잡도를 높였다. CRI(Container Runtime Interface) 표준을 통해 kubelet이 containerd/CRI-O와 직접 통신하게 하고, Docker 의존성을 제거하는 것이 목표였다. dockershim은 Kubernetes 코어 코드에 Docker 전용 로직이 포함되는 유지보수 부담도 있었다.
@@ -1130,7 +1130,7 @@ crictl images
 CRI는 protobuf로 정의된 gRPC 서비스이다. RuntimeService는 `RunPodSandbox()`, `CreateContainer()`, `StartContainer()`, `StopContainer()`, `RemoveContainer()` 등의 RPC를 정의한다. kubelet이 Pod를 실행할 때의 호출 순서는: (1) `RunPodSandbox()`로 Pod의 네트워크 네임스페이스 생성 (2) `CreateContainer()`로 컨테이너 생성 (3) `StartContainer()`로 컨테이너 시작이다. ImageService는 `PullImage()`, `ListImages()`, `RemoveImage()` 등을 제공한다.
 
 **CNCF 생태계 맥락:**
-CRI는 Kubernetes SIG-Node에서 정의하고 관리한다. CRI 호환 런타임으로는 containerd(CNCF 졸업), CRI-O(CNCF 인큐베이팅)가 대표적이다. Kubernetes의 3대 플러그인 인터페이스인 CRI(런타임), CNI(네트워크), CSI(스토리지)는 각각 독립적인 표준으로, CNCF 생태계의 다양한 구현체가 이 인터페이스를 통해 Kubernetes와 통합된다.
+CRI는 Kubernetes SIG-Node에서 정의하고 관리한다. CRI 호환 런타임으로는 containerd(CNCF 졸업), CRI-O(CNCF 졸업)가 대표적이다. Kubernetes의 3대 플러그인 인터페이스인 CRI(런타임), CNI(네트워크), CSI(스토리지)는 각각 독립적인 표준으로, CNCF 생태계의 다양한 구현체가 이 인터페이스를 통해 Kubernetes와 통합된다.
 
 **등장 배경:**
 초기 Kubernetes는 Docker에 직접 의존했다. 다른 런타임(rkt 등)을 지원하려면 kubelet 코드에 런타임별 로직을 추가해야 했다. CRI는 이 문제를 해결하기 위해 v1.5에서 도입된 표준 인터페이스이다. 런타임 구현체가 CRI만 준수하면 kubelet 코드 변경 없이 사용할 수 있어, 런타임 생태계의 혁신을 촉진한다.

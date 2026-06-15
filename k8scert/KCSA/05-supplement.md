@@ -244,6 +244,22 @@ Kyverno가 방어하는 위험은 OPA Gatekeeper와 유사하지만, 추가로 �
 | **generate** | 특정 리소스 생성 시 다른 리소스를 자동 생성한다(예: NetworkPolicy 자동 생성). |
 | **verifyImages** | 컨테이너 이미지의 서명(signature)과 증명(attestation)을 검증한다. |
 
+#### 실측 — validate 규칙으로 `:latest` 태그 거부 (cks 랩)
+
+`disallow-latest-tag` ClusterPolicy(`validationFailureAction: Enforce`)를 적용한 cks 클러스터에서 `:latest` 이미지로 Pod를 만들면 admission 단계에서 거부된다.
+
+```bash
+kubectl run bad-pod --image=nginx:latest -n cks-demo
+```
+
+![Kyverno가 :latest 태그 Pod 생성을 거부 (cks 실측)](images/kcsa-kyverno-latest-deny.png)
+
+거부 메시지는 `admission webhook "validate.kyverno.svc-fail" denied the request` 와 정책에 정의한 message를 그대로 보여준다. 즉 위반 리소스는 클러스터에 **생성되기 전에** 차단된다(런타임이 아니라 생성 시점 강제). 적용된 정책과 Kyverno 컨트롤러 상태는 다음과 같다.
+
+![적용된 ClusterPolicy 목록 (cks 실측)](images/kcsa-kyverno-policy.png)
+
+![kyverno 네임스페이스의 admission/background/cleanup/reports 컨트롤러 Pod (cks 실측)](images/kcsa-kyverno-pods.png)
+
 #### 이미지 검증(verifyImages) 상세
 
 Kyverno의 `verifyImages` 규칙은 cosign 또는 Notary로 서명된 이미지의 무결성을 검증한다.

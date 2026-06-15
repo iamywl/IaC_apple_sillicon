@@ -907,6 +907,52 @@ kubectl top nodes
 
 ---
 
+## ✅ 자가점검
+
+<details>
+<summary>1. CNCF 프로젝트 성숙도 3단계는?</summary>
+
+**Sandbox → Incubating → Graduated** (탈락 시 Archived). Graduated는 프로덕션 검증·거버넌스·다수 채택을 충족한 최고 단계다(예: Kubernetes·Prometheus·Cilium·Argo·Flux·OpenTelemetry·Kyverno). 응시 직전 cncf.io/projects에서 최신 상태를 확인한다.
+</details>
+
+<details>
+<summary>2. Knative의 Scale-to-Zero란?</summary>
+
+요청이 없으면 Pod를 **0개까지** 축소하고, 요청이 오면 자동으로 다시 띄우는 서버리스 동작이다. 유휴 비용을 없애지만, 0에서 깨어날 때 **cold start** 지연이 생기는 트레이드오프가 있다. HPA의 최소 1개와 대비된다.
+</details>
+
+<details>
+<summary>3. 불변 인프라(immutable infrastructure)란?</summary>
+
+배포된 서버/컨테이너를 **수정하지 않고 통째로 교체**하는 방식이다. 컨테이너 이미지를 새로 빌드해 롤아웃하며, 실행 중인 인스턴스에 직접 패치하지 않는다. 환경 드리프트·"눈송이 서버"를 없애고 롤백을 단순화한다.
+</details>
+
+<details>
+<summary>4. 12-Factor App에서 설정(config)은 어떻게 다루라고 하나?</summary>
+
+설정을 **환경변수**로 외부화하고 코드와 분리한다(III. Config). 그래서 같은 이미지를 dev/staging/prod에 그대로 쓰고 환경변수만 바꾼다. K8s에서는 ConfigMap/Secret이 이 역할을 한다.
+</details>
+
+<details>
+<summary>5. HPA·VPA·Cluster Autoscaler의 차이는?</summary>
+
+**HPA**=Pod 개수를 늘림/줄임(수평), **VPA**=Pod의 requests/limits를 조정(수직), **Cluster Autoscaler**=노드 수를 조정. HPA와 VPA는 같은 워크로드에 동시 사용 시 충돌할 수 있어 주의한다.
+</details>
+
+## 시험 팁
+
+- CNCF 성숙도 **Sandbox/Incubating/Graduated**와 대표 Graduated 프로젝트를 외운다.
+- Knative=**Scale-to-Zero**(cold start 트레이드오프). 불변 인프라=**교체 ≠ 수정**.
+- Autoscaling **HPA(수평)/VPA(수직)/CA(노드)** 3종 구분.
+
+## 더 읽을거리
+
+- [CNCF Landscape](https://landscape.cncf.io/) · [CNCF Projects](https://www.cncf.io/projects/)
+- [Knative](https://knative.dev/docs/) · [12-Factor App](https://12factor.net/)
+- [Kubernetes 공식 — Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/)
+
+---
+
 ## 내일 학습 예고
 
 > Day 7에서는 Cloud Native Observability를 학습한다. 관측성의 3대 축(Metrics, Logs, Traces)과 Prometheus, Grafana, Loki, Jaeger, OpenTelemetry를 다룬다.

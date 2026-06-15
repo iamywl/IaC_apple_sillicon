@@ -389,7 +389,21 @@ kubectl apply -f sandboxed-pod.yaml
 kubectl get pod sandboxed-pod
 ```
 
-gVisor가 설치된 노드라면 `Running` 상태가 된다. 미설치 상태라면 `Pending`으로 남고 `kubectl describe pod sandboxed-pod`의 Events에 `Failed to create pod sandbox: ... handler "runsc" not found` 메시지가 찍힌다. CKS 시험 환경에는 gVisor가 미리 설치되어 있으므로, 시험에서는 RuntimeClass YAML을 apply한 뒤 Pod이 Running이 되는 것을 확인하면 된다. 이 dev 클러스터에 gVisor가 설치되어 있지 않으면 캡처 불가 — (미캡처).
+gVisor가 설치된 노드라면 `Running` 상태가 된다. 미설치 상태라면 `Pending`으로 남고 `kubectl describe pod sandboxed-pod`의 Events에 `Failed to create pod sandbox: ... no runtime for "runsc" is configured` 메시지가 찍힌다. CKS 시험 환경에는 gVisor가 미리 설치되어 있으므로, 시험에서는 RuntimeClass YAML을 apply한 뒤 Pod이 Running이 되는 것을 확인하면 된다.
+
+**실측 (cks 랩, gVisor 설치):** RuntimeClass `gvisor`(handler=`runsc`)를 만들고 Pod에 `runtimeClassName: gvisor`를 지정했다.
+
+![RuntimeClass gvisor — handler=runsc (cks 실측)](images/cks-gvisor-runtimeclass.png)
+
+격리가 실제로 적용됐는지는 **Pod 안에서 `dmesg`를 확인**하면 결정적이다. runc(호스트 커널)라면 호스트 커널 로그가 나오지만, gVisor Pod는 **gVisor 자체 커널(Sentry)의 부팅 메시지**가 나온다.
+
+```bash
+kubectl exec gvisor-test -n cks-demo -- dmesg | head -8
+```
+
+![gVisor Pod의 dmesg — "Starting gVisor..." 등 Sentry 커널 메시지 (cks 실측)](images/cks-gvisor-dmesg.png)
+
+`Starting gVisor...`로 시작하는 위트 있는 부팅 로그가 보이면 컨테이너가 호스트 커널이 아니라 gVisor 사용자 공간 커널 위에서 실행 중이라는 증거다. (참고: 노드 containerd가 2.x(config v3)면 `runsc install`이 런타임을 구버전 경로에 등록해 인식되지 않을 수 있다. `[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]`에 `runtime_type = 'io.containerd.runsc.v1'`을 추가해야 한다 — codex/BUG-REPORT-cks-build.md BUG 4 참조.)
 
 ### 문제 5. OPA Gatekeeper - 허용된 레지스트리
 

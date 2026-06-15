@@ -77,6 +77,19 @@ Failed to restart containerd.service: Unit containerd.service not found.
 
 ---
 
+## BUG 4 — gVisor(runsc)가 containerd 2.x(config v3)에서 미인식 (MED) — ✅ 수정됨
+
+**증상:** cks 노드에 runsc 바이너리 설치 + `runsc install` 후 RuntimeClass `gvisor`(handler=runsc) Pod를 만들면 `FailedCreatePodSandBox: no runtime for "runsc" is configured`로 ContainerCreating에서 멈춤.
+
+**근본 원인:** cks 노드의 containerd는 **2.2.1, config `version = 3`** 이다. v3 schema의 CRI 런타임은 `[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.*]` 아래에 정의되는데, `runsc install`은 구버전 경로(`io.containerd.grpc.v1.cri`)에 등록해 CRI(v1.runtime)가 인식하지 못했다.
+
+**수정:** config.toml에 v3 위치로 runsc 런타임을 추가:
+```toml
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
+  runtime_type = 'io.containerd.runsc.v1'
+```
+containerd 재시작 후 `runtimeClassName: gvisor` Pod 정상 기동. (`runsc install`의 containerd 2.x 미대응이 원인이므로, 향후 자동화 시 이 v3 스탠자를 직접 주입해야 한다.)
+
 ## 요약
 | 버그 | 심각도 | 상태 | 수정 위치 |
 |:--|:--:|:--|:--|

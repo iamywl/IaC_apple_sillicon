@@ -638,7 +638,9 @@ CILIUM_POD=$(kubectl --context=dev get pods -n kube-system -l k8s-app=cilium -o 
 kubectl --context=dev exec -n kube-system $CILIUM_POD -- cilium status | grep KubeProxy
 ```
 
-**검증 — 기대 출력:** `KubeProxyReplacement: True [...]`처럼 표시되면 Cilium이 kube-proxy 역할을 eBPF로 대체하고 있다는 뜻이다. 실측 화면은 §4① 기준의 터미널 캡처로 확인한다(미캡처).
+**검증 — 기대 출력:** `KubeProxyReplacement: True [...]`처럼 표시되면 Cilium이 kube-proxy 역할을 eBPF로 대체하고 있다는 뜻이다.
+
+![Cilium KubeProxyReplacement: True (dev 실측)](images/kcna-cilium-kubeproxy.png)
 
 > **참고 — 일반 kubeadm 클러스터의 kube-proxy:** 아래 명령은 kube-proxy를 사용하는 *일반* 클러스터에서의 확인 방법이다. **이 dev 클러스터에서는 kube-proxy DaemonSet/ConfigMap이 없으므로 `Error from server (NotFound)` 또는 `No resources found`가 정상**이다. KCNA 시험 대비 개념 학습용으로만 참고한다.
 > ```bash

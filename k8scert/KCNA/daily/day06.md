@@ -302,7 +302,7 @@ flowchart TB
   subgraph CP["Control Plane (제어부) — 두뇌"]
     ctrl["istiod(Istio) 또는 linkerd-control\n설정·정책 관리 / 인증서 발급 / 서비스 디스커버리"]
   end
-  ctrl -->|설정 전파 (xDS API)| pa
+  ctrl -->|"설정 전파 (xDS API)"| pa
   ctrl --> pb
   subgraph DP["Data Plane (데이터부) — 실행"]
     subgraph pa["Pod A"]

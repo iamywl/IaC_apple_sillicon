@@ -1261,7 +1261,7 @@ EncryptionConfiguration은 API 서버가 etcd에 데이터를 쓰기 전에 암�
 flowchart TB
   create["kubectl create secret"] --> api[API 서버 수신]
   api -->|EncryptionConfiguration\n첫 번째 provider 로 암호화| enc[암호화]
-  enc -->|"접두사 k8s:enc:&lt;provider&gt;:v1:&lt;key&gt;:"| etcd[(etcd 저장)]
+  enc -->|"접두사 k8s:enc:PROVIDER:v1:KEY:"| etcd[(etcd 저장)]
   get["kubectl get secret"] --> api2[API 서버]
   api2 -->|etcd 에서 읽고 복호화| etcd
   api2 --> ret[평문 반환]

@@ -22,13 +22,23 @@
 
 ## 추천 취득 순서
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  subgraph P1["Phase 1 (입문)"]
+    kcna["KCNA\nK8s 기초 이해"]
+  end
+  subgraph P2["Phase 2 (실기)"]
+    cka["CKA\n클러스터 관리"] --- ckad["CKAD\n앱 개발"]
+  end
+  subgraph P3["Phase 3 (보안)"]
+    kcsa["KCSA\n보안 이론"] --- cks["CKS\n보안 실기"]
+  end
+  kcna --> cka
+  ckad --> kcsa
 ```
-Phase 1 (입문)          Phase 2 (실기)           Phase 3 (보안)
-┌──────┐               ┌──────┐  ┌──────┐       ┌──────┐  ┌──────┐
-│ KCNA │ ──────────────▶│ CKA  │──│ CKAD │──────▶│ KCSA │──│ CKS  │
-└──────┘               └──────┘  └──────┘       └──────┘  └──────┘
- K8s 기초 이해          클러스터 관리  앱 개발     보안 이론   보안 실기
-```
+
+_그림. 추천 취득 순서: KCNA → CKA → CKAD → KCSA → CKS._
 
 - **KCNA → CKA → CKAD → KCSA → CKS** 순서를 권장한다.
 - CKA와 CKAD는 70% 이상 내용이 겹치므로 연속 취득이 효율적이다.

@@ -248,9 +248,24 @@ kubectl delete deploy web
 
 이 프로젝트의 tart-infra를 활용하면 로컬 Mac에서 실제 멀티클러스터 K8s 환경으로 실습할 수 있다.
 
+### 공부할 때 매번 하는 일 (요약 — 먼저 읽기)
+
+헷갈리기 쉬운 점: **"설치"와 "기동"은 다르다. 공부할 때마다 클러스터를 새로 세팅하지 않는다.**
+
+| 상황 | 명령 | 빈도 |
+|------|------|------|
+| 최초 환경 구축(설치) | `./scripts/install.sh` (VM 생성 + kubeadm + CNI) | **딱 1회** |
+| 공부 시작 — VM이 꺼져 있을 때 | `./scripts/boot.sh` (기동 + IP 드리프트 자동 복구) | VM이 꺼졌을 때만 |
+| VM을 안 껐을 때 | (아무것도 안 함) 바로 `kubectl` | — |
+| 깨졌을 때 깨끗이 다시 | `./scripts/reset-cluster.sh <클러스터>` | 필요 시 |
+
+- **설치는 최초 1회뿐**이다. 이후엔 클러스터를 다시 만들 필요가 없다.
+- VM은 Mac을 재부팅/로그아웃하거나 `shutdown-all.sh`를 돌리면 꺼진다. 그때만 **`boot.sh` 한 번**이면 IP 드리프트 복구까지 끝난다.
+- 즉 일상 루틴은 **"꺼져 있으면 `boot.sh`, 켜져 있으면 바로 `kubectl`"** 이다.
+
 ### 이 환경의 동작 방식 (먼저 읽기)
 
-- **전부 tart 기반이다.** 별도 도구(Docker/kind) 없이, tart VM 10대(`platform`·`dev`·`staging`·`prod`)가 곧 실습용 K8s 노드다. 생성·기동·종료·IP 조회 모두 `tart` 명령을 감싼 `scripts/`로 한다. SSH 접속도 `ssh dev-master`의 `ProxyCommand`가 접속 시점에 `tart ip`로 IP를 조회하므로, **재부팅으로 IP가 바뀌어도 그대로 동작한다.**
+- **전부 tart 기반이다.** 별도 도구(Docker/kind) 없이, tart VM 12대(`platform`·`dev`·`staging`·`prod`·`cks`)가 곧 실습용 K8s 노드다. 생성·기동·종료·IP 조회 모두 `tart` 명령을 감싼 `scripts/`로 한다. SSH 접속도 `ssh dev-master`의 `ProxyCommand`가 접속 시점에 `tart ip`로 IP를 조회하므로, **재부팅으로 IP가 바뀌어도 그대로 동작한다.**
 - **재부팅 후에는 반드시 `./scripts/boot.sh`로 올린다.** kubeadm 클러스터는 최초 init 시점 IP에 묶여 있는데 tart는 재부팅마다 IP를 바꾼다(IP 드리프트). `boot.sh`는 VM 기동 후 **IP 드리프트를 자동 복구**한다 — apiserver 인증서·kubeconfig 재생성(`boot/02-wait-clusters.sh`)에 더해, `boot/`에 빠져 있던 나머지 결함까지 `fix-cluster-ip-drift.sh`(Phase 2.5)가 멱등 교정한다. `tart run`으로 VM만 켜면 복구가 안 돼 `kubectl`이 `i/o timeout` 난다.
 
   ```bash
@@ -269,6 +284,7 @@ kubectl delete deploy web
   # ※ 단일 클러스터 기동 후에도 IP 드리프트 복구가 필요하면 ./scripts/boot.sh 를 한 번 돌린다.
   ```
 - **파괴적 실습은 `dev`/`staging`에서만.** `platform`(Prometheus·Grafana·ArgoCD·Jenkins 상주)·`prod`는 읽기 위주로 둔다.
+- **`cks`는 CKS/KCSA 보안 실습 전용 랩이다.** Falco·Kyverno·Trivy·gVisor 같은 보안 도구를 설치해 두고 마음껏 부수는 용도로, 다른 4개 클러스터와 분리돼 있어 일반 실습에 영향을 주지 않는다. 처음 만들 때는 `./scripts/reset-cluster.sh --yes cks`(이후 `boot.sh`가 함께 기동). 노드는 `cks-master`·`cks-worker1`, kubeconfig는 `kubeconfig/cks.yaml`.
 
 ### 클러스터가 깨졌을 때 — 복구 또는 재생성
 

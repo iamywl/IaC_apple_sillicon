@@ -3686,9 +3686,9 @@ kubectl --context=dev get hpa -n demo
 kubectl --context=dev describe hpa nginx-web -n demo
 ```
 
-**검증 — 기대 출력:**
+**검증 — 실측 출력:** dev 클러스터 demo 의 `nginx-web` HPA describe 다(metrics-server 동작). `Reference: Deployment/nginx-web`, `Metrics: resource cpu ... 0%/50%`, `Min/Max replicas: 3/6`, `Deployment pods: 3 current / 3 desired`, 그리고 Conditions 의 `ScalingActive: True (ValidMetricFound)` 가 보인다.
 
-(미캡처)
+![dev demo nginx-web HPA describe 실측(metrics-server)](images/kcna-hpa-describe.png)
 
 **Step 3: 부하 생성으로 스케일아웃 유도**
 

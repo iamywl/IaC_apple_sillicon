@@ -489,7 +489,9 @@ kubectl top pod monitored-app
 kubectl get pod monitored-app -o jsonpath='{.status.containerStatuses[0].lastState}'
 ```
 
-> (미캡처) 위 명령들의 실제 출력은 dev 클러스터에서 직접 실행한 터미널 스크린샷으로 대체해야 한다. `kubectl top`의 수치(CPU·Memory)와 `lastState` JSON은 실제 실행 시 확인 가능하다.
+아래는 dev 에서 메모리 64Mi 로 제한한 Pod 가 반복 종료(CrashLoopBackOff)된 뒤 `lastState`(이전 컨테이너 종료 정보) JSON 을 조회한 실측이다. `terminated` 의 `reason`·`exitCode`·`finishedAt` 이 보인다(이 캡처는 `reason: Error`/`exitCode 255`; 메모리 한계를 실제로 초과해 커널 cgroup 이 죽이면 `reason: OOMKilled`/`exitCode 137` 로 나타난다).
+
+![Pod lastState — 이전 컨테이너 종료 정보(reason/exitCode/finishedAt) 실측(dev)](images/ckad-laststate.png)
 
 ---
 

@@ -40,6 +40,15 @@
         { "name": "prod-worker1", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 },
         { "name": "prod-worker2", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
       ]
+    },
+    {
+      "name": "cks",
+      "pod_cidr": "10.50.0.0/16",
+      "service_cidr": "10.100.0.0/16",
+      "nodes": [
+        { "name": "cks-master", "role": "master", "cpu": 2, "memory": 4096, "disk": 20 },
+        { "name": "cks-worker1", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
+      ]
     }
   ]
 }

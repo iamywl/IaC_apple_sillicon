@@ -840,6 +840,38 @@ kubectl delete pod vol-share -n demo
 
 ---
 
+## ✅ 자가점검
+
+<details>
+<summary>1. Job/CronJob Pod 템플릿에 허용되는 restartPolicy와, Never vs OnFailure의 차이는?</summary>
+
+`Never` 또는 `OnFailure`만 허용된다(`Always`는 검증 오류). `Never`는 실패 시 **새 Pod를 생성**해 실패한 Pod가 남는다(로그 보존 유리). `OnFailure`는 kubelet이 **같은 Pod를 재시작**해 Pod 수가 늘지 않는다.
+</details>
+
+<details>
+<summary>2. completions와 parallelism의 관계는?</summary>
+
+`completions`는 성공해야 할 총 Pod 수, `parallelism`은 동시에 실행할 Pod 수다. 둘은 독립이며 `completions` 미설정 시 기본값은 1이다.
+</details>
+
+<details>
+<summary>3. CronJob의 concurrencyPolicy 3종과 각 의미는?</summary>
+
+`Allow`(동시 실행 허용, 기본), `Forbid`(이전 실행 미완 시 새 실행 건너뜀), `Replace`(이전 실행 취소 후 새로 시작). `suspend: true`는 새 Job 생성을 막을 뿐 실행 중 Pod를 종료하지 않는다.
+</details>
+
+<details>
+<summary>4. emptyDir 볼륨은 컨테이너 재시작·Pod 삭제 시 각각 어떻게 되나?</summary>
+
+emptyDir은 **Pod 생명주기**에 묶인다. 컨테이너 재시작에는 유지되지만 **Pod 삭제·재스케줄 시 사라진다**. 영속 저장은 PVC를 쓴다. 사이드카 컨테이너 간 파일 공유에 흔히 쓴다.
+</details>
+
+<details>
+<summary>5. activeDeadlineSeconds와 backoffLimit의 차이, 그리고 activeDeadlineSeconds의 위치는?</summary>
+
+`backoffLimit`은 재시도 횟수 상한(기본 6), `activeDeadlineSeconds`는 시작 후 경과 시간 상한이다. 먼저 도달하는 쪽에서 Job이 실패 처리된다. `activeDeadlineSeconds`는 **Job spec 수준**(`spec.activeDeadlineSeconds`) 필드다(Pod spec 아님).
+</details>
+
 ## 시험 팁
 
 CKAD 실기에서 이 장의 주제가 자주 나오는 함정 패턴을 정리한다.

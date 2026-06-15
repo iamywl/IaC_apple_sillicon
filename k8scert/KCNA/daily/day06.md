@@ -178,26 +178,24 @@ CNCF가 정의하는 Cloud Native의 핵심 요소:
 
 ### 3.1 비교
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph MONO["모놀리식 — 하나의 배포 단위"]
+    m["사용자·주문·결제·재고·알림·인증 모듈\n(한 프로세스에 묶임)"]
+  end
+  subgraph MICRO["마이크로서비스 — 독립 배포 단위"]
+    s1[사용자] ~~~ s2[주문] ~~~ s3[결제]
+    s4[재고] ~~~ s5[알림] ~~~ s6[인증]
+  end
 ```
-마이크로서비스 vs 모놀리식 비교
-============================================================
 
-모놀리식 아키텍처 (Monolithic):
-  +-------------------------------------+
-  |         하나의 배포 단위               |
-  |  [사용자 모듈] [주문 모듈] [결제 모듈] |
-  |  [재고 모듈] [알림 모듈] [인증 모듈]  |
-  +-------------------------------------+
-  장점: 단일 배포, 간단한 트랜잭션, 낮은 지연
-  단점: 전체 배포, 단일 장애점, 전체 스케일링
+_그림. 모놀리식은 모든 모듈이 하나의 배포 단위에 묶이고, 마이크로서비스는 각 서비스가 독립 배포·독립 확장·독립 기술 스택을 가진다._
 
-마이크로서비스 아키텍처 (Microservices):
-  [사용자] [주문] [결제] [재고] [알림] [인증]
-     ↕       ↕       ↕       ↕       ↕       ↕
-  독립 배포 / 독립 확장 / 독립 기술 스택
-  장점: 독립 배포, 장애 격리, 서비스별 스케일링
-  단점: 분산 복잡성, 네트워크 지연, 분산 트랜잭션
-```
+| 구분 | 모놀리식 | 마이크로서비스 |
+|:--|:--|:--|
+| 장점 | 단일 배포·간단한 트랜잭션·낮은 지연 | 독립 배포·장애 격리·서비스별 스케일링 |
+| 단점 | 전체 배포·단일 장애점·전체 스케일링 | 분산 복잡성·네트워크 지연·분산 트랜잭션 |
 
 ### 직접 해보기 — 마이크로서비스 vs 모놀리식 판단 (3분)
 
@@ -298,33 +296,26 @@ kubectl get pods -n demo -o name | head -1 | xargs -I{} kubectl exec {} -n demo 
 
 **xDS API**: Envoy Discovery Service의 약자로, Control Plane이 Data Plane(Envoy 프록시)에게 설정을 동적으로 배포하는 프로토콜이다. xDS는 엔드포인트(EDS), 클러스터(CDS), 라우트(RDS), 리스너(LDS) 등 여러 Discovery Service의 총칭이다. istiod는 xDS API를 통해 각 Envoy 사이드카에 라우팅 규칙, 인증서, 정책을 실시간으로 전달한다.
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  subgraph CP["Control Plane (제어부) — 두뇌"]
+    ctrl["istiod(Istio) 또는 linkerd-control\n설정·정책 관리 / 인증서 발급 / 서비스 디스커버리"]
+  end
+  ctrl -->|설정 전파 (xDS API)| pa
+  ctrl --> pb
+  subgraph DP["Data Plane (데이터부) — 실행"]
+    subgraph pa["Pod A"]
+      appA[App] --- proxyA[Proxy]
+    end
+    subgraph pb["Pod B"]
+      appB[App] --- proxyB[Proxy]
+    end
+    proxyA <-->|mTLS| proxyB
+  end
 ```
-서비스 메시 아키텍처
-============================================================
 
-Control Plane (제어부):
-  +------------------+
-  | istiod (Istio)   |  ← 설정/정책 관리
-  | 또는              |     인증서 발급
-  | linkerd-control  |     서비스 디스커버리
-  +--------+---------+
-           |
-           | 설정 전파 (xDS API)
-           |
-Data Plane (데이터부):
-  +--------v---------+     +---------+---------+
-  | Pod A            |     | Pod B             |
-  | +------+ +-----+ |     | +------+ +-----+  |
-  | | App  | |Proxy| |<--->| | App  | |Proxy|  |
-  | +------+ +-----+ |     | +------+ +-----+  |
-  +------------------+     +-------------------+
-     사이드카 프록시가          사이드카 프록시가
-     모든 트래픽을 가로챔       모든 트래픽을 가로챔
-
-핵심:
-  Control Plane = 설정/정책 관리 (두뇌)
-  Data Plane = 사이드카 프록시가 트래픽 처리 (실행)
-```
+_그림. 서비스 메시는 Control Plane(설정·정책 관리)과 Data Plane(사이드카 프록시가 모든 트래픽을 가로채 처리)으로 나뉜다. Control Plane 이 xDS API 로 각 사이드카에 설정을 전파한다._
 
 ### 4.3 Istio vs Linkerd
 

@@ -32,46 +32,20 @@
 
 ### 1.1 전체 흐름 다이어그램
 
+```mermaid
+%%{init:{'theme':'base','themeVariables':{'primaryColor':'#ffffff','primaryBorderColor':'#000000','primaryTextColor':'#000000','lineColor':'#000000','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  user[사용자] -->|"1. kubectl apply -f pod.yaml"| api
+  api["kube-apiserver\n2. 인증→인가→어드미션\n3. Pod 를 etcd 저장 (nodeName 비어있음)"]
+  api -->|"4. Watch: 새 Pod 생성됨 (nodeName 없음)"| sched
+  sched["kube-scheduler\n5. 필터링→스코어링으로 최적 노드 선택\n6. API Server 에 바인딩 결과 전송"]
+  sched -->|"7. Watch: Pod 가 이 노드에 할당됨"| kubelet
+  kubelet["kubelet (Worker Node)\n8. 컨테이너 생성 지시\n9. CRI 로 containerd 에 요청"]
+  kubelet -->|"10. containerd→runc→Linux Kernel"| rt
+  rt["containerd / runc\n11. namespace + cgroups 설정\n12. 컨테이너 프로세스 생성\n13. 상태를 kubelet 에 보고"]
 ```
-Pod 생성 과정 (kubectl apply -f pod.yaml)
-============================================================
 
-사용자
-  |
-  | 1. kubectl apply -f pod.yaml
-  v
-+------------------+
-| kube-apiserver   |  2. 인증 → 인가 → 어드미션 컨트롤
-| (API Server)     |  3. Pod 오브젝트를 etcd에 저장
-+--------+---------+     (이 시점에 nodeName은 비어있음)
-         |
-         | 4. Watch 이벤트: "새 Pod 생성됨 (nodeName 없음)"
-         v
-+------------------+
-| kube-scheduler   |  5. 필터링 → 스코어링으로 최적 노드 선택
-|                  |  6. API Server에 바인딩 결과 전송
-+--------+---------+     (Pod의 nodeName에 선택된 노드 할당)
-         |
-         | 7. Watch 이벤트: "Pod가 이 노드에 할당됨"
-         v
-+------------------+
-| kubelet          |  8. Pod spec에 따라 컨테이너 생성 지시
-| (Worker Node)    |  9. CRI를 통해 containerd에 요청
-+--------+---------+
-         |
-         | 10. containerd → runc → Linux Kernel
-         v
-+------------------+
-| containerd/runc  |  11. namespace + cgroups 설정
-| (Container       |  12. 컨테이너 프로세스 생성
-|  Runtime)        |  13. 상태를 kubelet에 보고
-+------------------+
-
-핵심 포인트:
-- 모든 통신은 API Server를 통해 이루어진다
-- Scheduler와 kubelet은 Watch 메커니즘으로 변경을 감지한다
-- etcd에 직접 접근하는 것은 API Server뿐이다
-```
+_그림. Pod 생성 과정. 모든 통신은 API Server 를 거치며(etcd 에 직접 접근하는 것은 API Server 뿐), Scheduler 와 kubelet 은 Watch 메커니즘으로 변경을 감지해 비동기로 동작한다._
 
 ### 1.2 각 단계 상세
 

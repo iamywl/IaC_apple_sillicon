@@ -456,7 +456,9 @@ kubectl top pod my-pod --containers -n demo
 kubectl top pods -A --sort-by=memory | head -10
 ```
 
-> (미캡처) 위 명령들의 실제 출력은 dev 클러스터에서 직접 실행한 터미널 스크린샷으로 대체해야 한다.
+아래는 dev 클러스터에서 `kubectl top pods -A --sort-by=memory` 를 실행한 실제 화면이다(metrics-server 설치 환경). 네임스페이스별 Pod 의 실시간 CPU(cores)·MEMORY(bytes)가 메모리 내림차순으로 정렬돼 나온다.
+
+![dev kubectl top pods -A --sort-by=memory 실측(metrics-server)](images/ckad-top-mem.png)
 
 ### 2.4 리소스 요청/제한과 모니터링
 

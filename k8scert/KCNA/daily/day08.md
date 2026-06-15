@@ -34,32 +34,12 @@
 
 ### 1.2 GitOps 4대 원칙
 
-```
-GitOps 4대 원칙
-============================================================
+1. **선언적 설정 (Declarative)** — 모든 시스템 상태를 선언적으로 기술한다(K8s YAML·Helm Chart·Kustomize).
+2. **Git = 단일 진실 소스 (Single Source of Truth)** — 원하는 상태(desired state)를 Git 에 저장한다. Git 저장소가 "정답"이다.
+3. **자동 적용 (Automated Application)** — 승인된 변경(PR 승인)은 자동으로 시스템에 적용된다.
+4. **지속적 조정 (Continuous Reconciliation)** — 에이전트가 실제 상태를 감시하며 차이를 자동 수정한다. 누군가 `kubectl` 로 직접 바꿔도 Git 상태로 되돌린다.
 
-1. 선언적 설정 (Declarative)
-   모든 시스템 상태를 선언적으로 기술
-   → K8s YAML, Helm Chart, Kustomize
-
-2. Git = 단일 진실 소스 (Single Source of Truth)
-   원하는 상태는 Git에 저장
-   → Git 저장소가 "정답"이다
-
-3. 자동 적용 (Automated Application)
-   승인된 변경 사항은 자동으로 시스템에 적용
-   → PR 승인 → 자동 배포
-
-4. 지속적 조정 (Continuous Reconciliation)
-   에이전트가 실제 상태를 감시하고 차이 자동 수정
-   → 누군가 kubectl로 직접 변경해도 Git 상태로 되돌림
-
-   [Reconciliation Loop 메커니즘]
-   ArgoCD 에이전트는 기본 3초 간격으로 etcd watch API를 통해
-   Git 저장소의 매니페스트(desired state)와 클러스터의 실제
-   상태(current state)를 비교한다. 차이(diff)가 감지되면
-   kubectl apply 동작으로 클러스터를 Git 상태로 수렴시킨다.
-```
+> **Reconciliation Loop 메커니즘:** ArgoCD 에이전트는 기본 3초 간격으로 Git 저장소의 매니페스트(desired state)와 클러스터의 실제 상태(current state)를 비교한다. 차이(diff)가 감지되면 `kubectl apply` 동작으로 클러스터를 Git 상태로 수렴시킨다.
 
 ### 1.3 GitOps 동작 흐름
 

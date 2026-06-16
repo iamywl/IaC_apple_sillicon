@@ -42,6 +42,16 @@
       "4. 트리거 Pod는 Kyverno disallow-latest 때문에 태그 명시(nginx:1.25). cks-demo ns 사용."
     ]
   },
+  "FINAL_HANDOFF_2026-06-16": {
+    "branch": "codex-remediation (91 commits, 작업트리 clean, 전부 origin push)",
+    "images_added": 63,
+    "verification_gates": "홀수펜스 0 · 파괴ops(plat/prod) 0 · 교재 깨진 이미지링크 0 · text펜스 0 · 변경파일 mermaid-cli 렌더 전수 통과",
+    "done_categories": "A·B(+CNCF CRI-O/Falco Graduated 웹검증·etcd)·안전논리(prod/platform 파괴ops→staging/cks)·C1·C3(+mermaid 렌더버그 수정)·C4·C5·C6 / 정확성오류 이미지오용 9건 실측 분리",
+    "placeholder_status": "(미캡처) 61→29 (이번 캠페인 ~33장 실측). 예시(참조) 1542 = 의도된 환경의존 reference 블록(별도 캠페인).",
+    "remaining_29_categories": "① 메타 안내문 ~10(캡처 대상 아님: '클러스터 꺼졌을때 (미캡처) 표기' 규약문). ② watch 스트림 ~4(-w, 단일 스샷 부적합). ③ Falco-gVisor ~4(cks gVisor 라 컨테이너 스코프 syscall 귀속 불가). ④ 클러스터 추가변형 필요 ~5(Gatekeeper 설치·노드 audit 로깅 활성화 등).",
+    "how_to_resume": "전 클러스터 boot 상태면: ④는 cks에 Gatekeeper helm 설치(Kyverno 공존) 후 ConstraintTemplate 거부 캡처 / dev kube-apiserver 에 audit-policy+audit-log 추가 후 jq 캡처. ②는 -w 대신 변화 직후 스냅샷 2~3장 시퀀스. ③은 cks에서 gVisor 아닌 runc Pod로 Falco 트리거 시 컨테이너 귀속 가능성. node-SSH: ssh dev-master ProxyCommand 가 tart ip 빈값으로 실패시 `ssh -i ~/.ssh/tart_k8scert admin@$(grep server kubeconfig/dev.yaml|grep -oE '[0-9.]+'|head -1)` 직접 IP 사용(검증됨).",
+    "cluster_state": "이 세션 전 클러스터 가동(13 VM, 환경 부하로 간헐 timeout — 재시도/회복됨). dev demo 에 manifests/network-policies(cnp)·HPA·lab-ingress·web-app(production ns)·probe-demo 추가됨. cks 에 캡처용 ns cks-rbac/psa/netpol/demo/warn/cap-kcsa-day06 + verify/capdrop/rofs pod 잔존."
+  },
   "feedback_reflection_review_2026-06-15": {
     "scope": "FEEDBACK-최종재검토.md(5종) HIGH 227건 기준 반영도 검토",
     "reflected": "A(무결성)·B(사실)·안전논리·C1(daily구조)·C3(ASCII→mermaid, mermaid-cli 렌더검증)·C4·C5·C6 완료. 정확성오류 HIGH 22건은 스폿체크 결과 대부분 이전 패스에서 이미 반영(03-exam·04 재작성으로 라인 어긋남) — 이번에 추가로 실제 잔존 오류 수정: KCNA CRI-O(2023-07-19)·Falco(2024-02-29) Graduated 정정(웹검증), CKA etcd 다중멤버 restore 주의. CKA 채점표 136%·Workloads 6/30·Q17 블루프린트 주석은 이미 반영 확인.",

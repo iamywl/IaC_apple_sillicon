@@ -927,7 +927,9 @@ kubectl get namespace demo -o yaml | grep -A5 "labels:" | grep "pod-security"
 kubectl get peerauthentication -n demo -o yaml 2>/dev/null
 ```
 
-(미캡처 — dev 클러스터에 Istio 미설치 시 PeerAuthentication 리소스가 없어 출력 불가. Istio가 설치된 환경에서는 위 명령으로 STRICT 모드 설정을 확인할 수 있다.)
+아래는 보안 실습 전용 `seclab` 클러스터(Istio 1.24.2 demo 프로파일 설치)에서 `mtls-demo` 네임스페이스에 `PeerAuthentication`(mode STRICT)을 적용하고 조회한 결과다. MODE 컬럼이 `STRICT` 로 표시되면 해당 네임스페이스의 모든 워크로드가 사이드카 간 mTLS를 강제한다.
+
+![PeerAuthentication 목록 — mtls-demo default 정책 MODE=STRICT(seclab 실측, Istio 1.24.2)](images/cks-istio-peerauth.png)
 
 **동작 원리:** Istio mTLS(mutual TLS):
 1. **STRICT** 모드: 모든 서비스 간 통신에 mTLS를 강제한다 (평문 통신 차단)

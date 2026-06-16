@@ -1502,7 +1502,7 @@ CKS 시험에서:
 kubectl get peerauthentication -A
 ```
 
-![PeerAuthentication 목록 — NAMESPACE/NAME/MODE 출력 확인(미캡처 - 별도 실측 필요)](images/cks-istio-sidecar.png)
+![PeerAuthentication 목록 — mtls-demo 네임스페이스 default 정책 MODE=STRICT(seclab 실측, Istio 1.24.2)](images/cks-istio-peerauth.png)
 
 ```bash
 # STRICT 모드에서 사이드카 없는 Pod로 접근 시도
@@ -1510,7 +1510,7 @@ kubectl run no-sidecar --image=busybox --restart=Never -n default \
   --labels="sidecar.istio.io/inject=false" -- wget -qO- --timeout=3 http://httpbin.demo:8000/get 2>&1
 ```
 
-![STRICT mTLS — 사이드카 없는 Pod에서 Connection reset by peer 거부 확인(미캡처 - 별도 실측 필요)](images/cks-istio-sidecar.png)
+![STRICT mTLS — 사이드카 없는 Pod에서 httpbin 호출 시 Connection reset by peer 로 거부(seclab 실측, curl exit 56)](images/cks-istio-strict-deny.png)
 
 `Connection reset by peer`는 mTLS 실패의 증거다. Envoy가 클라이언트 인증서 없는 평문 연결을 handshake 레벨에서 즉시 끊는다. 이것이 네트워크 단절(노드 다운 등)과 다른 점은, 같은 Pod에서 사이드카가 있는 경로는 성공한다는 것이다(아래 확인).
 
@@ -1527,9 +1527,7 @@ kubectl logs -n demo deploy/httpbin -c istio-proxy 2>/dev/null | \
 kubectl exec -n demo deploy/nginx -c app -- curl -s http://httpbin:8000/get | head -5
 ```
 
-![mTLS 성공 — 사이드카 있는 Pod에서 X-Forwarded-Client-Cert 헤더 포함 응답 확인(미캡처 - 별도 실측 필요)](images/cks-istio-sidecar.png)
-
-X-Forwarded-Client-Cert 헤더에 SPIFFE URI가 포함되어 있으면 mTLS가 정상 동작하는 것이다.
+> **(미캡처 — 환경 한계)** 사이드카 클라이언트의 성공 응답에 담기는 X-Forwarded-Client-Cert(XFCC) 헤더는 이 저장소의 `seclab` 환경(CNI = Cilium, eBPF 기반 kube-proxy 대체)에서는 실측 캡처하지 못했다. Istio 사이드카의 아웃바운드 트래픽이 Envoy의 `PassthroughCluster`로 처리되어 사이드카↔사이드카 mTLS 업스트림이 적용되지 않기 때문이다(STRICT에서는 평문이 거부되어 위 connection reset, PERMISSIVE에서는 평문으로 200이 떨어지지만 mTLS가 아니라 XFCC가 붙지 않는다). 이는 Istio 사이드카 모드와 Cilium의 알려진 통합 이슈로, Istio CNI 플러그인 또는 Cilium 측 Istio 통합 설정이 필요하다. 표준 CNI(예: kube-proxy + Calico) 환경에서는 사이드카 응답의 `X-Forwarded-Client-Cert` 헤더에 SPIFFE URI(`spiffe://cluster.local/ns/.../sa/...`)가 포함되어 mTLS 동작을 확인할 수 있다.
 
 ```bash
 # 대조 실험: PeerAuthentication을 PERMISSIVE로 바꾸면 사이드카 없는 Pod도 통과한다

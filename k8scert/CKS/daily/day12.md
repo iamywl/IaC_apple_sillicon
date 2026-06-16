@@ -352,8 +352,12 @@ sudo systemctl restart falco
 kubectl exec -n demo deploy/nginx -- sh -c "echo test >> /etc/testfile 2>&1; rm -f /etc/testfile" || true
 sudo journalctl -u falco --since "1 minute ago" | grep -E "Write to etc|/etc 파일"
 # 기대 출력: /etc 파일 수정 (user=root file=/etc/testfile container=nginx ...)
-# Falco 미설치 노드에서는 (미캡처)
+# DaemonSet(Helm) 설치형은 journalctl 대신 kubectl logs -n falco <pod> 로 확인
 ```
+
+아래는 `seclab`(runc)에서 이 커스텀 룰을 Falco에 주입(helm `customRules`)하고 `demo/nginx`에서 `/etc/falcotest` 쓰기를 트리거한 결과다. 룰 `Write to etc Directory in Container`(priority Error)가 발동하며 `file=/etc/falcotest`·`container=nginx`·`pod=nginx`·`ns=demo`·`cmdline` 이 함께 기록된다.
+
+![Falco 커스텀 룰 — 컨테이너 내 /etc 파일 쓰기 탐지(Error). 파일·컨테이너·Pod·네임스페이스 귀속 포함(seclab 실측)](images/cks-falco-etc-write.png)
 
 </details>
 
@@ -461,8 +465,12 @@ sudo journalctl -u falco --since "1 minute ago" | grep -E "패키지 매니저|P
 kubectl exec -n demo deploy/nginx -- sh -c "touch /usr/bin/testbin 2>&1; rm -f /usr/bin/testbin" || true
 sudo journalctl -u falco --since "1 minute ago" | grep -E "바이너리 쓰기|Write to Bin"
 # 기대 출력: 바이너리 쓰기 (user=root file=/usr/bin/testbin ...)
-# Falco 미설치 노드에서는 (미캡처)
+# DaemonSet(Helm) 설치형은 kubectl logs -n falco <pod> 로 확인
 ```
+
+아래는 `seclab`(runc)에서 패키지 매니저 룰을 주입하고 `demo/nginx`에서 `apt-get`을 실행한 결과다. 룰 `Launch Package Manager in Container`(priority Warning)가 발동하며 `pkg=apt-get`·`container=nginx`·`pod=nginx`·`ns=demo` 가 기록된다. 바이너리 쓰기(`/usr/bin` 변경) 룰도 동일 방식으로 `fd.name`·컨테이너 귀속과 함께 잡힌다.
+
+![Falco 커스텀 룰 — 컨테이너 내 패키지 매니저(apt-get) 실행 탐지(Warning). 컨테이너/Pod 귀속 포함(seclab 실측)](images/cks-falco-pkg-mgr.png)
 
 </details>
 

@@ -1649,19 +1649,24 @@ API Server 매니페스트에 --xxx-file 플래그를 추가할 때 반드시 �
 ### Falco 룰 문법 검증
 
 ```bash
-# 룰 적용 전 반드시 dry-run으로 검증한다
-sudo falco --dry-run -r /etc/falco/falco_rules.yaml -r /etc/falco/falco_rules.local.yaml
+# 룰 적용 전 반드시 검증한다. Falco 0.44 부터는 -V(--validate)로 룰 파일을 로드만 해보고 종료한다
+# (구버전의 --dry-run 은 deprecated). JSON 결과의 successful 필드로 통과 여부를 판정한다
+falco -V /etc/falco/falco_rules.yaml
 ```
 
-기대 출력 (정상):
-![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
+기대 출력 (정상) — `successful: true`, `errors: 0`:
 
-> **(미캡처 — 교체 필요)** 위 이미지는 `falco --dry-run` 정상 출력이 아닌 Falco 런타임 경보 화면이다. 정상 dry-run 출력은 `Loading rules from file ...` 뒤 `Rules loaded successfully.` 형태로 나타난다. 실측 스크린샷으로 교체 예정이다.
+![Falco 룰 검증 정상 — falco -V 결과 successful=true, schema_valid=true, errors=0(seclab 실측, Falco 0.44.1)](images/cks-falco-validate-ok.png)
 
-기대 출력 (오류 시):
-![Falco 런타임 경보 — 컨테이너에서 /etc/shadow 읽기 탐지(dev 실측, modern eBPF)](images/cks-falco-alert.png)
+문법이 깨진 룰(예: `condition` 키 누락)을 검증하면 `successful: false` 와 함께 오류 코드·메시지가 출력된다:
 
-> **(미캡처 — 교체 필요)** 위 이미지는 dry-run 오류 출력이 아닌 동일한 런타임 경보 화면이다. dry-run 오류 시 출력은 `YAML parse error`, `rule ... has invalid condition` 등 파싱 실패 메시지가 나타난다. 실측 스크린샷으로 교체 예정이다.
+```bash
+falco -V /tmp/bad_rules.yaml   # condition 없는 룰
+```
+
+기대 출력 (오류 시) — `successful: false`, `LOAD_ERR_YAML_VALIDATE`:
+
+![Falco 룰 검증 오류 — falco -V 결과 successful=false, key 'condition' 누락 오류(seclab 실측)](images/cks-falco-validate-err.png)
 
 ---
 

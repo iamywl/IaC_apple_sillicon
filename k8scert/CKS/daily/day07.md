@@ -500,7 +500,9 @@ kubectl exec security-context-demo -- stat -c '%U %G %g' /data
 # 기대: 디렉토리 그룹이 2000 으로 표시되고, 새로 만든 파일도 GID 2000 을 상속한다
 ```
 
-(미캡처 — dev 클러스터에서 security-context-demo Pod 실행 후 별도 캡처 필요. `%g` 출력이 2000임을 확인하는 스크린샷을 `images/day07-04-fsgroup.png`로 추가 예정)
+아래는 `seclab` 클러스터에서 `securityContext.fsGroup: 2000`(runAsUser 1000/runAsGroup 3000)을 준 Pod에 emptyDir을 `/data/demo`로 마운트하고 실행한 결과다. `id`는 `gid=3000 groups=2000,3000`(fsGroup이 보조 그룹에 추가됨)을 보이고, 마운트 경로와 그 안에 새로 만든 파일 모두 **group=2000**으로 나타난다.
+
+![fsGroup 검증 — emptyDir 마운트 경로와 신규 파일의 그룹 소유가 2000(fsGroup). seclab 실측](images/day07-04-fsgroup.png)
 
 `%g`(숫자 GID)가 2000으로 나오면 kubelet이 마운트 지점을 fsGroup으로 chown했다는 증거다. 반대로 hostPath나 configMap 마운트 경로에 같은 명령을 쓰면 원래 소유자가 그대로 유지되어 2000이 아니다.
 
@@ -1315,7 +1317,9 @@ sudo systemctl status containerd | head -5
 sudo crictl info | grep -A 5 runsc
 ```
 
-(미캡처 — runsc 설치 후 `sudo crictl info | grep -A 5 runsc` 출력을 `images/day07-05-crictl-runsc.png`로 캡처 예정. `runsc` 핸들러 항목이 출력에 나타나면 등록 성공을 확인한 것이다)
+아래는 gVisor(runsc)가 설치된 `cks-worker1` 노드에서 실행한 결과다. containerd 런타임 목록에 `runsc` 핸들러가 `runtimeType: io.containerd.runsc.v1`, `sandboxer: podsandbox`, `name: runsc` 로 등록돼 있음을 확인할 수 있다. 이 항목이 보이면 RuntimeClass `gvisor`(또는 `runsc`)를 참조한 Pod가 이 노드에서 gVisor 샌드박스로 실행될 준비가 된 것이다.
+
+![crictl info — containerd 에 runsc 런타임 핸들러 등록 확인(cks-worker1 실측, io.containerd.runsc.v1)](images/day07-05-crictl-runsc.png)
 
 gVisor 설치 선행조건: 호스트 커널이 KVM 또는 ptrace를 지원해야 한다(Apple Silicon tart VM은 ptrace 플랫폼으로 동작). 설치 후 `runsc --version`으로 바이너리 동작을 먼저 확인한다.
 

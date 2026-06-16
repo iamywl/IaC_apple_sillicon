@@ -197,8 +197,12 @@ kubectl exec -n demo deploy/nginx -- cat /etc/shadow 2>&1 || true
 # Falco 로그에서 Sensitive file read 탐지 확인
 sudo journalctl -u falco --since "1 minute ago" | grep "Sensitive file"
 # 기대 출력: Sensitive file read (user=root file=/etc/shadow container=nginx ...)
-# Falco 미설치 노드(dev/staging 기본)에서는 (미캡처)
+# 노드 설치형(systemd) Falco 는 journalctl, DaemonSet(Helm) 설치형은 kubectl logs 로 확인한다
 ```
+
+아래는 보안 실습 전용 `seclab` 클러스터(런타임 = **runc**, Falco를 `modern_ebpf` 드라이버로 DaemonSet 설치)에서 `demo/nginx` Pod 안의 `cat /etc/shadow`를 트리거하고 Falco 경보를 `kubectl logs`로 확인한 결과다. 룰 `Read sensitive file untrusted`가 발동하며, **컨테이너 귀속 필드**(`container_id`·`container_name=nginx`·`k8s_pod_name=nginx`·`k8s_ns_name=demo`)가 함께 기록된다. gVisor(runsc) 런타임에서는 시스템콜이 sentry를 거쳐 호스트로만 귀속돼 이 컨테이너 필드가 비는데, runc에서는 위처럼 정확히 채워진다.
+
+![Falco — runc 컨테이너 내 /etc/shadow 읽기 탐지. 룰·파일·프로세스·컨테이너/Pod/네임스페이스 귀속 필드 포함(seclab 실측)](images/cks-falco-runc-shadow.png)
 
 </details>
 

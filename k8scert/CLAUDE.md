@@ -5,7 +5,7 @@
 > 강의자료는 클라우드가 아니라 **로컬에 실제로 떠 있는 클러스터에서 직접 실행·검증**하는 것을 전제로 한다.
 > 상위 인프라 문서: [../README.md](../README.md) · 기술별 심화: [../certification/](../certification/)
 
-last_updated: 2026-06-12
+last_updated: 2026-06-16
 
 ## 목차
 - **[A. 작업 지침]** 1.목적 · 2.디렉터리 · 3.클러스터 환경 · 4.절대규칙 · 5.문서양식 · 6.실습/코드표준 · 7.흐름/Git · 8.금지
@@ -47,7 +47,7 @@ IaC_apple_sillicon/
 
 ## 3. 실행 환경 — 기존 tart 멀티클러스터만
 
-이 저장소는 `scripts/install.sh`로 이미 구축된 **4개 클러스터**를 실습장으로 쓴다(`config/clusters.json` = Single Source of Truth). **자격증 실습을 위해 새 VM을 함부로 만들지 않는다.**
+이 저장소는 `scripts/install.sh`로 구축된 운영 클러스터 **4개(platform/dev/staging/prod)** 와, 파괴적 보안 실습 격리용 **별도 랩 2개(cks/seclab)** 를 실습장으로 쓴다(`config/clusters.json` = Single Source of Truth). **자격증 실습을 위해 새 VM을 함부로 만들지 않는다**(보안 랩이 꼭 필요할 때만 clusters.json 에 추가하고 `reset-cluster.sh` 로 생성, 실습 후 정리).
 
 | 클러스터 | 노드 | 용도 | 자격증 실습 정책 |
 |:--|:--|:--|:--|
@@ -55,6 +55,10 @@ IaC_apple_sillicon/
 | `dev` | master + worker1 (2) | 개발/실습 | **파괴 실습 허용** — RBAC·NetworkPolicy·스케줄링 |
 | `staging` | master + worker1 (2) | 스테이징/실습 | **파괴 실습 허용** — CKS 보안 실습·etcd 백업/복구 |
 | `prod` | master + worker1·2 (3) | 데모용 프로덕션 | 읽기 위주, 데모 외 변경 자제 |
+| `cks` | master + worker1 (2) | CKS/KCSA 보안 도구 랩 | **파괴 실습 허용(일회용)** — Kyverno·Falco·gVisor·Trivy 설치 상주 |
+| `seclab` | master + worker1 (2) | 클러스터/노드 단위 보안 변경 랩 | **파괴 실습 허용(일회용)** — Gatekeeper 설치·apiserver audit 로깅·Falco(runc) 등 **컨트롤플레인/노드를 바꿔야 하는** 실습 전용. `reset-cluster.sh --yes seclab` 로 통째 재생성 |
+
+> `cks`·`seclab` 은 platform/dev/staging/prod 를 건드리지 않고 파괴적 보안 실습을 격리하기 위한 **별도 클러스터**다. 네임스페이스로는 가를 수 없는 클러스터 전역 변경(admission webhook 설치, apiserver 플래그, 노드 런타임)은 이 랩에서 한다. 6개 클러스터 동시 가동은 호스트 용량(~13 VM)을 초과하므로, 필요한 클러스터만 켜고 나머지는 `tart stop` 으로 내린다(예: seclab 작업 시 platform 정지).
 
 - **가동/상태/종료**: `./scripts/boot.sh`(VM 기동) · `./scripts/status.sh`(노드·서비스 상태) · `./scripts/shutdown-all.sh`. 처음부터 재설치는 `./scripts/install.sh`.
 - **⚠️ 재부팅 후 IP 드리프트 복구 — `./scripts/fix-cluster-ip-drift.sh [클러스터]` 를 반드시 실행한다.** tart 는 재부팅마다 VM IP 를 재할당하는데 kubeadm 클러스터는 init 시점 IP 에 묶여 있다. `boot.sh`(02-wait-clusters)는 apiserver advertise 인증서만 복구하고 **다음 4가지를 놓쳐** 노드는 Ready 로 보여도 파드 네트워킹/DNS 가 깨진다. dev 에서 실측 검증한 완전 복구 절차를 이 스크립트가 수행한다:
@@ -195,7 +199,8 @@ K8s 기초            클러스터관리 앱개발     보안이론  보안실�
 | CKA: 스케줄링·드레인·노드관리 | dev | 파괴 허용 |
 | CKA: kubeadm init/join·업그레이드·etcd 백업/복구 | staging 또는 별도 실습 클러스터 | SSH로 노드 직접 작업, 실습 후 정리 |
 | CKAD: 워크로드·구성·probe·job | dev | `manifests/` 예제 재사용 |
-| CKS: RBAC·NetworkPolicy·gatekeeper·런타임 | dev/staging | **platform/prod 금지**, 기존 `manifests/{rbac,network-policies,gatekeeper}` 활용 |
+| CKS: RBAC·NetworkPolicy·런타임(네임스페이스 단위) | dev/staging/cks | **platform/prod 금지**, 기존 `manifests/{rbac,network-policies,gatekeeper}` 활용 |
+| CKS: Gatekeeper 설치·apiserver audit 로깅·Falco(runc) 등 클러스터/노드 단위 변경 | seclab | 네임스페이스로 못 가르는 컨트롤플레인 전역 변경. 일회용 랩, `reset-cluster.sh --yes seclab` 로 복구 |
 | 관측/네트워킹 심화 참고 | platform(Cilium·Hubble·Prometheus) | [../certification/](../certification/) 링크 |
 
 ## 11. 현황 (2026-06-12 기준 — 메모리 기록, 재검증 필요)

@@ -49,6 +49,15 @@
         { "name": "cks-master", "role": "master", "cpu": 2, "memory": 4096, "disk": 20 },
         { "name": "cks-worker1", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
       ]
+    },
+    {
+      "name": "seclab",
+      "pod_cidr": "10.60.0.0/16",
+      "service_cidr": "10.101.0.0/16",
+      "nodes": [
+        { "name": "seclab-master", "role": "master", "cpu": 2, "memory": 4096, "disk": 20 },
+        { "name": "seclab-worker1", "role": "worker", "cpu": 2, "memory": 8192, "disk": 20 }
+      ]
     }
   ]
 }

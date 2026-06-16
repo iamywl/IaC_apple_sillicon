@@ -929,7 +929,11 @@ cat /var/log/kubernetes/audit/audit.log | \
 cat /tmp/audit-analysis.txt
 ```
 
-> **(미캡처)** 각 jq 필터링 결과(삭제 이벤트 목록, Secret 접근 사용자, 403 목록)는 실측 스크린샷으로 교체 예정이다. platform 클러스터에 실제 audit.log가 있는 환경에서 위 명령을 실행하면 각 줄에 타임스탬프·사용자명·동작이 출력된다. 결과가 비어 있다면 audit.log에 해당 이벤트가 없거나 audit policy가 해당 level을 기록하지 않는 것이다(day04 Audit Policy 설정 확인).
+아래는 보안 실습 전용 `seclab` 클러스터에서 kube-apiserver에 audit 로깅을 활성화한 뒤(정적 파드 매니페스트에 `--audit-policy-file`·`--audit-log-path` 추가), 위 3개 jq 필터를 실제 `audit.log`에 돌린 결과다. ① apiserver 재기동 과정에서 `system:node`가 `kube-apiserver` 정적 파드를 삭제한 이벤트, ② 비시스템 사용자 `kubernetes-admin`이 `gk-demo`의 `audit-test` 시크릿을 `create`·`get`한 이벤트, ③ 부트스트랩 중 worker 노드가 `configmaps watch`에서 받은 `403` 이 각각 타임스탬프·사용자·동작과 함께 기록된다.
+
+![Audit Log 분석 — 삭제 이벤트/비시스템 사용자 Secret 접근/403 Forbidden 을 jq 로 분리(seclab apiserver audit.log 실측)](images/cks-audit-analysis.png)
+
+> 결과가 비어 있다면 audit.log에 해당 이벤트가 없거나 audit policy가 해당 level을 기록하지 않는 것이다(day04 Audit Policy 설정 확인).
 
 **자주 사용하는 jq 필터 패턴:**
 

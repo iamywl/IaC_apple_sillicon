@@ -1891,8 +1891,9 @@ spec:
 cat /var/log/kubernetes/audit/audit.log | jq 'select(.objectRef.resource == "secrets") | {user: .user.username, verb: .verb, name: .objectRef.name, namespace: .objectRef.namespace}'
 ```
 
-기대 출력:
-> **예시(참조) — {:** CKS 보안 기대 출력(도구/설정/환경 의존). 재현 가능한 핵심은 CKS daily(day01~14) 및 본 문서 캡처 참고.
+아래는 보안 실습 전용 `seclab` 클러스터에서 kube-apiserver 정적 파드 매니페스트에 `--audit-policy-file`·`--audit-log-path`를 추가하고(audit policy는 secrets를 `Metadata` 레벨로 기록), 시크릿을 생성·조회한 뒤 위 jq 쿼리를 실제 `audit.log`에 돌린 결과다. `kubernetes-admin`이 `gk-demo` 네임스페이스의 `audit-test` 시크릿을 `create`·`get`한 이벤트와, 시스템 컴포넌트(`system:node:*`, `cilium`)의 인증서 시크릿 `watch`가 사용자·동작·대상별로 기록된 것을 확인할 수 있다.
+
+![Audit Log — secrets 리소스 접근 이벤트를 jq 로 필터링(사용자/동작/시크릿명/네임스페이스). seclab apiserver audit.log 실측](images/cks-audit-secrets-jq.png)
 
 **주의 사항:**
 - volumeMounts와 volumes를 모두 설정해야 한다

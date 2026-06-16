@@ -491,7 +491,9 @@ kubectl run bad-image --image=bad.registry.io/nginx -n default
 kubectl run good-image --image=docker.io/library/nginx:1.25 -n default
 ```
 
-> **선행 조건:** dev 클러스터에 OPA Gatekeeper가 설치되어 있어야 한다. `kubectl get ns gatekeeper-system` 으로 존재 여부를 확인한다. 미설치 시 ConstraintTemplate apply 자체가 `no matches for kind "ConstraintTemplate"` 오류로 실패한다. 설치 확인 후 캡처한다 — (미캡처).
+> **선행 조건:** 클러스터에 OPA Gatekeeper가 설치되어 있어야 한다. `kubectl get ns gatekeeper-system` 으로 존재 여부를 확인한다. 미설치 시 ConstraintTemplate apply 자체가 `no matches for kind "ConstraintTemplate"` 오류로 실패한다. 아래는 보안 실습 전용 `seclab` 클러스터(Kyverno 없이 Gatekeeper만 설치)에서 실제 거부를 캡처한 화면이다. `gk-demo` 네임스페이스에 허용 레지스트리(`docker.io/library/`) 밖의 이미지(`registry.k8s.io/pause:3.10`)로 Pod 생성을 시도하면 `validation.gatekeeper.sh` admission webhook이 `[allowed-repos]` 위반으로 거부한다.
+
+![OPA Gatekeeper — 허용되지 않은 레지스트리 이미지를 admission webhook 이 거부(seclab 실측)](images/cks-gatekeeper-repo-deny.png)
 
 ### 문제 6. Istio mTLS 확인 및 설정
 

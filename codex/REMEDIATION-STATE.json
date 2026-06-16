@@ -66,6 +66,19 @@
     "lab_state_left": "seclab 가동중: gatekeeper-system(설치)·gk-demo(good-pod)·audit 로깅 활성(apiserver 패치됨)·falco ns DaemonSet·demo/nginx 잔존. audit-policy=/etc/kubernetes/audit-policy.yaml, 매니페스트 백업=/tmp/kube-apiserver.yaml.bak. 재생성 시 reset-cluster.sh --yes seclab.",
     "remaining_after": "day12 L237/351/460(터미널셸 등 TTY 필요 Falco 룰)·day14 falco dry-run L1655/1660·Istio(day08 L928)·Ingress controller(01-concepts L333)는 별도(Istio/Ingress 미설치, TTY 캡처 제약). seclab 재사용 가능."
   },
+  "GRIND_2026-06-16": {
+    "summary": "사용자 '싹다 개발진행해' — seclab/cks/dev 가동 상태로 실측 가능 (미캡처) 일괄 캡처. 이번 대화 누적 36 이미지/5 커밋(8d081bc·91fd4c8·4ef9383·2db038b·deb3c7d, 전부 push).",
+    "batches": {
+      "seclab_core(8d081bc)": "Gatekeeper repo-deny·audit secrets jq·audit 3쿼리·Falco runc shadow (4)",
+      "cks(91fd4c8)": "falco -V 정상/오류·fsGroup stat·crictl runsc(cks-worker1)·커스텀룰 /etc쓰기·패키지매니저 (6)",
+      "ckad(4ef9383)": "helm create 트리·default-deny wget timeout·secret 0400 stat·dockerconfigjson·immutable cm·helm list-A/exam/rollout/values (9)",
+      "cka_kcna(2db038b)": "ingress/ingressclass·표준 netpol describe·RBAC can-i (3)",
+      "istio(deb3c7d)": "seclab Istio 1.24.2 설치 + PeerAuth STRICT·mTLS 거부(connection reset) (2). 오용 cks-istio-sidecar.png 3중재사용 제거(0)."
+    },
+    "tools_installed_seclab": "Gatekeeper v3.17.1(gk-demo)·apiserver audit(매니페스트 패치, 백업 /tmp/kube-apiserver.yaml.bak)·Falco 0.44.1 helm(customRules: Write to etc/Package Manager)·Istio 1.24.2 demo(mtls-demo+nosidecar ns, httpbin/sleep). dev: custom-nginx helm(helm-exam)·exam ns(app-secret/reg-cred/static-config/secret-vol)·pod-reader RBAC·exam default-deny netpol. cks: setup-ssh-keys 재배포.",
+    "honest_not_captured": "① watch-스트림(단일스샷 부적합): CKAD day05 rollout전환·day09 L672·04-tart L539/3250. ② 미설치 도구: docker 빌드호스트(CKAD 01-concepts), ingress-nginx controller(CKS 01-concepts L333·CKA 03-exam L1525), kubesec/conftest(CKS day09/10). ③ Cilium+Istio 한계: 사이드카 mTLS XFCC(day07 L1526) — PassthroughCluster. ④ Falco 터미널셸(TTY 필요, day12 L237). ⑤ platform 정지중: KCNA day07 nodes/ArgoCD·day08 monitoring(내용 platform 특정이라 dev대체 불가). ⑥ 메타 규약문/예시(참조) reference 블록. 잔여 (미캡처) 문자열 ~63(다수가 위 정직노트·전제문·예시참조).",
+    "platform_restore": "tart run platform-master/worker1/worker2 --no-graphics & 후 ./scripts/fix-cluster-ip-drift.sh platform. 현재 용량확보 위해 정지중."
+  },
   "feedback_reflection_review_2026-06-15": {
     "scope": "FEEDBACK-최종재검토.md(5종) HIGH 227건 기준 반영도 검토",
     "reflected": "A(무결성)·B(사실)·안전논리·C1(daily구조)·C3(ASCII→mermaid, mermaid-cli 렌더검증)·C4·C5·C6 완료. 정확성오류 HIGH 22건은 스폿체크 결과 대부분 이전 패스에서 이미 반영(03-exam·04 재작성으로 라인 어긋남) — 이번에 추가로 실제 잔존 오류 수정: KCNA CRI-O(2023-07-19)·Falco(2024-02-29) Graduated 정정(웹검증), CKA etcd 다중멤버 restore 주의. CKA 채점표 136%·Workloads 6/30·Q17 블루프린트 주석은 이미 반영 확인.",

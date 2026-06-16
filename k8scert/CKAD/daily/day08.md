@@ -681,7 +681,9 @@ helm list -n helm-exam
 kubectl get deploy -n helm-exam
 ```
 
-> 위 두 명령으로 `custom-nginx` Release 가 `deployed` 상태인지, Deployment 가 3/3 Ready 인지 확인한다(미캡처 — 클러스터 환경에 따라 출력이 다름).
+아래는 `dev` 클러스터 `helm-exam` 네임스페이스에 chart를 설치한 실측 결과다. `helm list` 에 `custom-nginx` Release 가 `deployed`/REVISION 1 로, `kubectl get deploy` 에 차트가 만든 Deployment(`custom-nginx-myapp-chart`)가 `3/3` Ready 로 나타난다.
+
+![helm list -n helm-exam + get deploy — custom-nginx Release deployed, Deployment 3/3(dev 실측)](images/ckad-helm-exam.png)
 
 </details>
 
@@ -883,7 +885,9 @@ kubectl get nodes
 helm list -A
 ```
 
-> (미캡처 — 클러스터 환경에 따라 출력이 다름. 위 명령 실행 결과로 네임스페이스별 Release 목록과 REVISION/STATUS/CHART 컬럼이 표시된다.)
+아래는 `dev` 클러스터의 실측이다. cilium·custom-nginx·falco·gatekeeper Release 가 네임스페이스별로 NAME/NAMESPACE/REVISION/STATUS/CHART/APP VERSION 컬럼과 함께 출력된다.
+
+![helm list -A — dev 클러스터의 전 네임스페이스 Helm Release 목록(실측)](images/ckad-helm-list-all.png)
 
 **동작 원리:** Helm Release 정보:
 1. Helm v3는 Release 정보를 해당 네임스페이스의 Secret으로 저장한다
@@ -916,7 +920,9 @@ kubectl get rs -n demo -l app=nginx-web
 kubectl get deployment nginx-web -n demo -o jsonpath='{.spec.strategy}' | python3 -m json.tool
 ```
 
-> (미캡처 — 클러스터 환경에 따라 출력이 다름. `rollout history` 는 revision 번호와 CHANGE-CAUSE 컬럼을, `get rs` 는 각 revision 에 대응하는 ReplicaSet 과 DESIRED/CURRENT/READY 수를 보여준다.)
+아래는 `dev` 클러스터 실측이다. `rollout history` 가 REVISION 1·2 를 보이고, `get rs` 가 두 ReplicaSet(구버전 `nginx-web-594689675` DESIRED 0, 신버전 `nginx-web-5c64644cb6` 3/3/3)을 보여준다 — 이미지 업데이트로 새 RS가 생기고 구 RS는 0으로 스케일다운된 RollingUpdate 결과다.
+
+![rollout history + get rs — nginx-web revision 1·2, 신/구 ReplicaSet DESIRED/CURRENT/READY(dev 실측)](images/ckad-rollout-history.png)
 
 ### 실습 3: Helm Chart values 분석
 
@@ -925,7 +931,9 @@ kubectl get deployment nginx-web -n demo -o jsonpath='{.spec.strategy}' | python
 helm get values cilium -n kube-system -o yaml | head -30
 ```
 
-> (미캡처 — 클러스터 환경에 따라 출력이 다름. 사용자가 오버라이드한 values 만 YAML 형식으로 출력된다. 값이 없으면 `null` 또는 빈 출력이 나온다.)
+아래는 `dev` 클러스터 실측이다. `USER-SUPPLIED VALUES:` 아래에 설치 시 오버라이드한 값(`cluster.name: dev`, k8sServiceHost 등)만 YAML로 출력된다 — chart 기본값은 표시되지 않는다(`helm get values -a` 로 전체 병합값 확인 가능).
+
+![helm get values cilium — 사용자가 오버라이드한 values만 YAML 출력(dev 실측)](images/ckad-helm-values-cilium.png)
 
 **동작 원리:** Helm values 시스템:
 1. Chart에 `values.yaml`이 기본값을 정의한다

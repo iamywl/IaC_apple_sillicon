@@ -2788,15 +2788,15 @@ cd /tmp && helm create myapp-chart
 ls /tmp/myapp-chart/
 ```
 
-> (미캡처) 기대 출력: `Chart.yaml  charts/  templates/  values.yaml` — `helm create`가 표준 chart 골격 파일 4종을 생성한다.
+아래는 `helm create` 로 생성한 chart 골격을 `ls` 한 실측 결과다. 최상위에 `Chart.yaml`·`values.yaml`·`charts/`·`templates/` 4종이 생기고, `templates/` 에는 `deployment.yaml`·`service.yaml`·`ingress.yaml`·`hpa.yaml`·`serviceaccount.yaml`·`_helpers.tpl`·`NOTES.txt`·`tests/` 가 들어 있다.
 
-> **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
+![helm create — chart 골격(최상위 4종)과 templates/ 기본 템플릿 목록(실측)](images/ckad-helm-create-tree.png)
 
 ```bash
 ls /tmp/myapp-chart/templates/
 ```
 
-> (미캡처) 기대 출력: `NOTES.txt  _helpers.tpl  deployment.yaml  hpa.yaml  ingress.yaml  service.yaml  serviceaccount.yaml  tests/` — Helm이 기본 제공하는 템플릿 파일 목록이다.
+위 이미지 하단의 `templates/` 목록이 이 명령의 출력이다.
 
 > **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 
@@ -4982,7 +4982,9 @@ kubectl run client --image=busybox:1.36 -n demo --restart=Never -- sleep 3600
 kubectl exec client -n demo -- wget -qO- --timeout=3 http://server:80 2>&1
 ```
 
-> (미캡처) Default Deny 정책이 적용된 상태에서 위 명령의 기대 출력: `wget: download timed out` 또는 `wget: can't connect to remote host`. 연결이 차단되므로 3초 타임아웃 후 오류 메시지가 반환된다. NetworkPolicy가 없으면 nginx의 HTML 응답이 출력된다.
+아래는 `dev` 클러스터 `demo` 네임스페이스(Cilium 기반 default-deny 정책 적용 상태)에서 실측한 결과다. 정책에 매칭되지 않는 신규 Pod 간 통신이라 연결이 차단되고, 3초 타임아웃 후 `wget: download timed out` 과 종료 코드 1(`exit=1`)이 반환된다. NetworkPolicy가 없으면 nginx의 HTML 응답이 출력된다.
+
+![default-deny — 정책에 허용되지 않은 Pod 통신이 3초 타임아웃으로 차단(dev 실측, exit=1)](images/ckad-netpol-deny-timeout.png)
 
 > **예시(참조):** CKAD 실습/보충 기대 출력(istio sidecar·버전·tart 환경값 등 placeholder, 환경 의존). 재현 가능 핵심은 CKAD daily(day01~14) 및 본문 02·03 캡처 참고.
 

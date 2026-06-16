@@ -824,7 +824,7 @@ kubectl exec secret-vol -n exam -- stat -c '%a' /etc/secrets/..data/username
 ```
 
 기대 출력:
-> (미캡처 — 추후 실측 캡처 예정: stat 명령 결과 — 파일 권한 비트 400 출력)
+![Secret 마운트 파일 권한 — stat %a 가 400(0400, 소유자 읽기 전용). dev exam 실측](images/day14-12-stat400.png)
 
 > **설명:** `stat -c '%a'`는 파일 권한 비트를 8진수 숫자로 출력한다. `400`은 HTTP 상태 코드가 아니라 Unix 파일 권한(소유자 읽기 전용, 그룹/기타 접근 불가)을 의미한다. `defaultMode: 0400`으로 설정했으므로 이 값이 출력되면 정상이다.
 
@@ -859,7 +859,7 @@ kubectl describe secret reg-cred -n exam
 ```
 
 기대 출력:
-> (미캡처 — 추후 실측 캡처 예정: reg-cred Secret 타입 및 describe 결과)
+![reg-cred Secret — 타입 kubernetes.io/dockerconfigjson, .dockerconfigjson 키 134 bytes(dev exam 실측)](images/day14-13-regcred.png)
 
 ```yaml
 apiVersion: v1
@@ -957,7 +957,7 @@ kubectl get configmap static-config -n exam -o jsonpath='{.immutable}'
 ```
 
 기대 출력:
-> (미캡처 — 추후 실측 캡처 예정: jsonpath immutable 필드 — true 출력)
+![immutable ConfigMap — jsonpath '{.immutable}' 가 true(dev exam 실측)](images/day14-14-immutable.png)
 
 > `kubectl get configmap static-config -n exam -o jsonpath='{.immutable}'` 는 `true`를 출력한다. 이 명령만으로 immutable 여부를 스크립트에서 검사할 수 있다.
 

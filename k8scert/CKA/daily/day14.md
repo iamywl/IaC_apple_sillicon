@@ -54,7 +54,9 @@ kubectl describe ingressclass nginx 2>/dev/null || echo "(IngressClass nginx 없
 kubectl get ingress -A
 ```
 
-> (미캡처 — 추후 실측 캡처 예정: Ingress 리소스 및 IngressClass 조회 결과)
+아래는 `dev` 클러스터 실측이다. dev에는 Ingress 컨트롤러가 없어 IngressClass 조회가 비어 있고(`No resources found`), `lab-ingress` 리소스는 존재하지만 컨트롤러가 없어 `ADDRESS` 가 빈 상태로 남는다 — Ingress 리소스와 컨트롤러가 분리돼 있음을 보여주는 정상 동작이다.
+
+![IngressClass(없음)와 Ingress 목록 — lab-ingress 의 ADDRESS 가 비어 있음(컨트롤러 미설치, dev 실측)](images/cka-day14-ingress.png)
 
 ### 직접 해보기 (시험형 미니랩)
 
@@ -103,7 +105,9 @@ kubectl get networkpolicy -A
 kubectl describe networkpolicy -n demo 2>/dev/null || echo "(demo ns 에 NetworkPolicy 없음)"
 ```
 
-> (미캡처 — 추후 실측 캡처 예정: NetworkPolicy 목록 조회 결과)
+아래는 `dev` 클러스터 실측이다. `exam` 네임스페이스에 적용한 `default-deny-all` NetworkPolicy가 목록에 보이고, `describe` 출력에서 `PodSelector: <none>`(네임스페이스 전체 Pod 대상)과 `Allowing ingress/egress traffic:` 가 비어 있음(전면 차단)을 확인할 수 있다.
+
+![NetworkPolicy 목록 + describe — exam 네임스페이스 default-deny-all(PodSelector none, 전면 차단). dev 실측](images/cka-day14-netpol.png)
 
 ### 직접 해보기 (시험형 미니랩)
 

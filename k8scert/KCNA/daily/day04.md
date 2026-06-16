@@ -1078,7 +1078,9 @@ kubectl auth can-i create deployments -n demo --as=dev-user
 
 검증:
 
-> (미캡처 — 추후 실측 캡처 예정: RBAC Role·RoleBinding 생성 및 auth can-i 결과)
+아래는 `dev` 클러스터 실측이다. `pod-reader` Role(pods get/list/watch)과 이를 `dev-user`에 연결한 RoleBinding을 만든 뒤 `auth can-i` 로 검증한 결과다. `dev-user`는 `demo`에서 pods 조회는 `yes`, deployments 생성은 `no` 로 — Role에 정의된 권한만 정확히 허용된다.
+
+![RBAC 검증 — dev-user 의 pods get=yes / deployments create=no, pod-reader Role·RoleBinding 존재(dev 실측)](images/kcna-day04-rbac.png)
 
 **동작 원리:** RBAC 구조:
 1. Role(NS 범위) / ClusterRole(클러스터 범위) = 권한 정의
